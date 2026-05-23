@@ -1,0 +1,9 @@
+name: dart_exception_lint_example
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  third_party_stub:
+    path: third_party_stub

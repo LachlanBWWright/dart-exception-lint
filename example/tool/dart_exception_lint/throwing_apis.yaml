@@ -1,0 +1,20 @@
+apis:
+  - package: third_party_stub
+    library: package:third_party_stub/third_party_stub.dart
+    function: dangerousTopLevel
+  - package: third_party_stub
+    library: package:third_party_stub/third_party_stub.dart
+    function: dangerousAsync
+  - package: third_party_stub
+    library: package:third_party_stub/third_party_stub.dart
+    class: DangerousClient
+    method: fetch
+  - package: third_party_stub
+    library: package:third_party_stub/third_party_stub.dart
+    class: DangerousClient
+    method: load
+    static: true
+  - package: third_party_stub
+    library: package:third_party_stub/third_party_stub.dart
+    class: DangerousClient
+    constructor: named

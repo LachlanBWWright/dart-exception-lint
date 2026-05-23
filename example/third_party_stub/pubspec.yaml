@@ -1,0 +1,5 @@
+name: third_party_stub
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
