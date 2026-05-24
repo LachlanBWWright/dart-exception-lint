@@ -7,7 +7,9 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
+import '../config/exception_analysis_options.dart';
 import '../diagnostics.dart';
+import '../result.dart';
 import '../utils/source_utils.dart';
 
 class NoManualThrowRule extends AnalysisRule {
@@ -25,7 +27,19 @@ class NoManualThrowRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    if (isGeneratedDartFile(context.currentUnit?.file.path)) {
+    final options = switch (ExceptionAnalysisOptions.loadResult(
+      packageRoot: context.package?.root.path,
+      currentFilePath: context.currentUnit?.file.path,
+    )) {
+      Ok(value: final options) => options,
+      Err() => const ExceptionAnalysisOptions(),
+    };
+    if (shouldSkipLintRuleForFile(
+      ruleName: name,
+      options: options,
+      filePath: context.currentUnit?.file.path,
+      packageRoot: context.package?.root.path,
+    )) {
       return;
     }
 

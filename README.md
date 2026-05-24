@@ -32,6 +32,9 @@ plugins:
         possible_throw: true
         async_error: true
         unknown: true
+      strictness:
+        internal: possible
+        third_party: deliberate
       max_call_depth: 4
       analyze_third_party_source: true
       analyze_sdk_source: true
@@ -41,9 +44,48 @@ plugins:
       treat_parse_methods_as_throwing: true
       treat_as_casts_as_throwing: false
       require_async_error_handling: true
+      analyze_test_files: false
+      rules:
+        catch_async_error_sources:
+          analyze_test_files: true
 ```
 
 Restart the Dart Analysis Server after changing plugin configuration.
+
+By default, diagnostics are skipped for files under `test/` and files named
+`*_test.dart`. Set `exception_analysis.analyze_test_files: true` to analyze
+test files for all rules, or set
+`exception_analysis.rules.<rule>.analyze_test_files` to override the default
+for a single rule.
+
+### Exception analysis strictness
+
+`exception_analysis.strictness` controls which inferred exception sources are reported based on the source's intent:
+
+| Value | Reports |
+| --- | --- |
+| `deliberate` | Explicit exception-oriented code such as `throw`, `rethrow`, `Future.error`, stream errors, and manifest overrides. |
+| `probable` | `deliberate` sources plus high-risk runtime operations such as null assertions and casts. |
+| `possible` | `probable` sources plus known input- or state-dependent throwing APIs such as parse/decode and collection-state calls. |
+| `unknown` | `possible` sources plus unresolved, dynamic, external, abstract, and truncated analysis boundaries. |
+
+Defaults:
+
+```yaml
+exception_analysis:
+  strictness:
+    internal: possible
+    third_party: deliberate
+```
+
+Use a stricter third-party threshold to avoid noisy reports from package internals while still catching deliberate exception-based APIs. Use `unknown` when you want unresolved boundaries reported:
+
+```yaml
+exception_analysis:
+  strictness:
+    internal: unknown
+    third_party: possible
+```
 
 ## Throwing API manifest
 

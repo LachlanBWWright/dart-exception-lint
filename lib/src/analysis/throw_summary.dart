@@ -1,3 +1,19 @@
+import '../result.dart';
+
+sealed class WireParseFailure {
+  const WireParseFailure(this.value);
+
+  final String value;
+}
+
+final class ThrowConfidenceWireParseFailure extends WireParseFailure {
+  const ThrowConfidenceWireParseFailure(super.value);
+}
+
+final class ThrowIntentWireParseFailure extends WireParseFailure {
+  const ThrowIntentWireParseFailure(super.value);
+}
+
 enum ThrowConfidence {
   definiteThrow,
   possibleThrow,
@@ -28,14 +44,39 @@ extension ThrowConfidenceExtension on ThrowConfidence {
 
   bool get isAsync => this == ThrowConfidence.asyncError;
 
-  static ThrowConfidence parse(String value) {
+  static Result<ThrowConfidence, WireParseFailure> tryParse(String value) {
     return switch (value) {
-      'definite_throw' => ThrowConfidence.definiteThrow,
-      'possible_throw' => ThrowConfidence.possibleThrow,
-      'async_error' => ThrowConfidence.asyncError,
-      'unknown' => ThrowConfidence.unknown,
-      'no_obvious_throw' => ThrowConfidence.noObviousThrow,
-      _ => throw FormatException('Unsupported throw confidence "$value".'),
+      'definite_throw' => const Ok(ThrowConfidence.definiteThrow),
+      'possible_throw' => const Ok(ThrowConfidence.possibleThrow),
+      'async_error' => const Ok(ThrowConfidence.asyncError),
+      'unknown' => const Ok(ThrowConfidence.unknown),
+      'no_obvious_throw' => const Ok(ThrowConfidence.noObviousThrow),
+      _ => Err(ThrowConfidenceWireParseFailure(value)),
+    };
+  }
+}
+
+enum ThrowIntent { deliberate, probable, possible, unknown }
+
+extension ThrowIntentExtension on ThrowIntent {
+  String get wireName => switch (this) {
+    ThrowIntent.deliberate => 'deliberate',
+    ThrowIntent.probable => 'probable',
+    ThrowIntent.possible => 'possible',
+    ThrowIntent.unknown => 'unknown',
+  };
+
+  bool meets(ThrowIntent minimum) {
+    return index <= minimum.index;
+  }
+
+  static Result<ThrowIntent, WireParseFailure> tryParse(String value) {
+    return switch (value) {
+      'deliberate' => const Ok(ThrowIntent.deliberate),
+      'probable' => const Ok(ThrowIntent.probable),
+      'possible' => const Ok(ThrowIntent.possible),
+      'unknown' => const Ok(ThrowIntent.unknown),
+      _ => Err(ThrowIntentWireParseFailure(value)),
     };
   }
 }
@@ -61,11 +102,35 @@ enum ThrowSourceKind {
   truncation,
 }
 
+extension ThrowSourceKindExtension on ThrowSourceKind {
+  ThrowIntent get defaultIntent => switch (this) {
+    ThrowSourceKind.explicitThrow ||
+    ThrowSourceKind.rethrowExpression ||
+    ThrowSourceKind.futureError ||
+    ThrowSourceKind.completerCompleteError ||
+    ThrowSourceKind.streamAddError ||
+    ThrowSourceKind.manifestOverride => ThrowIntent.deliberate,
+    ThrowSourceKind.nullAssertion ||
+    ThrowSourceKind.asCast => ThrowIntent.probable,
+    ThrowSourceKind.indexAccess ||
+    ThrowSourceKind.parseCall ||
+    ThrowSourceKind.decodeCall ||
+    ThrowSourceKind.collectionStateCall => ThrowIntent.possible,
+    ThrowSourceKind.externalCall ||
+    ThrowSourceKind.dynamicInvocation ||
+    ThrowSourceKind.unresolvedCall ||
+    ThrowSourceKind.truncation ||
+    ThrowSourceKind.awaitedAsyncDependency ||
+    ThrowSourceKind.inferredCall => ThrowIntent.unknown,
+  };
+}
+
 final class ThrowSource {
   const ThrowSource({
     required this.kind,
     required this.confidence,
     required this.displayName,
+    this.intent,
     this.isAsync = false,
     this.exceptionTypes = const [],
   });
@@ -73,8 +138,11 @@ final class ThrowSource {
   final ThrowSourceKind kind;
   final ThrowConfidence confidence;
   final String displayName;
+  final ThrowIntent? intent;
   final bool isAsync;
   final List<String> exceptionTypes;
+
+  ThrowIntent get effectiveIntent => intent ?? kind.defaultIntent;
 }
 
 final class ThrowSummary {

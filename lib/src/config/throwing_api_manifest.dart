@@ -4,6 +4,8 @@ import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 import '../analysis/throw_summary.dart';
+import '../result.dart';
+import 'config_failures.dart';
 
 class ThrowingApiManifest {
   static const defaultRelativePath =
@@ -19,19 +21,38 @@ class ThrowingApiManifest {
     String? packageRoot,
     String? currentFilePath,
   }) {
+    return loadResult(
+      packageRoot: packageRoot,
+      currentFilePath: currentFilePath,
+    ).unwrapOr(empty());
+  }
+
+  static Result<ThrowingApiManifest, ManifestFailure> loadResult({
+    String? packageRoot,
+    String? currentFilePath,
+  }) {
     final manifestPath = _findManifestPath(
       packageRoot: packageRoot,
       currentFilePath: currentFilePath,
     );
     if (manifestPath == null) {
-      return empty();
+      return Ok(empty());
     }
 
     final manifestFile = File(manifestPath);
-    return parse(
-      manifestFile.readAsStringSync(),
-      sourcePath: manifestFile.path,
-    );
+    try {
+      return parseResult(
+        manifestFile.readAsStringSync(),
+        sourcePath: manifestFile.path,
+      );
+    } on FileSystemException catch (error) {
+      return Err(
+        ManifestFileReadFailure(
+          path: manifestFile.path,
+          message: error.message,
+        ),
+      );
+    }
   }
 
   static String? _findManifestPath({
@@ -40,7 +61,7 @@ class ThrowingApiManifest {
   }) {
     if (packageRoot != null) {
       final manifestPath = p.join(packageRoot, defaultRelativePath);
-      if (File(manifestPath).existsSync()) {
+      if (_pathExists(manifestPath)) {
         return manifestPath;
       }
     }
@@ -52,7 +73,7 @@ class ThrowingApiManifest {
     var searchDirectory = p.dirname(currentFilePath);
     while (true) {
       final manifestPath = p.join(searchDirectory, defaultRelativePath);
-      if (File(manifestPath).existsSync()) {
+      if (_pathExists(manifestPath)) {
         return manifestPath;
       }
 
@@ -64,33 +85,67 @@ class ThrowingApiManifest {
     }
   }
 
+  static bool _pathExists(String path) {
+    return FileSystemEntity.typeSync(path) != FileSystemEntityType.notFound;
+  }
+
   static ThrowingApiManifest parse(String input, {String? sourcePath}) {
-    final document = loadYaml(input);
+    return parseResult(input, sourcePath: sourcePath).unwrapOr(empty());
+  }
+
+  static Result<ThrowingApiManifest, ManifestFailure> parseResult(
+    String input, {
+    String? sourcePath,
+  }) {
+    final Object? document;
+    try {
+      document = loadYaml(input);
+    } on YamlException catch (error) {
+      return Err(
+        ManifestYamlParseFailure(
+          message: error.message,
+          sourcePath: sourcePath ?? defaultRelativePath,
+        ),
+      );
+    }
+
     if (document is! YamlMap) {
-      throw FormatException(
-        'The throwing API manifest must be a YAML map.',
-        input,
+      return Err(
+        ManifestStructureFailure(
+          message: 'The throwing API manifest must be a YAML map.',
+          sourcePath: sourcePath ?? defaultRelativePath,
+        ),
       );
     }
 
     final rawApis = document['apis'];
     if (rawApis == null) {
-      return empty();
+      return Ok(empty());
     }
     if (rawApis is! YamlList) {
-      throw FormatException(
-        'The "apis" entry in the throwing API manifest must be a YAML list.',
-        sourcePath ?? input,
+      return Err(
+        ManifestStructureFailure(
+          message:
+              'The "apis" entry in the throwing API manifest must be a YAML list.',
+          sourcePath: sourcePath ?? defaultRelativePath,
+        ),
       );
     }
 
-    return ThrowingApiManifest([
-      for (final rawApi in rawApis)
-        ThrowingApiSpecification.fromYaml(
-          rawApi,
-          sourcePath: sourcePath ?? defaultRelativePath,
-        ),
-    ]);
+    final specifications = <ThrowingApiSpecification>[];
+    final entrySourcePath = sourcePath ?? defaultRelativePath;
+    for (final rawApi in rawApis) {
+      final parsed = ThrowingApiSpecification.fromYamlResult(
+        rawApi,
+        sourcePath: entrySourcePath,
+      );
+      if (parsed case Err(error: final failure)) {
+        return Err(failure);
+      }
+      specifications.add(parsed.valueOrNull!);
+    }
+
+    return Ok(ThrowingApiManifest(specifications));
   }
 }
 
@@ -121,69 +176,150 @@ class ThrowingApiSpecification {
   final bool isAsync;
   final List<String> exceptionTypes;
 
-  factory ThrowingApiSpecification.fromYaml(
+  static Result<ThrowingApiSpecification, ManifestFailure> fromYamlResult(
     Object? raw, {
     required String sourcePath,
   }) {
     if (raw is! YamlMap) {
-      throw FormatException(
-        'Each manifest entry in $sourcePath must be a YAML map.',
+      return Err(
+        ManifestStructureFailure(
+          message: 'Each manifest entry in $sourcePath must be a YAML map.',
+          sourcePath: sourcePath,
+        ),
       );
     }
 
-    final packageName = _readRequiredString(raw, 'package', sourcePath);
-    final libraryUri = _readRequiredString(raw, 'library', sourcePath);
-    final className = _readOptionalString(raw, 'class', sourcePath);
-    final methodName = _readOptionalString(raw, 'method', sourcePath);
-    final constructorName = _readOptionalString(raw, 'constructor', sourcePath);
-    final functionName = _readOptionalString(raw, 'function', sourcePath);
-    final isStatic = _readOptionalBool(raw, 'static', sourcePath);
-    final appliesToSubtypes =
-        _readOptionalBool(raw, 'subtypes', sourcePath) ?? false;
-    final confidence = _readOptionalConfidence(raw, 'confidence', sourcePath);
-    final isAsync = _readOptionalBool(raw, 'async', sourcePath) ?? false;
-    final exceptionTypes = _readOptionalStringList(
+    final packageNameResult = _readRequiredString(raw, 'package', sourcePath);
+    if (packageNameResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final packageName = packageNameResult.valueOrNull!;
+
+    final libraryUriResult = _readRequiredString(raw, 'library', sourcePath);
+    if (libraryUriResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final libraryUri = libraryUriResult.valueOrNull!;
+
+    final classNameResult = _readOptionalString(raw, 'class', sourcePath);
+    if (classNameResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final className = classNameResult.valueOrNull;
+
+    final methodNameResult = _readOptionalString(raw, 'method', sourcePath);
+    if (methodNameResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final methodName = methodNameResult.valueOrNull;
+
+    final constructorNameResult = _readOptionalString(
+      raw,
+      'constructor',
+      sourcePath,
+    );
+    if (constructorNameResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final constructorName = constructorNameResult.valueOrNull;
+
+    final functionNameResult = _readOptionalString(raw, 'function', sourcePath);
+    if (functionNameResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final functionName = functionNameResult.valueOrNull;
+
+    final isStaticResult = _readOptionalBool(raw, 'static', sourcePath);
+    if (isStaticResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final isStatic = isStaticResult.valueOrNull;
+
+    final appliesToSubtypesResult = _readOptionalBool(
+      raw,
+      'subtypes',
+      sourcePath,
+    );
+    if (appliesToSubtypesResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final appliesToSubtypes = appliesToSubtypesResult.valueOrNull ?? false;
+
+    final confidenceResult = _readOptionalConfidence(
+      raw,
+      'confidence',
+      sourcePath,
+    );
+    if (confidenceResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final confidence = confidenceResult.valueOrNull;
+
+    final isAsyncResult = _readOptionalBool(raw, 'async', sourcePath);
+    if (isAsyncResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final isAsync = isAsyncResult.valueOrNull ?? false;
+
+    final exceptionTypesResult = _readOptionalStringList(
       raw,
       'exception_types',
       sourcePath,
     );
+    if (exceptionTypesResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final exceptionTypes = exceptionTypesResult.valueOrNull!;
 
     final callableFields = [?methodName, ?constructorName, ?functionName];
     if (callableFields.length != 1) {
-      throw FormatException(
-        'Each manifest entry in $sourcePath must declare exactly one of '
-        '"function", "method", or "constructor".',
+      return Err(
+        ManifestStructureFailure(
+          message:
+              'Each manifest entry in $sourcePath must declare exactly one of '
+              '"function", "method", or "constructor".',
+          sourcePath: sourcePath,
+        ),
       );
     }
 
     if (functionName != null && className != null) {
-      throw FormatException(
-        'Top-level function entries in $sourcePath cannot declare a class.',
+      return Err(
+        ManifestStructureFailure(
+          message:
+              'Top-level function entries in $sourcePath cannot declare a class.',
+          sourcePath: sourcePath,
+        ),
       );
     }
 
     if (constructorName != null && className == null) {
-      throw FormatException(
-        'Constructor entries in $sourcePath must declare a class.',
+      return Err(
+        ManifestStructureFailure(
+          message: 'Constructor entries in $sourcePath must declare a class.',
+          sourcePath: sourcePath,
+        ),
       );
     }
 
-    return ThrowingApiSpecification(
-      packageName: packageName,
-      libraryUri: libraryUri,
-      className: className,
-      methodName: methodName,
-      constructorName: constructorName,
-      functionName: functionName,
-      isStatic: isStatic,
-      appliesToSubtypes: appliesToSubtypes,
-      confidence:
-          confidence ??
-          (isAsync
-              ? ThrowConfidence.asyncError
-              : ThrowConfidence.possibleThrow),
-      isAsync: isAsync || confidence == ThrowConfidence.asyncError,
-      exceptionTypes: exceptionTypes,
+    return Ok(
+      ThrowingApiSpecification(
+        packageName: packageName,
+        libraryUri: libraryUri,
+        className: className,
+        methodName: methodName,
+        constructorName: constructorName,
+        functionName: functionName,
+        isStatic: isStatic,
+        appliesToSubtypes: appliesToSubtypes,
+        confidence:
+            confidence ??
+            (isAsync
+                ? ThrowConfidence.asyncError
+                : ThrowConfidence.possibleThrow),
+        isAsync: isAsync || confidence == ThrowConfidence.asyncError,
+        exceptionTypes: exceptionTypes,
+      ),
     );
   }
 
@@ -204,92 +340,126 @@ class ThrowingApiSpecification {
     return '$packageName/$className.$constructorName';
   }
 
-  static bool? _readOptionalBool(YamlMap map, String key, String sourcePath) {
+  static Result<bool?, ManifestFailure> _readOptionalBool(
+    YamlMap map,
+    String key,
+    String sourcePath,
+  ) {
     final value = map[key];
     if (value == null) {
-      return null;
+      return const Ok(null);
     }
     if (value is! bool) {
-      throw FormatException(
-        'The "$key" value in $sourcePath must be a boolean.',
+      return Err(
+        ManifestStructureFailure(
+          message: 'The "$key" value in $sourcePath must be a boolean.',
+          sourcePath: sourcePath,
+        ),
       );
     }
-    return value;
+    return Ok(value);
   }
 
-  static List<String> _readOptionalStringList(
+  static Result<List<String>, ManifestFailure> _readOptionalStringList(
     YamlMap map,
     String key,
     String sourcePath,
   ) {
     final value = map[key];
     if (value == null) {
-      return const [];
+      return const Ok([]);
     }
     if (value is! YamlList) {
-      throw FormatException(
-        'The "$key" value in $sourcePath must be a list of strings.',
+      return Err(
+        ManifestStructureFailure(
+          message: 'The "$key" value in $sourcePath must be a list of strings.',
+          sourcePath: sourcePath,
+        ),
       );
     }
 
-    return [
-      for (final entry in value)
-        if (entry is String)
-          entry
-        else
-          throw FormatException(
-            'The "$key" value in $sourcePath must be a list of strings.',
+    final strings = <String>[];
+    for (final entry in value) {
+      if (entry is! String) {
+        return Err(
+          ManifestStructureFailure(
+            message:
+                'The "$key" value in $sourcePath must be a list of strings.',
+            sourcePath: sourcePath,
           ),
-    ];
+        );
+      }
+      strings.add(entry);
+    }
+
+    return Ok(strings);
   }
 
-  static ThrowConfidence? _readOptionalConfidence(
+  static Result<ThrowConfidence?, ManifestFailure> _readOptionalConfidence(
     YamlMap map,
     String key,
     String sourcePath,
   ) {
-    final value = _readOptionalString(map, key, sourcePath);
+    final valueResult = _readOptionalString(map, key, sourcePath);
+    if (valueResult case Err(error: final failure)) {
+      return Err(failure);
+    }
+    final value = valueResult.valueOrNull;
     if (value == null) {
-      return null;
+      return const Ok(null);
     }
 
-    try {
-      return ThrowConfidenceExtension.parse(value);
-    } on FormatException {
-      throw FormatException(
-        'The "$key" value in $sourcePath must be one of '
-        'definite_throw, possible_throw, async_error, unknown, '
-        'or no_obvious_throw.',
+    final parsed = ThrowConfidenceExtension.tryParse(value);
+    if (parsed case Err(error: final failure)) {
+      return Err(
+        ManifestWireParseFailure(
+          key: key,
+          cause: failure,
+          entrySourcePath: sourcePath,
+        ),
       );
     }
+    return Ok(parsed.valueOrNull);
   }
 
-  static String _readRequiredString(
+  static Result<String, ManifestFailure> _readRequiredString(
     YamlMap map,
     String key,
     String sourcePath,
   ) {
-    final value = _readOptionalString(map, key, sourcePath);
-    if (value == null || value.isEmpty) {
-      throw FormatException('The "$key" value in $sourcePath is required.');
+    final valueResult = _readOptionalString(map, key, sourcePath);
+    if (valueResult case Err(error: final failure)) {
+      return Err(failure);
     }
-    return value;
+    final value = valueResult.valueOrNull;
+    if (value == null || value.isEmpty) {
+      return Err(
+        ManifestStructureFailure(
+          message: 'The "$key" value in $sourcePath is required.',
+          sourcePath: sourcePath,
+        ),
+      );
+    }
+    return Ok(value);
   }
 
-  static String? _readOptionalString(
+  static Result<String?, ManifestFailure> _readOptionalString(
     YamlMap map,
     String key,
     String sourcePath,
   ) {
     final value = map[key];
     if (value == null) {
-      return null;
+      return const Ok(null);
     }
     if (value is! String) {
-      throw FormatException(
-        'The "$key" value in $sourcePath must be a string.',
+      return Err(
+        ManifestStructureFailure(
+          message: 'The "$key" value in $sourcePath must be a string.',
+          sourcePath: sourcePath,
+        ),
       );
     }
-    return value;
+    return Ok(value);
   }
 }

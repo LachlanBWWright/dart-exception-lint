@@ -7,8 +7,11 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
+import '../config/config_failures.dart';
+import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
 import '../diagnostics.dart';
+import '../result.dart';
 import '../utils/source_utils.dart';
 
 class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
@@ -31,14 +34,29 @@ class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    if (isGeneratedDartFile(context.currentUnit?.file.path)) {
+    final options = switch (ExceptionAnalysisOptions.loadResult(
+      packageRoot: context.package?.root.path,
+      currentFilePath: context.currentUnit?.file.path,
+    )) {
+      Ok(value: final options) => options,
+      Err() => const ExceptionAnalysisOptions(),
+    };
+    if (shouldSkipLintRuleForFile(
+      ruleName: name,
+      options: options,
+      filePath: context.currentUnit?.file.path,
+      packageRoot: context.package?.root.path,
+    )) {
       return;
     }
 
-    final manifest = loader.load(
+    final manifest = switch (loader.load(
       context.package?.root.path,
       context.currentUnit?.file.path,
-    );
+    )) {
+      Ok(value: final manifest) => manifest,
+      Err() => ThrowingApiManifest.empty(),
+    };
     if (manifest.apis.isEmpty) {
       return;
     }
@@ -53,8 +71,11 @@ class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
 class ThrowingApiManifestLoader {
   const ThrowingApiManifestLoader();
 
-  ThrowingApiManifest load(String? packageRoot, String? currentFilePath) {
-    return ThrowingApiManifest.load(
+  Result<ThrowingApiManifest, ManifestFailure> load(
+    String? packageRoot,
+    String? currentFilePath,
+  ) {
+    return ThrowingApiManifest.loadResult(
       packageRoot: packageRoot,
       currentFilePath: currentFilePath,
     );

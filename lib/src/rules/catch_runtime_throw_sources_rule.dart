@@ -10,6 +10,7 @@ import '../analysis/throw_source_catalog.dart';
 import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
 import '../diagnostics.dart';
+import '../result.dart';
 import '../utils/source_utils.dart';
 
 class CatchRuntimeThrowSourcesRule extends AnalysisRule {
@@ -28,14 +29,22 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    if (isGeneratedDartFile(context.currentUnit?.file.path)) {
+    final options = switch (ExceptionAnalysisOptions.loadResult(
+      packageRoot: context.package?.root.path,
+      currentFilePath: context.currentUnit?.file.path,
+    )) {
+      Ok(value: final options) => options,
+      Err() => const ExceptionAnalysisOptions(),
+    };
+    if (shouldSkipLintRuleForFile(
+      ruleName: name,
+      options: options,
+      filePath: context.currentUnit?.file.path,
+      packageRoot: context.package?.root.path,
+    )) {
       return;
     }
 
-    final options = ExceptionAnalysisOptions.load(
-      packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
-    );
     final visitor = _Visitor(this, options);
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);

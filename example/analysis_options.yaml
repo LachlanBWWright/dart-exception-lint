@@ -9,3 +9,7 @@ plugins:
       catch_async_error_sources: true
       catch_inferred_throwing_calls: true
       catch_unknown_dynamic_calls: true
+    exception_analysis:
+      strictness:
+        internal: possible
+        third_party: deliberate

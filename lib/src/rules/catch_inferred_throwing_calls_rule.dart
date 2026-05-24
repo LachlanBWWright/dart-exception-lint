@@ -12,6 +12,7 @@ import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
 import '../diagnostics.dart';
+import '../result.dart';
 import '../utils/source_utils.dart';
 
 class CatchInferredThrowingCallsRule extends AnalysisRule {
@@ -31,21 +32,34 @@ class CatchInferredThrowingCallsRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    if (isGeneratedDartFile(context.currentUnit?.file.path)) {
-      return;
-    }
-
-    final options = ExceptionAnalysisOptions.load(
+    final optionsResult = ExceptionAnalysisOptions.loadResult(
       packageRoot: context.package?.root.path,
       currentFilePath: context.currentUnit?.file.path,
     );
+    final options = switch (optionsResult) {
+      Ok(value: final options) => options,
+      Err() => const ExceptionAnalysisOptions(),
+    };
+    if (shouldSkipLintRuleForFile(
+      ruleName: name,
+      options: options,
+      filePath: context.currentUnit?.file.path,
+      packageRoot: context.package?.root.path,
+    )) {
+      return;
+    }
+    final manifestResult = ThrowingApiManifest.loadResult(
+      packageRoot: context.package?.root.path,
+      currentFilePath: context.currentUnit?.file.path,
+    );
+    final manifest = switch (manifestResult) {
+      Ok(value: final manifest) => manifest,
+      Err() => ThrowingApiManifest.empty(),
+    };
     final visitor = _Visitor(
       this,
       InferredThrowAnalyzer(
-        manifest: ThrowingApiManifest.load(
-          packageRoot: context.package?.root.path,
-          currentFilePath: context.currentUnit?.file.path,
-        ),
+        manifest: manifest,
         options: options,
         featureSet: context.libraryElement!.featureSet,
         packageRootPath: context.package?.root.path,

@@ -10,6 +10,7 @@ import 'package:analyzer/src/dart/ast/utilities.dart';
 import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
 import 'resolved_callable.dart';
+import 'throw_protection.dart';
 import 'throw_source_catalog.dart';
 import 'throw_summary.dart';
 
@@ -26,6 +27,8 @@ final class InferredCallAnalysis {
   final bool isAsync;
   final List<String> exceptionTypes;
 }
+
+enum CodeOrigin { internal, thirdParty }
 
 final class InferredThrowAnalyzer {
   InferredThrowAnalyzer({
@@ -73,39 +76,44 @@ final class InferredThrowAnalyzer {
     }
 
     final summary = summarizeExecutable(executable);
-    if (!summary.hasAnyThrowSource) {
+    final filteredSummary = _filterSummaryForOrigin(
+      summary,
+      _originForExecutable(executable),
+    );
+    if (!filteredSummary.hasAnyThrowSource) {
       return null;
     }
 
-    if (summary.confidence == ThrowConfidence.unknown &&
+    if (filteredSummary.confidence == ThrowConfidence.unknown &&
         !treatUnknownAsReportable) {
       return null;
     }
 
-    if (summary.canCompleteWithAsyncError && requireObservedAsyncError) {
+    if (filteredSummary.canCompleteWithAsyncError &&
+        requireObservedAsyncError) {
       return InferredCallAnalysis(
         displayName: _displayNameForExecutable(executable),
         confidence: ThrowConfidence.asyncError,
         isAsync: true,
-        exceptionTypes: _exceptionTypesFrom(summary),
+        exceptionTypes: _exceptionTypesFrom(filteredSummary),
       );
     }
 
-    if (summary.canThrowSynchronously) {
+    if (filteredSummary.canThrowSynchronously) {
       return InferredCallAnalysis(
         displayName: _displayNameForExecutable(executable),
-        confidence: summary.confidence,
+        confidence: filteredSummary.confidence,
         isAsync: false,
-        exceptionTypes: _exceptionTypesFrom(summary),
+        exceptionTypes: _exceptionTypesFrom(filteredSummary),
       );
     }
 
-    if (summary.confidence == ThrowConfidence.unknown) {
+    if (filteredSummary.confidence == ThrowConfidence.unknown) {
       return InferredCallAnalysis(
         displayName: _displayNameForExecutable(executable),
         confidence: ThrowConfidence.unknown,
         isAsync: false,
-        exceptionTypes: _exceptionTypesFrom(summary),
+        exceptionTypes: _exceptionTypesFrom(filteredSummary),
       );
     }
 
@@ -299,6 +307,10 @@ final class InferredThrowAnalyzer {
           kind: ThrowSourceKind.inferredCall,
           confidence: summary.confidence,
           displayName: _displayNameForExecutable(resolved),
+          intent: _strongestIntentFrom(
+            summary.sources,
+            where: (source) => !source.isAsync && source.confidence.isThrowing,
+          ),
           exceptionTypes: _exceptionTypesFrom(summary),
         ),
       );
@@ -309,6 +321,12 @@ final class InferredThrowAnalyzer {
           kind: ThrowSourceKind.awaitedAsyncDependency,
           confidence: ThrowConfidence.asyncError,
           displayName: _displayNameForExecutable(resolved),
+          intent: _strongestIntentFrom(
+            summary.sources,
+            where: (source) =>
+                source.isAsync ||
+                source.confidence == ThrowConfidence.asyncError,
+          ),
           isAsync: true,
           exceptionTypes: _exceptionTypesFrom(summary),
         ),
@@ -322,6 +340,7 @@ final class InferredThrowAnalyzer {
           kind: ThrowSourceKind.unresolvedCall,
           confidence: ThrowConfidence.unknown,
           displayName: _displayNameForExecutable(resolved),
+          intent: _strongestIntentFrom(summary.sources),
           exceptionTypes: _exceptionTypesFrom(summary),
         ),
       );
@@ -678,6 +697,51 @@ final class InferredThrowAnalyzer {
     }.toList()..sort();
   }
 
+  ThrowSummary _filterSummaryForOrigin(
+    ThrowSummary summary,
+    CodeOrigin origin,
+  ) {
+    final minimum = switch (origin) {
+      CodeOrigin.internal => options.internalStrictness,
+      CodeOrigin.thirdParty => options.thirdPartyStrictness,
+    };
+    final filteredSources = summary.sources
+        .where((source) => source.effectiveIntent.meets(minimum))
+        .toList();
+
+    return ThrowSummary.merge(
+      summary.elementKey,
+      filteredSources,
+      dependencyElementKeys: summary.dependencyElementKeys,
+      complete: summary.complete,
+      truncationReason: summary.truncationReason,
+    );
+  }
+
+  CodeOrigin _originForExecutable(ExecutableElement executable) {
+    final path = executable.firstFragment.libraryFragment.source.fullName;
+    return _isWithinCurrentPackage(path)
+        ? CodeOrigin.internal
+        : CodeOrigin.thirdParty;
+  }
+
+  static ThrowIntent? _strongestIntentFrom(
+    Iterable<ThrowSource> sources, {
+    bool Function(ThrowSource source)? where,
+  }) {
+    ThrowIntent? strongest;
+    for (final source in sources) {
+      if (where != null && !where(source)) {
+        continue;
+      }
+      final intent = source.effectiveIntent;
+      if (strongest == null || intent.index < strongest.index) {
+        strongest = intent;
+      }
+    }
+    return strongest;
+  }
+
   static bool _startsWithUppercase(String value) {
     final firstCodeUnit = value.codeUnitAt(0);
     return firstCodeUnit >= 65 && firstCodeUnit <= 90;
@@ -688,7 +752,15 @@ final class InferredThrowAnalyzer {
     if (root == null) {
       return false;
     }
-    return path.startsWith(root);
+    if (path == root) {
+      return true;
+    }
+
+    final normalizedRoot = root.endsWith('/') ? root : '$root/';
+    const packageSourceDirectories = ['bin', 'lib', 'test', 'tool'];
+    return packageSourceDirectories.any(
+      (directory) => path.startsWith('$normalizedRoot$directory/'),
+    );
   }
 }
 
@@ -714,7 +786,7 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitAsExpression(AsExpression node) {
     final source = ThrowSourceCatalog.matchAsExpression(node, analyzer.options);
-    if (source != null) {
+    if (source != null && !_isProtected(node, source)) {
       sources.add(_normalize(source));
     }
     super.visitAsExpression(node);
@@ -729,7 +801,7 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitIndexExpression(IndexExpression node) {
     final source = ThrowSourceCatalog.matchIndexAccess(node, analyzer.options);
-    if (source != null) {
+    if (source != null && !_isProtected(node, source)) {
       sources.add(_normalize(source));
     }
     super.visitIndexExpression(node);
@@ -750,43 +822,40 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitPostfixExpression(PostfixExpression node) {
     if (node.operator.lexeme == '!') {
-      sources.add(
-        _normalize(
-          const ThrowSource(
-            kind: ThrowSourceKind.nullAssertion,
-            confidence: ThrowConfidence.possibleThrow,
-            displayName: 'null assertion',
-          ),
-        ),
+      const source = ThrowSource(
+        kind: ThrowSourceKind.nullAssertion,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'null assertion',
       );
+      if (!_isProtected(node, source)) {
+        sources.add(_normalize(source));
+      }
     }
     super.visitPostfixExpression(node);
   }
 
   @override
   void visitRethrowExpression(RethrowExpression node) {
-    sources.add(
-      _normalize(
-        const ThrowSource(
-          kind: ThrowSourceKind.rethrowExpression,
-          confidence: ThrowConfidence.definiteThrow,
-          displayName: 'rethrow',
-        ),
-      ),
+    const source = ThrowSource(
+      kind: ThrowSourceKind.rethrowExpression,
+      confidence: ThrowConfidence.definiteThrow,
+      displayName: 'rethrow',
     );
+    if (!_isProtected(node, source)) {
+      sources.add(_normalize(source));
+    }
   }
 
   @override
   void visitThrowExpression(ThrowExpression node) {
-    sources.add(
-      _normalize(
-        ThrowSource(
-          kind: ThrowSourceKind.explicitThrow,
-          confidence: ThrowConfidence.definiteThrow,
-          displayName: 'throw ${node.expression.toSource()}',
-        ),
-      ),
+    final source = ThrowSource(
+      kind: ThrowSourceKind.explicitThrow,
+      confidence: ThrowConfidence.definiteThrow,
+      displayName: 'throw ${node.expression.toSource()}',
     );
+    if (!_isProtected(node, source)) {
+      sources.add(_normalize(source));
+    }
     super.visitThrowExpression(node);
   }
 
@@ -802,10 +871,22 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
       return;
     }
 
-    sources.addAll(summary.sources.map(_normalize));
+    sources.addAll(
+      summary.sources
+          .where((source) => !_isProtected(node, source))
+          .map(_normalize),
+    );
     dependencies.addAll(summary.dependencyElementKeys);
     complete = complete && summary.complete;
     truncationReason ??= summary.truncationReason;
+  }
+
+  bool _isProtected(AstNode node, ThrowSource source) {
+    return isProtectedByCatch(
+      node,
+      requireAsyncProtection: source.isAsync,
+      exceptionTypes: source.exceptionTypes,
+    );
   }
 
   ThrowSource _normalize(ThrowSource source) {
@@ -822,6 +903,7 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
       kind: source.kind,
       confidence: confidence,
       displayName: source.displayName,
+      intent: source.intent,
       isAsync: confidence == ThrowConfidence.asyncError,
       exceptionTypes: source.exceptionTypes,
     );

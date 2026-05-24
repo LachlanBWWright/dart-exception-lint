@@ -58,6 +58,25 @@ Future<void> f() async {
 ''');
   }
 
+  Future<void> test_awaitedHelperWithCaughtFutureError_notReported() async {
+    await assertNoDiagnostics(r'''
+class BoomException implements Exception {}
+
+Future<String> load() async {
+  try {
+    await Future.error(BoomException());
+  } catch (_) {
+    return 'fallback';
+  }
+  return 'ok';
+}
+
+Future<void> f() async {
+  await load();
+}
+''');
+  }
+
   Future<void> test_listenWithoutOnError_reports() async {
     const code = r'''
 void f(Stream<int> stream) {
