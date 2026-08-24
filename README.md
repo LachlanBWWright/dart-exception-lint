@@ -26,34 +26,25 @@ plugins:
       catch_async_error_sources: true
       catch_inferred_throwing_calls: true
       catch_unknown_dynamic_calls: true
-    exception_analysis:
-      report:
-        definite_throw: true
-        possible_throw: true
-        async_error: true
-        unknown: true
-      strictness:
-        internal: possible
-        third_party: deliberate
-      max_call_depth: 4
-      analyze_third_party_source: true
-      analyze_sdk_source: true
-      treat_dynamic_invocation_as_throwing: true
-      treat_external_calls_as_throwing: true
-      treat_index_access_as_throwing: false
-      treat_parse_methods_as_throwing: true
-      treat_as_casts_as_throwing: false
-      require_async_error_handling: true
-      analyze_test_files: false
-      rules:
-        catch_async_error_sources:
-          analyze_test_files: true
+```
+
+Put exception-analysis settings in
+`tool/dart_exception_lint/exception_analysis.yaml`:
+
+```yaml
+exception_analysis:
+  strictness:
+    internal: possible
+    third_party: deliberate
+  max_call_depth: 4
+  analyze_test_files: false
 ```
 
 Restart the Dart Analysis Server after changing plugin configuration.
 
 By default, diagnostics are skipped for files under `test/` and files named
-`*_test.dart`. Set `exception_analysis.analyze_test_files: true` to analyze
+`*_test.dart`. Set `exception_analysis.analyze_test_files: true` in the
+dedicated configuration file to analyze
 test files for all rules, or set
 `exception_analysis.rules.<rule>.analyze_test_files` to override the default
 for a single rule.

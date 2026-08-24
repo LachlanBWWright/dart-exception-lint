@@ -31,22 +31,28 @@ bool _containsNode(AstNode ancestor, AstNode node) {
 }
 
 bool _hasAsyncErrorHandler(AstNode node) {
-  final parent = node.parent;
-  if (parent case MethodInvocation(:final methodName, :final argumentList)
-      when identical(parent.target, node) &&
-          methodName.name == 'catchError' &&
-          argumentList.arguments.isNotEmpty) {
-    return true;
-  }
+  AstNode? current = node;
+  while (current != null) {
+    if (current is MethodInvocation) {
+      if (current.methodName.name == 'catchError' &&
+          current.argumentList.arguments.isNotEmpty) {
+        return true;
+      }
 
-  if (parent case MethodInvocation(
-    :final methodName,
-    :final argumentList,
-  ) when identical(parent.target, node) && methodName.name == 'then') {
-    return argumentList.arguments.any(
-      (argument) =>
-          argument is NamedExpression && argument.name.label.name == 'onError',
-    );
+      if (current.methodName.name == 'then') {
+        if (current.argumentList.arguments.any(
+          (argument) =>
+              argument is NamedArgument && argument.name.lexeme == 'onError',
+        )) {
+          return true;
+        }
+      }
+    }
+
+    if (current is FunctionBody) {
+      return false;
+    }
+    current = current.parent;
   }
 
   return false;

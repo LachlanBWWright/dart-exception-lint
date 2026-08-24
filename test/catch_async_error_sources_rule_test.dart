@@ -92,4 +92,103 @@ void f(Stream<int> stream) {
       ),
     ]);
   }
+
+  Future<void> test_futureError_withCatchError_notReported() async {
+    await assertNoDiagnostics(r'''
+import 'dart:async';
+
+Future<void> f() async {
+  Future.error(Exception('boom')).catchError((_) {});
+}
+''');
+  }
+
+  Future<void> test_futureError_withThenOnError_notReported() async {
+    await assertNoDiagnostics(r'''
+import 'dart:async';
+
+Future<void> f() async {
+  Future.error(Exception('boom')).then<void>(
+    (_) {},
+    onError: (_) {},
+  );
+}
+''');
+  }
+
+  Future<void> test_futureError_withoutAsyncHandler_reports() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f() async {
+  Future.error(Exception('boom')).then<void>((_) {});
+}
+''';
+
+    await assertDiagnostics(code, [lint(code.indexOf('then'), 'then'.length)]);
+  }
+
+  Future<void> test_futureError_insideTryCatch_notReported() async {
+    await assertNoDiagnostics(r'''
+import 'dart:async';
+
+Future<void> f() async {
+  try {
+    await Future.error(Exception('boom'));
+  } catch (_) {}
+}
+''');
+  }
+
+  Future<void> test_futureError_insideFinally_reports() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f() async {
+  try {
+    await Future.value();
+  } finally {
+    await Future.error(Exception('boom'));
+  }
+}
+''';
+
+    await assertDiagnostics(code, [lint(code.lastIndexOf('await'), 37)]);
+  }
+
+  Future<void> test_completeError_reports() async {
+    const code = r'''
+import 'dart:async';
+
+void f(Completer<void> completer) {
+  completer.completeError(Exception('boom'));
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('completeError'), 'completeError'.length),
+    ]);
+  }
+
+  Future<void> test_streamListen_withOnError_notReported() async {
+    await assertNoDiagnostics(r'''
+import 'dart:async';
+
+void f(Stream<int> stream) {
+  stream.listen((value) {}, onError: (_) {});
+}
+''');
+  }
+
+  Future<void> test_customAddErrorName_notReported() async {
+    await assertNoDiagnostics(r'''
+class CustomSink {
+  void addError(Object error) {}
+}
+
+void f(CustomSink sink) {
+  sink.addError(Exception('boom'));
+}
+''');
+  }
 }

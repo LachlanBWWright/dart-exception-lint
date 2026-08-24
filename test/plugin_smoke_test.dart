@@ -2,6 +2,7 @@ import 'package:analysis_server_plugin/registry.dart';
 import 'package:analysis_server_plugin/src/correction/fix_generators.dart';
 import 'package:analyzer/analysis_rule/analysis_rule.dart';
 import 'package:analyzer/error/error.dart';
+import 'package:analyzer/src/lint/config.dart' show RuleConfig;
 import 'package:dart_exception_lint/src/plugin.dart';
 import 'package:test/test.dart';
 
@@ -29,12 +30,17 @@ final class _FakePluginRegistry implements PluginRegistry {
   final Map<String, AbstractAnalysisRule> warningRules = {};
 
   @override
+  Iterable<AbstractAnalysisRule> enabled(Map<String, RuleConfig> ruleConfigs) {
+    return [...lintRules.values, ...warningRules.values];
+  }
+
+  @override
   void registerAssist(ProducerGenerator generator) {
     throw UnimplementedError();
   }
 
   @override
-  void registerFixForRule(LintCode code, ProducerGenerator generator) {
+  void registerFixForRule(DiagnosticCode code, ProducerGenerator generator) {
     throw UnimplementedError();
   }
 

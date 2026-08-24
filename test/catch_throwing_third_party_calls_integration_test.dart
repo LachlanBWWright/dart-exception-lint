@@ -1,3 +1,6 @@
+@Timeout(Duration(minutes: 2))
+library;
+
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -10,7 +13,7 @@ void main() {
 import 'package:third_party_stub/third_party_stub.dart';
 import 'package:third_party_stub/third_party_stub.dart' as throwing;
 
-void f(DangerousClient client) {
+void f(DerivedClient client) {
   dangerousTopLevel();
   DangerousClient.load();
   client.fetch();
@@ -68,9 +71,43 @@ void f() {
     expect(_countCode(result.stdout, 'catch_throwing_third_party_calls'), 1);
     expect(result.stdout, contains('DangerousClient.named'));
   });
+
+  test(
+    'matches overridden subtype methods declared in another library',
+    () async {
+      final result = await _analyzeFixture({
+        'lib/main.dart': '''
+import 'package:third_party_stub/third_party_stub.dart';
+
+void f(DerivedClient client) {
+  client.fetch();
+}
+''',
+        'third_party_stub/lib/base.dart': '''
+class DangerousClient {
+  String fetch() => 'ok';
+}
+''',
+        'third_party_stub/lib/third_party_stub.dart': '''
+import 'base.dart';
+
+class DerivedClient extends DangerousClient {
+  @override
+  String fetch() => 'derived';
+}
+''',
+      }, enableInferred: true);
+
+      expect(_countCode(result.stdout, 'catch_throwing_third_party_calls'), 1);
+      expect(_countCode(result.stdout, 'catch_inferred_throwing_calls'), 1);
+    },
+  );
 }
 
-Future<ProcessResult> _analyzeFixture(Map<String, String> files) async {
+Future<ProcessResult> _analyzeFixture(
+  Map<String, String> files, {
+  bool enableInferred = false,
+}) async {
   final tempDir = await Directory.systemTemp.createTemp(
     'dart_exception_lint_fixture_',
   );
@@ -98,7 +135,7 @@ plugins:
       no_null_assertion: true
       no_manual_throw: true
       catch_throwing_third_party_calls: true
-''');
+${enableInferred ? '      catch_inferred_throwing_calls: true\n' : ''}''');
 
     await _writeFile(
       p.join(tempDir.path, 'tool/dart_exception_lint/throwing_apis.yaml'),
@@ -111,6 +148,12 @@ apis:
     library: package:third_party_stub/third_party_stub.dart
     class: DangerousClient
     method: fetch
+    subtypes: true
+  - package: third_party_stub
+    library: package:third_party_stub/base.dart
+    class: DangerousClient
+    method: fetch
+    subtypes: true
   - package: third_party_stub
     library: package:third_party_stub/third_party_stub.dart
     class: DangerousClient
@@ -141,6 +184,11 @@ class DangerousClient {
   static String load() => 'ok';
 
   String fetch() => 'ok';
+}
+
+class DerivedClient extends DangerousClient {
+  @override
+  String fetch() => 'derived';
 }
 
 String dangerousTopLevel() => 'ok';

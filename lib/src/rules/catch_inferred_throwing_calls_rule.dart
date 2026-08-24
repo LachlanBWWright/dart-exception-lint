@@ -18,7 +18,9 @@ import '../utils/source_utils.dart';
 class CatchInferredThrowingCallsRule extends AnalysisRule {
   CatchInferredThrowingCallsRule()
     : super(
-        name: DartExceptionLintDiagnostics.catchInferredThrowingCalls.name,
+        name: DartExceptionLintDiagnostics
+            .catchInferredThrowingCalls
+            .lowerCaseName,
         description:
             'Reports calls whose implementation is inferred as throwing.',
       );

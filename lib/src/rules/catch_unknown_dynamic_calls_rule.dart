@@ -4,6 +4,7 @@ import 'package:analyzer/analysis_rule/rule_visitor_registry.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
 import '../analysis/inferred_throw_analyzer.dart';
@@ -18,7 +19,8 @@ import '../utils/source_utils.dart';
 class CatchUnknownDynamicCallsRule extends AnalysisRule {
   CatchUnknownDynamicCallsRule()
     : super(
-        name: DartExceptionLintDiagnostics.catchUnknownDynamicCalls.name,
+        name:
+            DartExceptionLintDiagnostics.catchUnknownDynamicCalls.lowerCaseName,
         description:
             'Reports dynamic, unresolved, and unknown call boundaries.',
       );
@@ -75,6 +77,7 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
+    registry.addAwaitExpression(this, visitor);
   }
 }
 
@@ -105,6 +108,18 @@ final class _Visitor extends SimpleAstVisitor<void> {
       element: node.methodName.element,
       diagnosticTarget: node.methodName,
     );
+  }
+
+  @override
+  void visitAwaitExpression(AwaitExpression node) {
+    if (node.expression.staticType is! DynamicType) {
+      return;
+    }
+    if (isProtectedByCatch(node)) {
+      return;
+    }
+
+    rule.reportAtNode(node.expression, arguments: ['dynamic await']);
   }
 
   void _report(

@@ -18,7 +18,9 @@ class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
   CatchThrowingThirdPartyCallsRule({ThrowingApiManifestLoader? loader})
     : loader = loader ?? ThrowingApiManifestLoader(),
       super(
-        name: DartExceptionLintDiagnostics.catchThrowingThirdPartyCalls.name,
+        name: DartExceptionLintDiagnostics
+            .catchThrowingThirdPartyCalls
+            .lowerCaseName,
         description:
             'Reports configured third-party throwing API calls outside try/catch.',
       );
@@ -253,20 +255,21 @@ final class _Visitor extends SimpleAstVisitor<void> {
   }
 
   int _matchScore(ThrowingApiSpecification spec, ResolvedCallable callable) {
-    if (spec.packageName != callable.packageName ||
-        spec.libraryUri != callable.libraryUri) {
+    if (spec.packageName != callable.packageName) {
       return -1;
     }
 
     if (spec.functionName case final functionName?) {
-      return callable.kind == CallableKind.topLevelFunction &&
+      return spec.libraryUri == callable.libraryUri &&
+              callable.kind == CallableKind.topLevelFunction &&
               callable.callableName == functionName
           ? 10
           : -1;
     }
 
     if (spec.constructorName case final constructorName?) {
-      if (callable.kind != CallableKind.constructor ||
+      if (spec.libraryUri != callable.libraryUri ||
+          callable.kind != CallableKind.constructor ||
           !_matchesClass(spec, callable)) {
         return -1;
       }
@@ -306,7 +309,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
     }
 
     return callable.supertypeKeys.contains(
-      '${callable.libraryUri}::$specClassName',
+      '${spec.libraryUri}::$specClassName',
     );
   }
 

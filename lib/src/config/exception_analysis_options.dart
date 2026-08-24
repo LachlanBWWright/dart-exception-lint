@@ -46,7 +46,11 @@ final class ExceptionAnalysisOptions {
   final ThrowIntent internalStrictness;
   final ThrowIntent thirdPartyStrictness;
 
-  static const defaultRelativePath = 'analysis_options.yaml';
+  /// Configuration owned by this plugin. Keeping it outside
+  /// `analysis_options.yaml` avoids unknown-option warnings from the analyzer,
+  /// whose plugin configuration schema only accepts its built-in keys.
+  static const defaultRelativePath =
+      'tool/dart_exception_lint/exception_analysis.yaml';
 
   static ExceptionAnalysisOptions load({
     String? packageRoot,
@@ -138,16 +142,12 @@ final class ExceptionAnalysisOptions {
     }
 
     final plugins = document['plugins'];
-    if (plugins is! YamlMap) {
-      return const Ok(ExceptionAnalysisOptions());
-    }
-
-    final pluginConfig = plugins['dart_exception_lint'];
-    if (pluginConfig is! YamlMap) {
-      return const Ok(ExceptionAnalysisOptions());
-    }
-
-    final analysisConfig = pluginConfig['exception_analysis'];
+    final pluginConfig = plugins is YamlMap
+        ? plugins['dart_exception_lint']
+        : null;
+    final analysisConfig = pluginConfig is YamlMap
+        ? pluginConfig['exception_analysis']
+        : document['exception_analysis'];
     if (analysisConfig is! YamlMap) {
       return const Ok(ExceptionAnalysisOptions());
     }

@@ -1,5 +1,7 @@
 // ignore_for_file: implementation_imports
 
+import 'dart:io';
+
 import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
@@ -134,13 +136,6 @@ final class InferredThrowAnalyzer {
     final manifestOverride = _manifestSummaryForElement(executable, elementKey);
     if (manifestOverride != null) {
       return _summaryCache[elementKey] = manifestOverride;
-    }
-
-    if (executable is ConstructorElement &&
-        executable.firstFragment.isSynthetic) {
-      return _summaryCache[elementKey] = ThrowSummary.noObviousThrow(
-        elementKey,
-      );
     }
 
     if (executable.isExternal || executable.isAbstract) {
@@ -539,12 +534,11 @@ final class InferredThrowAnalyzer {
 
   AstNode? _findDeclaration(ExecutableElement executable) {
     final fragment = executable.firstFragment;
-    if (fragment.isSynthetic) {
-      return null;
-    }
-
     final path = fragment.libraryFragment.source.fullName;
     if (path.isEmpty) {
+      return null;
+    }
+    if (!_parsedUnits.containsKey(path) && !File(path).existsSync()) {
       return null;
     }
 
@@ -613,20 +607,21 @@ final class InferredThrowAnalyzer {
     ThrowingApiSpecification spec,
     ResolvedCallable callable,
   ) {
-    if (spec.packageName != callable.packageName ||
-        spec.libraryUri != callable.libraryUri) {
+    if (spec.packageName != callable.packageName) {
       return -1;
     }
 
     if (spec.functionName case final functionName?) {
-      return callable.kind == CallableKind.topLevelFunction &&
+      return spec.libraryUri == callable.libraryUri &&
+              callable.kind == CallableKind.topLevelFunction &&
               callable.callableName == functionName
           ? 10
           : -1;
     }
 
     if (spec.constructorName case final constructorName?) {
-      if (callable.kind != CallableKind.constructor ||
+      if (spec.libraryUri != callable.libraryUri ||
+          callable.kind != CallableKind.constructor ||
           !_matchesClass(spec, callable)) {
         return -1;
       }
@@ -669,7 +664,7 @@ final class InferredThrowAnalyzer {
     }
 
     return callable.supertypeKeys.contains(
-      '${callable.libraryUri}::$specClassName',
+      '${spec.libraryUri}::$specClassName',
     );
   }
 
@@ -848,10 +843,13 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitThrowExpression(ThrowExpression node) {
+    final thrownType = node.expression.staticType;
+    final exceptionType = thrownType?.getDisplayString();
     final source = ThrowSource(
       kind: ThrowSourceKind.explicitThrow,
       confidence: ThrowConfidence.definiteThrow,
       displayName: 'throw ${node.expression.toSource()}',
+      exceptionTypes: [?exceptionType],
     );
     if (!_isProtected(node, source)) {
       sources.add(_normalize(source));
@@ -873,7 +871,13 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
 
     sources.addAll(
       summary.sources
-          .where((source) => !_isProtected(node, source))
+          // Unknown boundaries remain unknown to callers even when the
+          // implementation happens to catch the dynamic failure locally.
+          .where(
+            (source) =>
+                source.confidence == ThrowConfidence.unknown ||
+                !_isProtected(node, source),
+          )
           .map(_normalize),
     );
     dependencies.addAll(summary.dependencyElementKeys);

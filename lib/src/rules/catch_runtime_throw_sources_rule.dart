@@ -16,7 +16,8 @@ import '../utils/source_utils.dart';
 class CatchRuntimeThrowSourcesRule extends AnalysisRule {
   CatchRuntimeThrowSourcesRule()
     : super(
-        name: DartExceptionLintDiagnostics.catchRuntimeThrowSources.name,
+        name:
+            DartExceptionLintDiagnostics.catchRuntimeThrowSources.lowerCaseName,
         description: 'Reports known runtime throw sources outside try/catch.',
       );
 

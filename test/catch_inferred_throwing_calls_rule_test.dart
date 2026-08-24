@@ -62,4 +62,72 @@ void f() {
 }
 ''');
   }
+
+  Future<void> test_mismatchedTypedCatch_stillReports() async {
+    const code = r'''
+class BoomException implements Exception {}
+
+void helper() {
+  throw BoomException();
+}
+
+void f() {
+  try {
+    helper();
+  } on FormatException {}
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.lastIndexOf('helper'),
+        'helper'.length,
+        messageContains: 'helper',
+      ),
+    ]);
+  }
+
+  Future<void> test_matchingTypedCatch_doesNotReport() async {
+    await assertNoDiagnostics(r'''
+class BoomException implements Exception {}
+
+void helper() {
+  throw BoomException();
+}
+
+void f() {
+  try {
+    helper();
+  } on BoomException {}
+}
+''');
+  }
+
+  Future<void> test_localHelperKnownThrowSource_reports() async {
+    const code = r'''
+int parseValue(String value) => int.parse(value);
+
+void f() {
+  parseValue('not-an-int');
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.lastIndexOf('parseValue'),
+        'parseValue'.length,
+        messageContains: 'parseValue',
+      ),
+    ]);
+  }
+
+  Future<void> test_asyncHelper_isHandledByAsyncRule_notInferredRule() async {
+    await assertNoDiagnostics(r'''
+Future<int> helper() async => int.parse('not-an-int');
+
+Future<void> f() async {
+  await helper();
+}
+''');
+  }
 }

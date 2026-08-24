@@ -56,6 +56,38 @@ void f(String value) {
     int.parse(value);
   } catch (_) {}
 }
+    ''');
+  }
+
+  Future<void> test_customJsonDecodeName_notReported() async {
+    await assertNoDiagnostics(r'''
+String jsonDecode(String value) => value;
+
+void f() {
+  jsonDecode('value');
+}
+''');
+  }
+
+  Future<void> test_customCollectionMethodName_notReported() async {
+    await assertNoDiagnostics(r'''
+class CustomCollection {
+  String first() => 'value';
+  String firstWhere(bool Function(String) test) => 'value';
+}
+
+void f(CustomCollection values) {
+  values.first();
+  values.firstWhere((value) => true);
+}
+''');
+  }
+
+  Future<void> test_firstWhere_withOrElse_notReported() async {
+    await assertNoDiagnostics(r'''
+void f(List<int> values) {
+  values.firstWhere((value) => value > 10, orElse: () => 0);
+}
 ''');
   }
 }

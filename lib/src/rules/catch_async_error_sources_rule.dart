@@ -19,7 +19,7 @@ import '../utils/source_utils.dart';
 class CatchAsyncErrorSourcesRule extends AnalysisRule {
   CatchAsyncErrorSourcesRule()
     : super(
-        name: DartExceptionLintDiagnostics.catchAsyncErrorSources.name,
+        name: DartExceptionLintDiagnostics.catchAsyncErrorSources.lowerCaseName,
         description: 'Reports known async error sources without handling.',
       );
 
@@ -92,18 +92,25 @@ final class _Visitor extends SimpleAstVisitor<void> {
       requireObservedAsyncError: true,
       includeManifestOverrides: false,
     );
-    if (analysis == null || analysis.confidence != ThrowConfidence.asyncError) {
+    final source = ThrowSourceCatalog.matchResolvedInvocation(
+      expression,
+      _elementForInvocation(expression),
+      options,
+    );
+    if (analysis == null && (source == null || !source.confidence.isAsync)) {
       return;
     }
+    final displayName = analysis?.displayName ?? source!.displayName;
+    final exceptionTypes = analysis?.exceptionTypes ?? source!.exceptionTypes;
     if (isProtectedByCatch(
       node,
       requireAsyncProtection: true,
-      exceptionTypes: analysis.exceptionTypes,
+      exceptionTypes: exceptionTypes,
     )) {
       return;
     }
 
-    rule.reportAtNode(node, arguments: [analysis.displayName]);
+    rule.reportAtNode(node, arguments: [displayName]);
   }
 
   @override
@@ -112,11 +119,27 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
 
-    final source = ThrowSourceCatalog.matchResolvedInvocation(
+    final directSource = ThrowSourceCatalog.matchResolvedInvocation(
       node,
       node.methodName.element,
       options,
     );
+    final target = node.target;
+    final chainedSource = switch (target) {
+      MethodInvocation() => ThrowSourceCatalog.matchResolvedInvocation(
+        target,
+        target.methodName.element,
+        options,
+      ),
+      InstanceCreationExpression() =>
+        ThrowSourceCatalog.matchResolvedInvocation(
+          target,
+          target.constructorName.element,
+          options,
+        ),
+      _ => null,
+    };
+    final source = directSource ?? chainedSource;
     if (source == null || !source.confidence.isAsync) {
       if (_isUnhandledListen(node)) {
         rule.reportAtNode(node.methodName, arguments: ['Stream.listen']);
@@ -140,8 +163,8 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return false;
     }
 
-    return node.argumentList.arguments.whereType<NamedExpression>().every(
-      (argument) => argument.name.label.name != 'onError',
+    return node.argumentList.arguments.whereType<NamedArgument>().every(
+      (argument) => argument.name.lexeme != 'onError',
     );
   }
 

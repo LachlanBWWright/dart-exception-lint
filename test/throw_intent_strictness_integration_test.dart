@@ -1,3 +1,6 @@
+@Timeout(Duration(minutes: 2))
+library;
+
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -135,9 +138,15 @@ plugins:
     diagnostics:
       catch_inferred_throwing_calls: true
       catch_unknown_dynamic_calls: true
-    exception_analysis:
-$strictness
 ''');
+
+    await _writeFile(
+      p.join(tempDir.path, 'tool/dart_exception_lint/exception_analysis.yaml'),
+      '''
+exception_analysis:
+$strictness
+''',
+    );
 
     await _writeFile(p.join(tempDir.path, 'third_party_stub/pubspec.yaml'), '''
 name: third_party_stub

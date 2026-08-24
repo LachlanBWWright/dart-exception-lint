@@ -5,14 +5,16 @@ All diagnostics skip generated Dart files (`*.g.dart`, `*.freezed.dart`, and
 files named `*_test.dart` are not analyzed unless configuration opts them in.
 
 ```yaml
-plugins:
-  dart_exception_lint:
-    exception_analysis:
-      analyze_test_files: false
-      rules:
-        catch_async_error_sources:
-          analyze_test_files: true
+exception_analysis:
+  analyze_test_files: false
+  rules:
+    catch_async_error_sources:
+      analyze_test_files: true
 ```
+
+Save this as `tool/dart_exception_lint/exception_analysis.yaml`. The analyzer
+plugin configuration only supports its standard keys, so exception-analysis
+settings live in this plugin-owned file to avoid unsupported-option warnings.
 
 `exception_analysis.analyze_test_files` controls the package-wide default.
 `exception_analysis.rules.<rule>.analyze_test_files` overrides that setting for
@@ -95,12 +97,10 @@ confidence overrides, async metadata, and exception type metadata.
 Inferred exception analysis can filter sources by intent:
 
 ```yaml
-plugins:
-  dart_exception_lint:
-    exception_analysis:
-      strictness:
-        internal: possible
-        third_party: deliberate
+exception_analysis:
+  strictness:
+    internal: possible
+    third_party: deliberate
 ```
 
 The threshold values are:
@@ -115,12 +115,10 @@ The threshold values are:
 For example, this reports unresolved internal boundaries but only deliberate and input-dependent third-party sources:
 
 ```yaml
-plugins:
-  dart_exception_lint:
-    exception_analysis:
-      strictness:
-        internal: unknown
-        third_party: possible
+exception_analysis:
+  strictness:
+    internal: unknown
+    third_party: possible
 ```
 
 ## `catch_runtime_throw_sources`
@@ -202,7 +200,7 @@ void f(dynamic client) {
 }
 ```
 
-Unknown sources inferred from implementation bodies honor `exception_analysis.strictness` and require an `unknown` threshold. Direct dynamic calls in the analyzed file are still reported when this diagnostic and `report.unknown` are enabled.
+Unknown sources inferred from implementation bodies honor `exception_analysis.strictness` and require an `unknown` threshold. Direct dynamic calls in the analyzed file are still reported when this diagnostic and `report.unknown` are enabled. This includes dynamic method calls, dynamic and `Function`-typed function calls, and awaiting a value whose type is `dynamic`.
 Use this rule when unknown exception boundaries should be made explicit through
 typing, safer wrappers, or local protection. Disable `report.unknown` to turn off
 unknown-boundary reports while keeping the other exception diagnostics active.

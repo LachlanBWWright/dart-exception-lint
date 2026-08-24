@@ -1,3 +1,6 @@
+@Timeout(Duration(minutes: 2))
+library;
+
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -114,11 +117,17 @@ plugins:
       catch_async_error_sources: true
       catch_inferred_throwing_calls: true
       catch_unknown_dynamic_calls: true
-    exception_analysis:
-      strictness:
-        internal: possible
-        third_party: possible
 ''');
+
+    await _writeFile(
+      p.join(tempDir.path, 'tool/dart_exception_lint/exception_analysis.yaml'),
+      '''
+exception_analysis:
+  strictness:
+    internal: possible
+    third_party: possible
+''',
+    );
 
     if (manifest != null) {
       await _writeFile(

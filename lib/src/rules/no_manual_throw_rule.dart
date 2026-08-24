@@ -15,7 +15,7 @@ import '../utils/source_utils.dart';
 class NoManualThrowRule extends AnalysisRule {
   NoManualThrowRule()
     : super(
-        name: DartExceptionLintDiagnostics.noManualThrow.name,
+        name: DartExceptionLintDiagnostics.noManualThrow.lowerCaseName,
         description: 'Reports manually written throw expressions.',
       );
 

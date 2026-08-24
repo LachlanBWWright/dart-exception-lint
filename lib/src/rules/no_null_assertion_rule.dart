@@ -14,7 +14,7 @@ import '../utils/source_utils.dart';
 class NoNullAssertionRule extends AnalysisRule {
   NoNullAssertionRule()
     : super(
-        name: DartExceptionLintDiagnostics.noNullAssertion.name,
+        name: DartExceptionLintDiagnostics.noNullAssertion.lowerCaseName,
         description: 'Reports every postfix null assertion operator.',
       );
 

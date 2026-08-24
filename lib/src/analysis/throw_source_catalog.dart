@@ -101,7 +101,8 @@ final class ThrowSourceCatalog {
     required String? callableName,
     required ExceptionAnalysisOptions options,
   }) {
-    if (callableName == 'jsonDecode') {
+    if (callableName == 'jsonDecode' &&
+        _isExpectedLibrary(libraryUri, 'dart:convert')) {
       return const ThrowSource(
         kind: ThrowSourceKind.decodeCall,
         confidence: ThrowConfidence.possibleThrow,
@@ -118,7 +119,9 @@ final class ThrowSourceCatalog {
     required String? className,
     required String? constructorName,
   }) {
-    if (className == 'Future' && constructorName == 'error') {
+    if (className == 'Future' &&
+        constructorName == 'error' &&
+        _isExpectedLibrary(libraryUri, 'dart:async')) {
       return const ThrowSource(
         kind: ThrowSourceKind.futureError,
         confidence: ThrowConfidence.asyncError,
@@ -127,7 +130,8 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if (className == 'JsonDecoder') {
+    if (className == 'JsonDecoder' &&
+        _isExpectedLibrary(libraryUri, 'dart:convert')) {
       return const ThrowSource(
         kind: ThrowSourceKind.decodeCall,
         confidence: ThrowConfidence.possibleThrow,
@@ -146,9 +150,9 @@ final class ThrowSourceCatalog {
   }) {
     final name = callableName ?? node.methodName.name;
     final targetSource = node.target?.toSource();
-    final invocationSource = node.toSource();
-
-    if (options.treatParseMethodsAsThrowing && name == 'parse') {
+    if (options.treatParseMethodsAsThrowing &&
+        name == 'parse' &&
+        _isExpectedLibrary(libraryUri, 'dart:core')) {
       switch (targetSource) {
         case 'int':
           return const ThrowSource(
@@ -177,7 +181,9 @@ final class ThrowSourceCatalog {
       }
     }
 
-    if (name == 'jsonDecode' && targetSource == null) {
+    if (name == 'jsonDecode' &&
+        targetSource == null &&
+        _isExpectedLibrary(libraryUri, 'dart:convert')) {
       return const ThrowSource(
         kind: ThrowSourceKind.decodeCall,
         confidence: ThrowConfidence.possibleThrow,
@@ -185,7 +191,9 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if (name == 'convert' && targetSource == 'JsonDecoder') {
+    if (name == 'convert' &&
+        targetSource == 'JsonDecoder' &&
+        _isExpectedLibrary(libraryUri, 'dart:convert')) {
       return const ThrowSource(
         kind: ThrowSourceKind.decodeCall,
         confidence: ThrowConfidence.possibleThrow,
@@ -193,7 +201,8 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if (name == 'single' || name == 'first' || name == 'last') {
+    if (_isExpectedLibrary(libraryUri, 'dart:core') &&
+        (name == 'single' || name == 'first' || name == 'last')) {
       return ThrowSource(
         kind: ThrowSourceKind.collectionStateCall,
         confidence: ThrowConfidence.possibleThrow,
@@ -201,7 +210,7 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if (name == 'singleWhere') {
+    if (name == 'singleWhere' && _isExpectedLibrary(libraryUri, 'dart:core')) {
       return ThrowSource(
         kind: ThrowSourceKind.collectionStateCall,
         confidence: ThrowConfidence.possibleThrow,
@@ -210,8 +219,9 @@ final class ThrowSourceCatalog {
     }
 
     if (name == 'firstWhere' &&
-        node.argumentList.arguments.whereType<NamedExpression>().every(
-          (argument) => argument.name.label.name != 'orElse',
+        _isExpectedLibrary(libraryUri, 'dart:core') &&
+        node.argumentList.arguments.whereType<NamedArgument>().every(
+          (argument) => argument.name.lexeme != 'orElse',
         )) {
       return ThrowSource(
         kind: ThrowSourceKind.collectionStateCall,
@@ -220,8 +230,9 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if ((name == 'error' && targetSource == 'Future') ||
-        invocationSource.startsWith('Future.error(')) {
+    if (name == 'error' &&
+        targetSource == 'Future' &&
+        _isExpectedLibrary(libraryUri, 'dart:async')) {
       return const ThrowSource(
         kind: ThrowSourceKind.futureError,
         confidence: ThrowConfidence.asyncError,
@@ -230,7 +241,8 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if (name == 'completeError') {
+    if (name == 'completeError' &&
+        _isExpectedLibrary(libraryUri, 'dart:async')) {
       return const ThrowSource(
         kind: ThrowSourceKind.completerCompleteError,
         confidence: ThrowConfidence.asyncError,
@@ -239,7 +251,7 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if (name == 'addError') {
+    if (name == 'addError' && _isExpectedLibrary(libraryUri, 'dart:async')) {
       return const ThrowSource(
         kind: ThrowSourceKind.streamAddError,
         confidence: ThrowConfidence.asyncError,
@@ -248,8 +260,9 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if ((name == 'throwWithStackTrace' && targetSource == 'Error') ||
-        invocationSource.startsWith('Error.throwWithStackTrace(')) {
+    if (name == 'throwWithStackTrace' &&
+        targetSource == 'Error' &&
+        _isExpectedLibrary(libraryUri, 'dart:core')) {
       return const ThrowSource(
         kind: ThrowSourceKind.futureError,
         confidence: ThrowConfidence.asyncError,
@@ -259,5 +272,12 @@ final class ThrowSourceCatalog {
     }
 
     return null;
+  }
+
+  /// A null URI means the invocation was unresolved while analyzing a body.
+  /// In that case the syntax-based fallback remains intentionally conservative;
+  /// a resolved invocation must belong to the expected SDK library.
+  static bool _isExpectedLibrary(String? actual, String expected) {
+    return actual == null || actual == expected;
   }
 }

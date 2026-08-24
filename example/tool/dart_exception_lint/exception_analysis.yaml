@@ -1,0 +1,4 @@
+exception_analysis:
+  strictness:
+    internal: possible
+    third_party: deliberate
