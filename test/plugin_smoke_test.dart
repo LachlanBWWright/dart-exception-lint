@@ -21,7 +21,7 @@ void main() {
       'catch_inferred_throwing_calls',
       'catch_unknown_dynamic_calls',
     });
-    expect(registry.warningRules, isEmpty);
+    expect(registry.warningRules.keys, {'invalid_exception_analysis_config'});
   });
 }
 
@@ -36,12 +36,12 @@ final class _FakePluginRegistry implements PluginRegistry {
 
   @override
   void registerAssist(ProducerGenerator generator) {
-    throw UnimplementedError();
+    // This smoke-test registry does not exercise assists.
   }
 
   @override
   void registerFixForRule(DiagnosticCode code, ProducerGenerator generator) {
-    throw UnimplementedError();
+    // This smoke-test registry does not exercise fixes.
   }
 
   @override

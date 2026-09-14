@@ -10,6 +10,8 @@ import 'package:analyzer/error/error.dart';
 import '../config/config_failures.dart';
 import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
+import '../analysis/throw_protection.dart';
+import '../analysis/exception_annotations.dart';
 import '../diagnostics.dart';
 import '../result.dart';
 import '../utils/source_utils.dart';
@@ -122,11 +124,14 @@ final class _Visitor extends SimpleAstVisitor<void> {
     required Element? element,
     required AstNode diagnosticTarget,
   }) {
+    if (element != null && hasExceptionBoundaryAnnotation(element)) {
+      return;
+    }
     final callable = ResolvedCallable.tryCreate(element);
     final matchedSpec = callable == null
         ? _findSyntaxFallback(node)
         : _findMatch(callable) ?? _findSyntaxFallback(node);
-    if (matchedSpec == null || _isProtectedByTryCatch(node)) {
+    if (matchedSpec == null || isProtectedByCatch(node)) {
       return;
     }
 
@@ -311,27 +316,6 @@ final class _Visitor extends SimpleAstVisitor<void> {
     return callable.supertypeKeys.contains(
       '${spec.libraryUri}::$specClassName',
     );
-  }
-
-  bool _isProtectedByTryCatch(AstNode node) {
-    AstNode? current = node.parent;
-    while (current != null) {
-      if (current is TryStatement &&
-          current.catchClauses.isNotEmpty &&
-          _containsNode(current.body, node)) {
-        return true;
-      }
-      if (current is FunctionBody) {
-        return false;
-      }
-      current = current.parent;
-    }
-
-    return false;
-  }
-
-  bool _containsNode(AstNode ancestor, AstNode node) {
-    return node.offset >= ancestor.offset && node.end <= ancestor.end;
   }
 }
 

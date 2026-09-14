@@ -12,12 +12,27 @@
 
 ## Installation
 
-Add the plugin to your consuming package's `analysis_options.yaml`:
+For a published release, enable the plugin in your consuming package's
+`analysis_options.yaml`. The plugin is resolved from the top-level `plugins`
+section and does not need to be added as an ordinary application dependency:
+
+```yaml
+plugins:
+  dart_exception_lint: ^0.1.0-dev.1
+
+  # To configure individual diagnostics, use the expanded form:
+  # dart_exception_lint:
+  #   version: ^0.1.0-dev.1
+  #   diagnostics:
+  #     no_null_assertion: true
+```
+
+The expanded form with diagnostics enabled is:
 
 ```yaml
 plugins:
   dart_exception_lint:
-    path: /path/to/dart-exception-lint
+    version: ^0.1.0-dev.1
     diagnostics:
       no_null_assertion: true
       no_manual_throw: true
@@ -40,7 +55,14 @@ exception_analysis:
   analyze_test_files: false
 ```
 
-Restart the Dart Analysis Server after changing plugin configuration.
+For local development, replace the `version` entry with
+`path: /path/to/dart-exception-lint`. Restart the Dart Analysis Server after
+changing plugin configuration.
+
+Configuration and manifest errors are reported as
+`invalid_exception_analysis_config` warnings. Exception analysis is not
+silently disabled when either file contains invalid YAML or unsupported
+values.
 
 By default, diagnostics are skipped for files under `test/` and files named
 `*_test.dart`. Set `exception_analysis.analyze_test_files: true` in the
@@ -101,6 +123,11 @@ apis:
     library: package:some_package/client.dart
     class: Client
     constructor: named
+  # SDK APIs use package: dart and retain their dart: library URI.
+  - package: dart
+    library: dart:core
+    class: RegExp
+    constructor: ''
 ```
 
 Supported manifest fields:
@@ -119,6 +146,27 @@ Supported manifest fields:
 | `async` | Optional async override for APIs that surface errors through `Future` or `Stream`. |
 | `exception_types` | Optional future-facing metadata for thrown exception types. |
 
+## Public exception contracts
+
+Source-unavailable or externally implemented APIs can declare their exception
+behavior with the public annotations exported by
+`package:dart_exception_lint/dart_exception_lint.dart`:
+
+```dart
+@MayThrow([FormatException])
+String decode(String input) => externalDecode(input);
+
+@ReturnsFailingFuture([NetworkException])
+Future<Response> fetch() => client.fetch();
+
+@DoesNotThrow()
+Result<T> safeOperation<T>(T value) => Result.success(value);
+```
+
+Contracts are authoritative for inferred analysis. They do not disable direct
+syntax rules such as `no_manual_throw` or `no_null_assertion`, and they should
+only be used when the declared API contract is maintained by the owner.
+
 ## Local development
 
 ```bash
@@ -132,6 +180,39 @@ cd example && dart pub get && dart analyze
 ## Example
 
 See [`example/`](example) for a local consumer package that enables the plugin by path and includes manifest-backed and source-inferred sample violations.
+
+## Known limitations
+
+Throw inference is intentionally conservative and bounded. It depends on
+source being available to the analyzer, stops at `max_call_depth`, and cannot
+prove the behavior of dynamic, external, native, or otherwise unresolved
+calls. Resolved thrown types carry their known analyzer supertypes through
+local summaries, while custom exception hierarchies in manifest strings still
+require explicit `exception_types` metadata.
+
+The analyzer tracks local Future ownership: creation, awaiting, compatible
+handling, and abandonment. It also follows resolved function tear-offs,
+constructor initializers, and user-defined index operators. It does not yet
+perform whole-program symbolic data flow, enumerate all possible runtime
+subtypes at a dynamic dispatch site, or derive a complete SDK exception catalog
+automatically.
+
+Use `@ExceptionBoundary()` from `package:dart_exception_lint/dart_exception_lint.dart`
+on a function, method, or class for an intentional propagation endpoint.
+Effect-based diagnostics treat code inside that callable (or class members) as
+handled; direct syntax rules remain active.
+
+The inferred and manifest-backed diagnostics are separate policy controls. A
+call may intentionally receive both reports when both diagnostics are enabled:
+the manifest report reflects explicit project policy, while the inferred report
+reflects implementation behavior.
+
+This package reports all statically discoverable exception effects within the
+configured analysis boundary. It cannot guarantee detection of failures from
+unresolved dynamic calls, native/FFI code, resource exhaustion, platform
+services, or unavailable third-party implementations. Enable
+`catch_unknown_dynamic_calls` and use `strictness: unknown` when those
+boundaries should be surfaced instead of treated as tolerated uncertainty.
 
 ## Diagnostics
 

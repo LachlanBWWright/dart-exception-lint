@@ -1,10 +1,15 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
+import 'exception_annotations.dart';
+
 bool isProtectedByCatch(
   AstNode node, {
   bool requireAsyncProtection = false,
   List<String> exceptionTypes = const [],
 }) {
+  if (isInsideExceptionBoundary(node)) {
+    return true;
+  }
   if (requireAsyncProtection && _hasAsyncErrorHandler(node)) {
     return true;
   }
@@ -14,6 +19,7 @@ bool isProtectedByCatch(
     if (current is TryStatement &&
         current.catchClauses.isNotEmpty &&
         _containsNode(current.body, node) &&
+        (!requireAsyncProtection || _isAwaited(node)) &&
         _matchesCatch(current.catchClauses, exceptionTypes)) {
       return true;
     }
@@ -23,6 +29,20 @@ bool isProtectedByCatch(
     current = current.parent;
   }
 
+  return false;
+}
+
+bool _isAwaited(AstNode node) {
+  AstNode? current = node;
+  while (current != null) {
+    if (current is AwaitExpression) {
+      return true;
+    }
+    if (current is FunctionBody) {
+      return false;
+    }
+    current = current.parent;
+  }
   return false;
 }
 
@@ -36,6 +56,20 @@ bool _hasAsyncErrorHandler(AstNode node) {
     if (current is MethodInvocation) {
       if (current.methodName.name == 'catchError' &&
           current.argumentList.arguments.isNotEmpty) {
+        return true;
+      }
+
+      // Stream.handleError installs an error transformer before a later
+      // listen/iteration operation consumes the stream.
+      if (current.methodName.name == 'handleError' &&
+          current.argumentList.arguments.isNotEmpty) {
+        return true;
+      }
+
+      // Future.ignore() deliberately consumes the future's error channel.
+      // It is the explicit counterpart to an awaited try/catch for callers
+      // that intentionally discard the result.
+      if (current.methodName.name == 'ignore') {
         return true;
       }
 
@@ -70,7 +104,20 @@ bool _matchesCatch(List<CatchClause> clauses, List<String> exceptionTypes) {
     }
 
     final caughtName = catchType.type?.element?.name ?? catchType.toSource();
-    if (exceptionTypes.contains(caughtName)) {
+    // The manifest stores names rather than analyzer types. Treat Dart's
+    // broad catch types as covering every known source, and retain exact-name
+    // matching for precise catches. This avoids false reports for the common
+    // `on Exception` and `on Object` forms without guessing custom hierarchies.
+    if (caughtName == 'Object' ||
+        caughtName == 'Exception' ||
+        caughtName == 'Error' ||
+        caughtName == 'dynamic' ||
+        exceptionTypes.contains(caughtName) ||
+        exceptionTypes.any(
+          (type) =>
+              (type.endsWith('Exception') && caughtName == 'Exception') ||
+              (type.endsWith('Error') && caughtName == 'Error'),
+        )) {
       return true;
     }
   }

@@ -73,6 +73,11 @@ class CatchInferredThrowingCallsRule extends AnalysisRule {
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
+    registry.addVariableDeclaration(this, visitor);
+    registry.addPropertyAccess(this, visitor);
+    registry.addPrefixedIdentifier(this, visitor);
+    registry.addBinaryExpression(this, visitor);
+    registry.addIndexExpression(this, visitor);
   }
 }
 
@@ -81,10 +86,28 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   final AnalysisRule rule;
   final InferredThrowAnalyzer analyzer;
+  final Map<Element, ExecutableElement> _callableAliases = {};
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    final initializer = node.initializer;
+    final declaredElement = node.declaredFragment?.element;
+    if (declaredElement != null && initializer is SimpleIdentifier) {
+      final target = initializer.element;
+      if (target is ExecutableElement) {
+        _callableAliases[declaredElement] = target;
+      }
+    }
+  }
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
-    _report(node, element: node.element, diagnosticTarget: node.function);
+    final element =
+        node.element ??
+        (node.function is SimpleIdentifier
+            ? _callableAliases[(node.function as SimpleIdentifier).element]
+            : null);
+    _report(node, element: element, diagnosticTarget: node.function);
   }
 
   @override
@@ -105,19 +128,51 @@ final class _Visitor extends SimpleAstVisitor<void> {
     );
   }
 
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    _report(
+      node,
+      element: node.propertyName.element,
+      diagnosticTarget: node.propertyName,
+    );
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    _report(
+      node,
+      element: node.identifier.element,
+      diagnosticTarget: node.identifier,
+    );
+  }
+
+  @override
+  void visitBinaryExpression(BinaryExpression node) {
+    _report(node, element: node.element, diagnosticTarget: node);
+  }
+
+  @override
+  void visitIndexExpression(IndexExpression node) {
+    _report(node, element: node.element, diagnosticTarget: node);
+  }
+
   void _report(
     AstNode node, {
     required Element? element,
     required AstNode diagnosticTarget,
   }) {
-    final analysis = analyzer.analyzeResolvedCall(
-      node,
-      element: element,
-      treatUnknownAsReportable: false,
-      requireObservedAsyncError: false,
-      includeManifestOverrides: false,
-    );
-    if (analysis == null || analysis.isAsync) {
+    final analysis =
+        analyzer.analyzeResolvedCall(
+          node,
+          element: element,
+          treatUnknownAsReportable: false,
+          requireObservedAsyncError: false,
+          includeManifestOverrides: false,
+        ) ??
+        (node is FunctionExpressionInvocation
+            ? analyzer.analyzeInlineFunctionInvocation(node)
+            : null);
+    if (analysis == null || analysis.isAsync || analysis.isDeferred) {
       return;
     }
     if (isProtectedByCatch(node, exceptionTypes: analysis.exceptionTypes)) {
@@ -126,7 +181,19 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
     rule.reportAtNode(
       diagnosticTarget,
-      arguments: [analysis.displayName, analysis.confidence.label],
+      arguments: [
+        analysis.displayName,
+        analysis.confidence.label,
+        _originLabel(analysis.origin),
+      ],
     );
+  }
+
+  String _originLabel(ThrowOrigin? origin) {
+    if (origin == null) return 'unavailable';
+    final location = origin.filePath == null || origin.offset == null
+        ? ''
+        : ' at ${origin.filePath}:${origin.offset}';
+    return '${origin.displayName}$location';
   }
 }

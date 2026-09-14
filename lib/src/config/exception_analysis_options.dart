@@ -19,8 +19,11 @@ final class ExceptionAnalysisOptions {
     this.treatDynamicInvocationAsThrowing = true,
     this.treatExternalCallsAsThrowing = true,
     this.treatIndexAccessAsThrowing = false,
+    this.treatCollectionStateAsThrowing = true,
     this.treatParseMethodsAsThrowing = true,
     this.treatAsCastsAsThrowing = false,
+    this.treatLateInitializationAsThrowing = true,
+    this.treatArithmeticAsThrowing = true,
     this.requireAsyncErrorHandling = true,
     this.analyzeTestFiles = false,
     this.ruleTestFileOverrides = const {},
@@ -38,8 +41,11 @@ final class ExceptionAnalysisOptions {
   final bool treatDynamicInvocationAsThrowing;
   final bool treatExternalCallsAsThrowing;
   final bool treatIndexAccessAsThrowing;
+  final bool treatCollectionStateAsThrowing;
   final bool treatParseMethodsAsThrowing;
   final bool treatAsCastsAsThrowing;
+  final bool treatLateInitializationAsThrowing;
+  final bool treatArithmeticAsThrowing;
   final bool requireAsyncErrorHandling;
   final bool analyzeTestFiles;
   final Map<String, bool> ruleTestFileOverrides;
@@ -194,11 +200,22 @@ final class ExceptionAnalysisOptions {
         treatIndexAccessAsThrowing:
             _readBool(analysisConfig, 'treat_index_access_as_throwing') ??
             false,
+        treatCollectionStateAsThrowing:
+            _readBool(analysisConfig, 'treat_collection_state_as_throwing') ??
+            true,
         treatParseMethodsAsThrowing:
             _readBool(analysisConfig, 'treat_parse_methods_as_throwing') ??
             true,
         treatAsCastsAsThrowing:
             _readBool(analysisConfig, 'treat_as_casts_as_throwing') ?? false,
+        treatLateInitializationAsThrowing:
+            _readBool(
+              analysisConfig,
+              'treat_late_initialization_as_throwing',
+            ) ??
+            true,
+        treatArithmeticAsThrowing:
+            _readBool(analysisConfig, 'treat_arithmetic_as_throwing') ?? true,
         requireAsyncErrorHandling:
             _readBool(analysisConfig, 'require_async_error_handling') ?? true,
         analyzeTestFiles:

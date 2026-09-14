@@ -45,7 +45,11 @@ void f(String value) {
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('parse'), 'parse'.length, messageContains: 'int.parse'),
+      lint(
+        code.indexOf('parse'),
+        'parse'.length,
+        messageContainsAll: ['int.parse'],
+      ),
     ]);
   }
 
@@ -87,6 +91,97 @@ void f(CustomCollection values) {
     await assertNoDiagnostics(r'''
 void f(List<int> values) {
   values.firstWhere((value) => value > 10, orElse: () => 0);
+}
+    ''');
+  }
+
+  Future<void> test_lastWhere_withoutOrElse_reports() async {
+    const code = r'''
+void f(List<int> values) {
+  values.lastWhere((value) => value > 10);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('lastWhere'), 'lastWhere'.length),
+    ]);
+  }
+
+  Future<void> test_lateRead_reports() async {
+    const code = r'''
+late String value;
+
+void f() {
+  print(value);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('value'), 'value'.length),
+    ]);
+  }
+
+  Future<void> test_integerDivision_reports() async {
+    const code = r'''
+void f(int value) {
+  print(value ~/ 0);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('value ~/ 0'), 'value ~/ 0'.length),
+    ]);
+  }
+
+  Future<void> test_boundsAndSubstringOperations_report() async {
+    const code = r'''
+void f(List<int> values, String text) {
+  values.elementAt(99);
+  text.substring(99);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('elementAt'), 'elementAt'.length),
+      lint(code.indexOf('substring'), 'substring'.length),
+    ]);
+  }
+
+  Future<void> test_validatingConstructors_report() async {
+    const code = r'''
+void f(String pattern) {
+  RegExp(pattern);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('RegExp'), 'RegExp'.length),
+    ]);
+  }
+
+  Future<void> test_subtleCollectionStateOperations_report() async {
+    const code = r'''
+void f(Iterable<int> values, String text) {
+  values.singleWhere((value) => value > 10);
+  values.lastWhere((value) => value > 10);
+  text.codeUnitAt(0);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('singleWhere'), 'singleWhere'.length),
+      lint(code.indexOf('lastWhere'), 'lastWhere'.length),
+      lint(code.indexOf('codeUnitAt'), 'codeUnitAt'.length),
+    ]);
+  }
+
+  Future<void> test_subtleOperations_insideTypedCatch_areHandled() async {
+    await assertNoDiagnostics(r'''
+void f(Iterable<int> values, String text) {
+  try {
+    values.singleWhere((value) => value > 10);
+    text.codeUnitAt(0);
+  } on Object {}
 }
 ''');
   }

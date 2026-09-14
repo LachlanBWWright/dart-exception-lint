@@ -37,7 +37,7 @@ final class DartExceptionLintDiagnostics {
 
   static const LintCode catchInferredThrowingCalls = LintCode(
     'catch_inferred_throwing_calls',
-    '{0} can propagate a {1} from its implementation and should be called inside try/catch.',
+    '{0} can propagate a {1} from its implementation (origin: {2}) and should be called inside try/catch.',
     correctionMessage:
         'Try wrapping this call in try/catch or moving it behind a safer boundary.',
   );
@@ -47,5 +47,11 @@ final class DartExceptionLintDiagnostics {
     '{0} could not be resolved safely and should be protected or avoided.',
     correctionMessage:
         'Try adding type information, using a known safe API, or protecting this call.',
+  );
+
+  static const LintCode invalidExceptionAnalysisConfig = LintCode(
+    'invalid_exception_analysis_config',
+    'Invalid dart_exception_lint configuration: {0}',
+    correctionMessage: 'Fix the referenced configuration file.',
   );
 }

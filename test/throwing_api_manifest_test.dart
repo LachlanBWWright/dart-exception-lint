@@ -51,6 +51,18 @@ apis:
     expect(manifest.apis.single.isAsync, isTrue);
   });
 
+  test('supports SDK library entries', () {
+    final result = ThrowingApiManifest.parseResult('''
+apis:
+  - package: dart
+    library: dart:core
+    class: RegExp
+    constructor: ''
+''');
+    expect(result, isA<Ok<ThrowingApiManifest, ManifestFailure>>());
+    expect(result.valueOrNull!.apis.single.packageName, 'dart');
+  });
+
   test('returns error for invalid callable declarations', () {
     final result = ThrowingApiManifest.parseResult('''
 apis:

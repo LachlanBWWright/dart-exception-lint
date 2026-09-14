@@ -23,6 +23,7 @@ plugins:
       treat_dynamic_invocation_as_throwing: false
       treat_external_calls_as_throwing: true
       treat_index_access_as_throwing: true
+      treat_collection_state_as_throwing: false
       treat_parse_methods_as_throwing: false
       treat_as_casts_as_throwing: true
       require_async_error_handling: false
@@ -50,6 +51,7 @@ plugins:
     expect(options.treatDynamicInvocationAsThrowing, isFalse);
     expect(options.treatExternalCallsAsThrowing, isTrue);
     expect(options.treatIndexAccessAsThrowing, isTrue);
+    expect(options.treatCollectionStateAsThrowing, isFalse);
     expect(options.treatParseMethodsAsThrowing, isFalse);
     expect(options.treatAsCastsAsThrowing, isTrue);
     expect(options.requireAsyncErrorHandling, isFalse);

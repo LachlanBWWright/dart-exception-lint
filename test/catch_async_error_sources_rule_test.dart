@@ -24,6 +24,26 @@ class CatchAsyncErrorSourcesRuleTest extends AnalysisRuleTest {
 
   static final CatchAsyncErrorSourcesRule _rule = CatchAsyncErrorSourcesRule();
 
+  Future<void> test_failingFutureContract_reportsAtAwait() async {
+    const code = r'''
+class ReturnsFailingFuture {
+  const ReturnsFailingFuture(this.exceptionTypes);
+  final List<Type> exceptionTypes;
+}
+
+@ReturnsFailingFuture([FormatException])
+Future<String> load() => Future.value('ok');
+
+Future<void> f() async {
+  await load();
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await load()'), 'await load()'.length),
+    ]);
+  }
+
   Future<void> test_awaitedHelperReturningFutureError_reports() async {
     const code = r'''
 class BoomException implements Exception {}
@@ -39,7 +59,7 @@ Future<void> f() async {
       lint(
         code.indexOf('await'),
         'await load()'.length,
-        messageContains: 'load',
+        messageContainsAll: ['load'],
       ),
     ]);
   }
@@ -88,7 +108,7 @@ void f(Stream<int> stream) {
       lint(
         code.indexOf('listen'),
         'listen'.length,
-        messageContains: 'Stream.listen',
+        messageContainsAll: ['Stream.listen'],
       ),
     ]);
   }
@@ -140,6 +160,58 @@ Future<void> f() async {
 ''');
   }
 
+  Future<void> test_typedCatch_matchesFutureErrorArgument() async {
+    await assertNoDiagnostics(r'''
+import 'dart:async';
+
+class BoomException implements Exception {}
+
+Future<void> f() async {
+  try {
+    await Future.error(BoomException());
+  } on BoomException {}
+}
+''');
+  }
+
+  Future<void> test_typedCatch_mismatchForFutureErrorArgument_reports() async {
+    const code = r'''
+import 'dart:async';
+
+class BoomException implements Exception {}
+class OtherException implements Exception {}
+
+Future<void> f() async {
+  try {
+    await Future.error(BoomException());
+  } on OtherException {}
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('await Future.error'),
+        'await Future.error(BoomException())'.length,
+      ),
+    ]);
+  }
+
+  Future<void> test_unawaitedFutureError_insideTryCatch_stillReports() async {
+    const code = r'''
+import 'dart:async';
+
+void f() {
+  try {
+    Future.error(Exception('boom'));
+  } catch (_) {}
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
+    ]);
+  }
+
   Future<void> test_futureError_insideFinally_reports() async {
     const code = r'''
 import 'dart:async';
@@ -180,6 +252,14 @@ void f(Stream<int> stream) {
 ''');
   }
 
+  Future<void> test_streamHandleError_notReported() async {
+    await assertNoDiagnostics(r'''
+void f(Stream<int> stream) {
+  stream.handleError((_) {}).listen((value) {});
+}
+''');
+  }
+
   Future<void> test_customAddErrorName_notReported() async {
     await assertNoDiagnostics(r'''
 class CustomSink {
@@ -189,6 +269,226 @@ class CustomSink {
 void f(CustomSink sink) {
   sink.addError(Exception('boom'));
 }
+    ''');
+  }
+
+  Future<void> test_unawaitedFutureError_reports() async {
+    const code = r'''
+void f() {
+  Future.error(Exception('boom'));
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
+    ]);
+  }
+
+  Future<void> test_storedFutureError_reportsAtAwait() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f() async {
+  final pending = Future.error(Exception('boom'));
+  await pending;
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await pending'), 'await pending'.length),
+    ]);
+  }
+
+  Future<void> test_storedFutureError_abandoned_reportsAtCreation() async {
+    const code = r'''
+import 'dart:async';
+
+void f() {
+  final pending = Future.error(Exception('boom'));
+}
+''';
+
+    await assertDiagnostics(code, [lint(code.indexOf('Future.error'), 31)]);
+  }
+
+  Future<void>
+  test_storedFutureInsideList_reportsAtCollectionConsumption() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f() async {
+  final pending = <Future<void>>[Future.error(Exception('boom'))];
+  await pending.first;
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await pending.first'), 'await pending.first'.length),
+    ]);
+  }
+
+  Future<void>
+  test_storedFutureInsideIndexedList_reportsAtCollectionConsumption() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f() async {
+  final pending = <Future<void>>[Future.error(Exception('boom'))];
+  await pending[0];
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await pending[0]'), 'await pending[0]'.length),
+    ]);
+  }
+
+  Future<void>
+  test_multipleStoredFutures_keepIndependentCollectionEffects() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f() async {
+  final pending = <Future<void>>[
+    Future.error(Exception('first')),
+    Future.error(Exception('second')),
+  ];
+  await pending.first;
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await pending.first'), 'await pending.first'.length),
+      lint(
+        code.lastIndexOf('Future.error'),
+        'Future.error(Exception(\'second\'))'.length,
+      ),
+    ]);
+  }
+
+  Future<void>
+  test_futureStoredInField_isNotReportedAsLocalAbandonment() async {
+    await assertNoDiagnostics(r'''
+import 'dart:async';
+
+class Holder {
+  Future<void>? pending;
+
+  void start() {
+    this.pending = Future.error(Exception('boom'));
+  }
+}
 ''');
+  }
+
+  Future<void> test_unawaitedFutureError_isNotConsideredHandled() async {
+    const code = r'''
+import 'dart:async';
+
+void f() {
+  unawaited(Future.error(Exception('boom')));
+}
+''';
+
+    await assertDiagnostics(code, [lint(code.indexOf('Future.error'), 31)]);
+  }
+
+  Future<void> test_handledChainedFuture_isNotReportedAsAbandoned() async {
+    await assertNoDiagnostics(r'''
+import 'dart:async';
+
+void f() {
+  final pending = Future.error(Exception('boom')).catchError((_) {});
+}
+''');
+  }
+
+  Future<void> test_futureCombinators_reportAsyncErrors() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f(Future<int> first, Future<int> second) async {
+  await Future.wait([first, second]);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('await Future.wait'),
+        'await Future.wait([first, second])'.length,
+      ),
+    ]);
+  }
+
+  Future<void> test_unawaitedHelperReturningFailingFuture_reports() async {
+    const code = r'''
+Future<void> load() => Future.error(Exception('boom'));
+
+void f() {
+  load();
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('load'), 'load'.length),
+    ]);
+  }
+
+  Future<void> test_syncGenerator_isDeferredUntilIteration() async {
+    await assertNoDiagnostics(r'''
+Iterable<int> values() sync* {
+  yield 1;
+  throw 'boom';
+}
+
+void f() {
+  values();
+}
+''');
+  }
+
+  Future<void> test_syncGenerator_iteration_reportsWithoutCatch() async {
+    const code = r'''
+Iterable<int> values() sync* {
+  throw 'boom';
+}
+
+void f() {
+  for (final value in values()) {
+    print(value);
+  }
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('for (final value'),
+        'for (final value in values()) {\n    print(value);\n  }'.length,
+      ),
+    ]);
+  }
+
+  Future<void> test_asyncGenerator_awaitFor_reports() async {
+    const code = r'''
+import 'dart:async';
+
+Stream<int> values() async* {
+  yield 1;
+  throw 'boom';
+}
+
+Future<void> f() async {
+  await for (final value in values()) {
+    print(value);
+  }
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('await for'),
+        'await for (final value in values()) {\n    print(value);\n  }'.length,
+      ),
+    ]);
   }
 }

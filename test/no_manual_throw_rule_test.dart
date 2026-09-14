@@ -32,7 +32,7 @@ Never fail() => throw BoomException();
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('throw'), 5, messageContains: 'Exception'),
+      lint(code.indexOf('throw'), 5, messageContainsAll: ['Exception']),
     ]);
   }
 
@@ -49,7 +49,7 @@ Future<void> f() async {
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('throw'), 5, messageContains: 'Error'),
+      lint(code.indexOf('throw'), 5, messageContainsAll: ['Error']),
     ]);
   }
 
@@ -61,7 +61,7 @@ int f(bool condition) => condition ? 1 : throw BoomException();
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('throw'), 5, messageContains: 'Exception'),
+      lint(code.indexOf('throw'), 5, messageContainsAll: ['Exception']),
     ]);
   }
 
@@ -75,7 +75,7 @@ void f() {
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('throw'), 5, messageContains: 'Exception'),
+      lint(code.indexOf('throw'), 5, messageContainsAll: ['Exception']),
     ]);
   }
 
@@ -87,7 +87,7 @@ void f() {
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('throw'), 5, messageContains: 'non-Exception'),
+      lint(code.indexOf('throw'), 5, messageContainsAll: ['non-Exception']),
     ]);
   }
 
@@ -99,7 +99,7 @@ void f() {
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('throw'), 5, messageContains: 'non-Exception'),
+      lint(code.indexOf('throw'), 5, messageContainsAll: ['non-Exception']),
     ]);
   }
 
@@ -116,7 +116,7 @@ void f() {
 ''';
 
     await assertDiagnostics(code, [
-      lint(code.indexOf('throw'), 5, messageContains: 'Error'),
+      lint(code.indexOf('throw'), 5, messageContainsAll: ['Error']),
     ]);
   }
 
@@ -137,7 +137,7 @@ void g() {}
       lint(
         code.indexOf('rethrow'),
         'rethrow'.length,
-        messageContains: 'Exception',
+        messageContainsAll: ['Exception'],
       ),
     ]);
   }

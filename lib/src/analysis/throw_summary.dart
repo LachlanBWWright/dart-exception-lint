@@ -22,6 +22,9 @@ enum ThrowConfidence {
   noObviousThrow,
 }
 
+/// When an effect becomes observable relative to the invocation.
+enum ThrowTiming { synchronous, deferred, asynchronous }
+
 extension ThrowConfidenceExtension on ThrowConfidence {
   String get wireName => switch (this) {
     ThrowConfidence.definiteThrow => 'definite_throw',
@@ -86,6 +89,8 @@ enum ThrowSourceKind {
   rethrowExpression,
   nullAssertion,
   asCast,
+  lateInitializationRead,
+  arithmeticOperation,
   indexAccess,
   parseCall,
   decodeCall,
@@ -93,6 +98,7 @@ enum ThrowSourceKind {
   futureError,
   completerCompleteError,
   streamAddError,
+  asyncOperation,
   awaitedAsyncDependency,
   inferredCall,
   manifestOverride,
@@ -110,8 +116,11 @@ extension ThrowSourceKindExtension on ThrowSourceKind {
     ThrowSourceKind.completerCompleteError ||
     ThrowSourceKind.streamAddError ||
     ThrowSourceKind.manifestOverride => ThrowIntent.deliberate,
+    ThrowSourceKind.asyncOperation => ThrowIntent.possible,
     ThrowSourceKind.nullAssertion ||
     ThrowSourceKind.asCast => ThrowIntent.probable,
+    ThrowSourceKind.lateInitializationRead ||
+    ThrowSourceKind.arithmeticOperation => ThrowIntent.possible,
     ThrowSourceKind.indexAccess ||
     ThrowSourceKind.parseCall ||
     ThrowSourceKind.decodeCall ||
@@ -132,7 +141,9 @@ final class ThrowSource {
     required this.displayName,
     this.intent,
     this.isAsync = false,
+    this.timing,
     this.exceptionTypes = const [],
+    this.origin,
   });
 
   final ThrowSourceKind kind;
@@ -140,9 +151,32 @@ final class ThrowSource {
   final String displayName;
   final ThrowIntent? intent;
   final bool isAsync;
+  final ThrowTiming? timing;
   final List<String> exceptionTypes;
+  final ThrowOrigin? origin;
 
   ThrowIntent get effectiveIntent => intent ?? kind.defaultIntent;
+
+  ThrowTiming get effectiveTiming =>
+      timing ??
+      (isAsync || confidence == ThrowConfidence.asyncError
+          ? ThrowTiming.asynchronous
+          : ThrowTiming.synchronous);
+}
+
+/// The concrete source that caused an effect, retained through propagation.
+final class ThrowOrigin {
+  const ThrowOrigin({
+    required this.displayName,
+    this.filePath,
+    this.offset,
+    this.length,
+  });
+
+  final String displayName;
+  final String? filePath;
+  final int? offset;
+  final int? length;
 }
 
 final class ThrowSummary {
@@ -150,6 +184,7 @@ final class ThrowSummary {
     required this.elementKey,
     required this.confidence,
     required this.canThrowSynchronously,
+    this.canCompleteWithDeferredError = false,
     required this.canCompleteWithAsyncError,
     required List<ThrowSource> sources,
     required List<String> dependencyElementKeys,
@@ -161,6 +196,7 @@ final class ThrowSummary {
   final String elementKey;
   final ThrowConfidence confidence;
   final bool canThrowSynchronously;
+  final bool canCompleteWithDeferredError;
   final bool canCompleteWithAsyncError;
   final List<ThrowSource> sources;
   final List<String> dependencyElementKeys;
@@ -172,6 +208,7 @@ final class ThrowSummary {
       elementKey: elementKey,
       confidence: ThrowConfidence.noObviousThrow,
       canThrowSynchronously: false,
+      canCompleteWithDeferredError: false,
       canCompleteWithAsyncError: false,
       sources: const [],
       dependencyElementKeys: const [],
@@ -190,6 +227,7 @@ final class ThrowSummary {
       elementKey: elementKey,
       confidence: ThrowConfidence.unknown,
       canThrowSynchronously: false,
+      canCompleteWithDeferredError: false,
       canCompleteWithAsyncError: false,
       sources: sources,
       dependencyElementKeys: dependencyElementKeys,
@@ -200,6 +238,7 @@ final class ThrowSummary {
 
   bool get hasAnyThrowSource =>
       canThrowSynchronously ||
+      canCompleteWithDeferredError ||
       canCompleteWithAsyncError ||
       confidence == ThrowConfidence.unknown;
 
@@ -212,11 +251,17 @@ final class ThrowSummary {
   }) {
     final collectedSources = List<ThrowSource>.from(sources);
     final canThrowSynchronously = collectedSources.any(
-      (source) => !source.isAsync && source.confidence.isThrowing,
+      (source) =>
+          source.effectiveTiming == ThrowTiming.synchronous &&
+          source.confidence.isThrowing,
+    );
+    final canCompleteWithDeferredError = collectedSources.any(
+      (source) =>
+          source.effectiveTiming == ThrowTiming.deferred &&
+          source.confidence.isThrowing,
     );
     final canCompleteWithAsyncError = collectedSources.any(
-      (source) =>
-          source.isAsync || source.confidence == ThrowConfidence.asyncError,
+      (source) => source.effectiveTiming == ThrowTiming.asynchronous,
     );
 
     final hasDefinite = collectedSources.any(
@@ -246,6 +291,7 @@ final class ThrowSummary {
       elementKey: elementKey,
       confidence: confidence,
       canThrowSynchronously: canThrowSynchronously,
+      canCompleteWithDeferredError: canCompleteWithDeferredError,
       canCompleteWithAsyncError: canCompleteWithAsyncError,
       sources: collectedSources,
       dependencyElementKeys: dependencyElementKeys.toSet().toList()..sort(),

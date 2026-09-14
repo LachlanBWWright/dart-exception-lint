@@ -1,7 +1,11 @@
 name: dart_exception_lint
-description: Analyzer plugin that reports null assertions, manual throws, and uncaught configured third-party throwing API calls.
+description: Analyzer plugin for detecting statically discoverable synchronous, asynchronous, deferred, and unknown Dart exception boundaries.
 version: 0.1.0-dev.1
 repository: https://github.com/LachlanBWWright/dart-exception-lint
+topics:
+  - analyzer-plugin
+  - lint
+  - exceptions
 
 environment:
   sdk: ^3.10.0

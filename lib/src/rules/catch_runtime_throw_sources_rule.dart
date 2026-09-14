@@ -49,8 +49,11 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     final visitor = _Visitor(this, options);
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
+    registry.addInstanceCreationExpression(this, visitor);
     registry.addIndexExpression(this, visitor);
     registry.addAsExpression(this, visitor);
+    registry.addBinaryExpression(this, visitor);
+    registry.addSimpleIdentifier(this, visitor);
   }
 }
 
@@ -83,6 +86,22 @@ final class _Visitor extends SimpleAstVisitor<void> {
   }
 
   @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    final source = ThrowSourceCatalog.matchResolvedInvocation(
+      node,
+      node.constructorName.element,
+      options,
+    );
+    if (source == null || source.confidence.isAsync) return;
+    _report(
+      node,
+      node.constructorName,
+      source.displayName,
+      source.exceptionTypes,
+    );
+  }
+
+  @override
   void visitIndexExpression(IndexExpression node) {
     final source = ThrowSourceCatalog.matchIndexAccess(node, options);
     if (source == null || source.confidence.isAsync) {
@@ -102,6 +121,23 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
     _report(node, node.methodName, source.displayName, source.exceptionTypes);
+  }
+
+  @override
+  void visitBinaryExpression(BinaryExpression node) {
+    final source = ThrowSourceCatalog.matchBinaryExpression(node, options);
+    if (source == null) return;
+    _report(node, node, source.displayName, source.exceptionTypes);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    final source = ThrowSourceCatalog.matchLateInitializationRead(
+      node,
+      options,
+    );
+    if (source == null) return;
+    _report(node, node, source.displayName, source.exceptionTypes);
   }
 
   void _report(

@@ -10,6 +10,7 @@ import 'rules/catch_runtime_throw_sources_rule.dart';
 import 'rules/catch_unknown_dynamic_calls_rule.dart';
 import 'rules/no_manual_throw_rule.dart';
 import 'rules/no_null_assertion_rule.dart';
+import 'rules/validate_exception_analysis_config_rule.dart';
 
 class DartExceptionLintPlugin extends Plugin {
   @override
@@ -24,5 +25,6 @@ class DartExceptionLintPlugin extends Plugin {
     registry.registerLintRule(CatchAsyncErrorSourcesRule());
     registry.registerLintRule(CatchInferredThrowingCallsRule());
     registry.registerLintRule(CatchUnknownDynamicCallsRule());
+    registry.registerWarningRule(ValidateExceptionAnalysisConfigRule());
   }
 }

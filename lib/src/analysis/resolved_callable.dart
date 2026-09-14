@@ -131,6 +131,11 @@ final class ResolvedCallable {
   }
 
   static String? _packageNameFromUri(Uri uri) {
+    // The manifest also supports SDK APIs. `dart:` libraries do not have a
+    // package path segment, so use the stable synthetic package name `dart`.
+    if (uri.scheme == 'dart') {
+      return 'dart';
+    }
     if (uri.scheme != 'package' || uri.pathSegments.isEmpty) {
       return null;
     }
