@@ -8,6 +8,7 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
 import '../config/config_failures.dart';
+import '../analysis/diagnostic_emission_guard.dart';
 import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
 import '../analysis/throw_protection.dart';
@@ -91,6 +92,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   final AnalysisRule rule;
   final ThrowingApiManifest manifest;
+  final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
@@ -135,7 +137,9 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
 
-    rule.reportAtNode(diagnosticTarget, arguments: [matchedSpec.displayName]);
+    if (_emissions.claim(diagnosticTarget)) {
+      rule.reportAtNode(diagnosticTarget, arguments: [matchedSpec.displayName]);
+    }
   }
 
   ThrowingApiSpecification? _findMatch(ResolvedCallable callable) {

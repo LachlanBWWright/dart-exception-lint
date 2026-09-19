@@ -112,6 +112,23 @@ apis:
     expect(result, isA<Err<ThrowingApiManifest, ManifestFailure>>());
   });
 
+  test('returns error for duplicate entries', () {
+    final result = ThrowingApiManifest.parseResult('''
+apis:
+  - package: demo
+    library: package:demo/demo.dart
+    class: Client
+    method: send
+  - package: demo
+    library: package:demo/demo.dart
+    class: Client
+    method: send
+''');
+
+    expect(result, isA<Err<ThrowingApiManifest, ManifestFailure>>());
+    expect(result.errorOrNull?.message, contains('duplicate'));
+  });
+
   test('returns error for missing required package field', () {
     final result = ThrowingApiManifest.parseResult('''
 apis:

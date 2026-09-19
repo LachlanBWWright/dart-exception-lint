@@ -57,6 +57,7 @@ void main() {
 
   test('maps source kinds to default intents', () {
     expect(ThrowSourceKind.explicitThrow.defaultIntent, ThrowIntent.deliberate);
+    expect(ThrowSourceKind.assertion.defaultIntent, ThrowIntent.possible);
     expect(ThrowSourceKind.nullAssertion.defaultIntent, ThrowIntent.probable);
     expect(ThrowSourceKind.parseCall.defaultIntent, ThrowIntent.possible);
     expect(ThrowSourceKind.unresolvedCall.defaultIntent, ThrowIntent.unknown);
@@ -71,5 +72,80 @@ void main() {
     );
 
     expect(source.effectiveIntent, ThrowIntent.deliberate);
+  });
+
+  test(
+    'merges duplicate sources and widens when source budget is exceeded',
+    () {
+      const source = ThrowSource(
+        kind: ThrowSourceKind.parseCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'int.parse',
+      );
+      final summary = ThrowSummary.merge(
+        'test',
+        [
+          source,
+          source,
+          const ThrowSource(
+            kind: ThrowSourceKind.decodeCall,
+            confidence: ThrowConfidence.possibleThrow,
+            displayName: 'jsonDecode',
+          ),
+        ],
+        dependencyElementKeys: const [],
+        complete: true,
+        maxSources: 1,
+      );
+
+      expect(summary.sources, hasLength(2));
+      expect(summary.sources.last.kind, ThrowSourceKind.truncation);
+      expect(summary.complete, isTrue);
+      expect(summary.truncationReason, 'max_sources_per_summary');
+    },
+  );
+
+  test('defensively clamps a negative source budget', () {
+    final summary = ThrowSummary.merge(
+      'negative-budget',
+      const [
+        ThrowSource(
+          kind: ThrowSourceKind.parseCall,
+          confidence: ThrowConfidence.possibleThrow,
+          displayName: 'parse',
+        ),
+      ],
+      dependencyElementKeys: const [],
+      complete: true,
+      maxSources: -1,
+    );
+
+    expect(summary.complete, isTrue);
+    expect(summary.truncationReason, 'max_sources_per_summary');
+    expect(summary.confidence, ThrowConfidence.unknown);
+  });
+
+  test('retains same-named sources from different origins', () {
+    final summary = ThrowSummary.merge(
+      'origins',
+      const [
+        ThrowSource(
+          kind: ThrowSourceKind.inferredCall,
+          confidence: ThrowConfidence.possibleThrow,
+          displayName: 'helper',
+          origin: ThrowOrigin(displayName: 'helper', filePath: 'a.dart'),
+        ),
+        ThrowSource(
+          kind: ThrowSourceKind.inferredCall,
+          confidence: ThrowConfidence.possibleThrow,
+          displayName: 'helper',
+          origin: ThrowOrigin(displayName: 'helper', filePath: 'b.dart'),
+        ),
+      ],
+      dependencyElementKeys: const [],
+      complete: true,
+    );
+
+    expect(summary.sources, hasLength(2));
   });
 }

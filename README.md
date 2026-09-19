@@ -5,10 +5,11 @@
 - `no_null_assertion`: bans postfix `!`.
 - `no_manual_throw`: bans manual `throw` and `rethrow`.
 - `catch_throwing_third_party_calls`: flags manifest-configured third-party APIs outside `try`/`catch`.
-- `catch_runtime_throw_sources`: flags direct runtime throw sources such as parse/decode calls.
+- `catch_runtime_throw_sources`: flags direct runtime throw sources such as parse/decode calls, assertions, range checks, serialization, typed-data bounds checks, and collection-state APIs.
 - `catch_async_error_sources`: flags async error producers and awaited failing futures without handling.
 - `catch_inferred_throwing_calls`: follows available source and reports calls whose implementation is inferred as throwing.
 - `catch_unknown_dynamic_calls`: flags dynamic, unresolved, and otherwise unknown call boundaries.
+
 
 ## Installation
 
@@ -52,7 +53,13 @@ exception_analysis:
     internal: possible
     third_party: deliberate
   max_call_depth: 4
+  max_sources_per_summary: 64
+  max_dispatch_candidates: 64
   analyze_test_files: false
+  analyze_generated_files: false
+  treat_io_operations_as_throwing: true
+  treat_index_access_as_throwing: true
+  treat_as_casts_as_throwing: true
 ```
 
 For local development, replace the `version` entry with
@@ -148,8 +155,11 @@ Supported manifest fields:
 
 ## Public exception contracts
 
-Source-unavailable or externally implemented APIs can declare their exception
-behavior with the public annotations exported by
+Annotations are optional. The linter does not require users to annotate
+ordinary functions or call sites: it analyzes source, known SDK/runtime
+operations, async producers, and unknown boundaries automatically. Contracts
+are only an optional way to describe source-unavailable or externally
+implemented APIs with the public annotations exported by
 `package:dart_exception_lint/dart_exception_lint.dart`:
 
 ```dart
@@ -163,9 +173,11 @@ Future<Response> fetch() => client.fetch();
 Result<T> safeOperation<T>(T value) => Result.success(value);
 ```
 
-Contracts are authoritative for inferred analysis. They do not disable direct
-syntax rules such as `no_manual_throw` or `no_null_assertion`, and they should
-only be used when the declared API contract is maintained by the owner.
+Contracts are authoritative for inferred analysis when present. They do not
+disable direct syntax rules such as `no_manual_throw` or `no_null_assertion`,
+and they should only be used when the declared API contract is maintained by
+the owner. `catch_unknown_dynamic_calls` remains the mechanism for warning
+about unresolved behavior without requiring any annotation.
 
 ## Local development
 

@@ -385,6 +385,53 @@ void f(bool shouldThrow) {
     ]);
   }
 
+  Future<void> test_switchThrow_isPossibleRatherThanDefinite() async {
+    const code = r'''
+void helper(int value) {
+  switch (value) {
+    case 1:
+      throw 'boom';
+    default:
+      break;
+  }
+}
+
+void f(int value) {
+  helper(value);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.lastIndexOf('helper(value)'),
+        'helper'.length,
+        messageContainsAll: ['possible throw'],
+      ),
+    ]);
+  }
+
+  Future<void> test_loopThrow_isPossibleRatherThanDefinite() async {
+    const code = r'''
+void helper(bool enabled) {
+  while (enabled) {
+    throw 'boom';
+  }
+}
+
+void f(bool enabled) {
+  helper(enabled);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.lastIndexOf('helper(enabled)'),
+        'helper'.length,
+        messageContainsAll: ['possible throw'],
+      ),
+    ]);
+  }
+
   Future<void> test_throwCaughtAndRecovered_isNotPropagated() async {
     await assertNoDiagnostics(r'''
 void helper() {

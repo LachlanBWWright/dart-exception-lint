@@ -272,6 +272,20 @@ void f(CustomSink sink) {
     ''');
   }
 
+  Future<void> test_streamListen_withNullOnError_reports() async {
+    const code = r'''
+import 'dart:async';
+
+void f(Stream<int> stream) {
+  stream.listen((value) {}, onError: null);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('listen'), 'listen'.length),
+    ]);
+  }
+
   Future<void> test_unawaitedFutureError_reports() async {
     const code = r'''
 void f() {
@@ -309,6 +323,28 @@ void f() {
 ''';
 
     await assertDiagnostics(code, [lint(code.indexOf('Future.error'), 31)]);
+  }
+
+  Future<void> test_fieldFuture_canBeConsumedByAnotherMethod() async {
+    const code = r'''
+import 'dart:async';
+
+class Holder {
+  Future<void>? pending;
+
+  void start() {
+    this.pending = Future.error(Exception('boom'));
+  }
+
+  Future<void> finish() async {
+    await pending!;
+  }
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await pending!'), 'await pending!'.length),
+    ]);
   }
 
   Future<void>

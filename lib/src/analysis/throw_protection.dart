@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
 import 'exception_annotations.dart';
+import 'exception_type_hierarchy.dart';
 
 bool isProtectedByCatch(
   AstNode node, {
@@ -55,7 +56,8 @@ bool _hasAsyncErrorHandler(AstNode node) {
   while (current != null) {
     if (current is MethodInvocation) {
       if (current.methodName.name == 'catchError' &&
-          current.argumentList.arguments.isNotEmpty) {
+          current.argumentList.arguments.isNotEmpty &&
+          current.argumentList.arguments.first is! NullLiteral) {
         return true;
       }
 
@@ -74,9 +76,14 @@ bool _hasAsyncErrorHandler(AstNode node) {
       }
 
       if (current.methodName.name == 'then') {
-        if (current.argumentList.arguments.any(
-          (argument) =>
-              argument is NamedArgument && argument.name.lexeme == 'onError',
+        final arguments = current.argumentList.arguments;
+        if (arguments.asMap().entries.any(
+          (entry) =>
+              (entry.value is NamedArgument &&
+                  (entry.value as NamedArgument).name.lexeme == 'onError' &&
+                  (entry.value as NamedArgument).argumentExpression
+                      is! NullLiteral) ||
+              (entry.key > 0 && entry.value is! NamedArgument),
         )) {
           return true;
         }
@@ -112,11 +119,8 @@ bool _matchesCatch(List<CatchClause> clauses, List<String> exceptionTypes) {
         caughtName == 'Exception' ||
         caughtName == 'Error' ||
         caughtName == 'dynamic' ||
-        exceptionTypes.contains(caughtName) ||
         exceptionTypes.any(
-          (type) =>
-              (type.endsWith('Exception') && caughtName == 'Exception') ||
-              (type.endsWith('Error') && caughtName == 'Error'),
+          (type) => ExceptionTypeHierarchy.isSubtypeName(type, caughtName),
         )) {
       return true;
     }

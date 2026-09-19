@@ -25,6 +25,16 @@ class CatchUnknownDynamicCallsRuleTest extends AnalysisRuleTest {
   static final CatchUnknownDynamicCallsRule _rule =
       CatchUnknownDynamicCallsRule();
 
+  Future<void> test_unknownBoundary_requiresNoUserAnnotation() async {
+    const code = r'''
+void f(dynamic value) {
+  value.run();
+}
+''';
+
+    await assertDiagnostics(code, [lint(code.indexOf('run'), 'run'.length)]);
+  }
+
   Future<void> test_dynamicMethodCall_reports() async {
     const code = r'''
 void f(dynamic client) {
@@ -91,6 +101,92 @@ Future<void> f(dynamic future) async {
 
     await assertDiagnostics(code, [
       lint(code.lastIndexOf('future'), 'future'.length),
+    ]);
+  }
+
+  Future<void> test_dynamicIteration_reportsWithoutAnnotation() async {
+    const code = r'''
+void f(dynamic values) {
+  for (final value in values) {
+    print(value);
+  }
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('for'), code.indexOf('}') - code.indexOf('for') + 1),
+    ]);
+  }
+
+  Future<void> test_dynamicAsyncIteration_reportsWithoutAnnotation() async {
+    const code = r'''
+Future<void> f(dynamic values) async {
+  await for (final value in values) {
+    print(value);
+  }
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('await for'),
+        code.indexOf('}') - code.indexOf('await for') + 1,
+      ),
+    ]);
+  }
+
+  Future<void> test_dynamicCollectionSpreads_report() async {
+    const code = r'''
+void f(dynamic values) {
+  <dynamic>[...values];
+  <dynamic>{...values};
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('values', code.indexOf('...')), 'values'.length),
+      lint(code.lastIndexOf('values'), 'values'.length),
+    ]);
+  }
+
+  Future<void> test_dynamicYieldStar_reports() async {
+    const code = r'''
+Iterable<dynamic> f(dynamic values) sync* {
+  yield* values;
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('values'), 'values'.length),
+    ]);
+  }
+
+  Future<void> test_dynamicControlConditions_report() async {
+    const code = r'''
+void f(dynamic value) {
+  if (value) {}
+  while (value) {}
+  do {} while (value);
+  value ? print('yes') : print('no');
+  switch (value) { case true: break; }
+}
+''';
+    final bodyStart = code.indexOf('{');
+    final ifOffset = code.indexOf('value', bodyStart);
+    final whileOffset = code.indexOf('value', code.indexOf('while'));
+    final doOffset = code.indexOf('value', code.indexOf('do'));
+    final conditionalOffset = code.indexOf(
+      'value',
+      code.indexOf(';', doOffset) + 1,
+    );
+    final switchOffset = code.lastIndexOf('value');
+
+    await assertDiagnostics(code, [
+      lint(ifOffset, 'value'.length),
+      lint(whileOffset, 'value'.length),
+      lint(doOffset, 'value'.length),
+      lint(conditionalOffset, 'value'.length),
+      lint(switchOffset, 'value'.length),
     ]);
   }
 

@@ -87,6 +87,7 @@ extension ThrowIntentExtension on ThrowIntent {
 enum ThrowSourceKind {
   explicitThrow,
   rethrowExpression,
+  assertion,
   nullAssertion,
   asCast,
   lateInitializationRead,
@@ -116,6 +117,7 @@ extension ThrowSourceKindExtension on ThrowSourceKind {
     ThrowSourceKind.completerCompleteError ||
     ThrowSourceKind.streamAddError ||
     ThrowSourceKind.manifestOverride => ThrowIntent.deliberate,
+    ThrowSourceKind.assertion => ThrowIntent.possible,
     ThrowSourceKind.asyncOperation => ThrowIntent.possible,
     ThrowSourceKind.nullAssertion ||
     ThrowSourceKind.asCast => ThrowIntent.probable,
@@ -248,8 +250,37 @@ final class ThrowSummary {
     required Iterable<String> dependencyElementKeys,
     required bool complete,
     String? truncationReason,
+    int maxSources = 64,
   }) {
-    final collectedSources = List<ThrowSource>.from(sources);
+    final uniqueSources = <String, ThrowSource>{};
+    for (final source in sources) {
+      final key = [
+        source.kind,
+        source.confidence,
+        source.displayName,
+        source.effectiveTiming,
+        source.exceptionTypes.join(','),
+        source.intent,
+        source.origin?.displayName,
+        source.origin?.filePath,
+        source.origin?.offset,
+        source.origin?.length,
+      ].join('|');
+      uniqueSources.putIfAbsent(key, () => source);
+    }
+    final sourceLimit = maxSources < 0 ? 0 : maxSources;
+    final boundedSources = uniqueSources.values.take(sourceLimit).toList();
+    final wasTruncated = uniqueSources.length > boundedSources.length;
+    if (wasTruncated) {
+      boundedSources.add(
+        const ThrowSource(
+          kind: ThrowSourceKind.truncation,
+          confidence: ThrowConfidence.unknown,
+          displayName: 'additional exception sources omitted',
+        ),
+      );
+    }
+    final collectedSources = boundedSources;
     final canThrowSynchronously = collectedSources.any(
       (source) =>
           source.effectiveTiming == ThrowTiming.synchronous &&
@@ -296,7 +327,9 @@ final class ThrowSummary {
       sources: collectedSources,
       dependencyElementKeys: dependencyElementKeys.toSet().toList()..sort(),
       complete: complete,
-      truncationReason: truncationReason,
+      truncationReason: wasTruncated
+          ? (truncationReason ?? 'max_sources_per_summary')
+          : truncationReason,
     );
   }
 }

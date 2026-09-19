@@ -63,6 +63,30 @@ void f(String value) {
     ''');
   }
 
+  Future<void> test_cast_reportsByDefault() async {
+    const code = r'''
+void f(Object value) {
+  value as String;
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('String'), 'String'.length),
+    ]);
+  }
+
+  Future<void> test_indexAccess_reportsByDefault() async {
+    const code = r'''
+void f(List<int> values) {
+  values[99];
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('values[99]'), 'values[99]'.length),
+    ]);
+  }
+
   Future<void> test_customJsonDecodeName_notReported() async {
     await assertNoDiagnostics(r'''
 String jsonDecode(String value) => value;
@@ -133,6 +157,30 @@ void f(int value) {
     ]);
   }
 
+  Future<void> test_assertions_report() async {
+    const code = r'''
+void f(bool condition) {
+  assert(condition);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('condition'), 'condition'.length),
+    ]);
+  }
+
+  Future<void> test_argumentChecks_report() async {
+    const code = r'''
+void f(Object? value) {
+  ArgumentError.checkNotNull(value);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('checkNotNull'), 'checkNotNull'.length),
+    ]);
+  }
+
   Future<void> test_boundsAndSubstringOperations_report() async {
     const code = r'''
 void f(List<int> values, String text) {
@@ -182,6 +230,16 @@ void f(Iterable<int> values, String text) {
     values.singleWhere((value) => value > 10);
     text.codeUnitAt(0);
   } on Object {}
+}
+    ''');
+  }
+
+  Future<void> test_rangeError_isHandledByArgumentErrorCatch() async {
+    await assertNoDiagnostics(r'''
+void f(List<int> values) {
+  try {
+    values.elementAt(99);
+  } on ArgumentError {}
 }
 ''');
   }

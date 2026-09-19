@@ -18,6 +18,8 @@ plugins:
         async_error: true
         unknown: false
       max_call_depth: 7
+      max_sources_per_summary: 12
+      max_dispatch_candidates: 9
       analyze_third_party_source: false
       analyze_sdk_source: false
       treat_dynamic_invocation_as_throwing: false
@@ -28,6 +30,7 @@ plugins:
       treat_as_casts_as_throwing: true
       require_async_error_handling: false
       analyze_test_files: true
+      analyze_generated_files: true
       strictness:
         internal: unknown
         third_party: possible
@@ -46,6 +49,8 @@ plugins:
     expect(options.reportAsyncError, isTrue);
     expect(options.reportUnknown, isFalse);
     expect(options.maxCallDepth, 7);
+    expect(options.maxSourcesPerSummary, 12);
+    expect(options.maxDispatchCandidates, 9);
     expect(options.analyzeThirdPartySource, isFalse);
     expect(options.analyzeSdkSource, isFalse);
     expect(options.treatDynamicInvocationAsThrowing, isFalse);
@@ -56,6 +61,7 @@ plugins:
     expect(options.treatAsCastsAsThrowing, isTrue);
     expect(options.requireAsyncErrorHandling, isFalse);
     expect(options.analyzeTestFiles, isTrue);
+    expect(options.analyzeGeneratedFiles, isTrue);
     expect(
       options.shouldAnalyzeTestFilesForRule('catch_async_error_sources'),
       isFalse,
@@ -80,6 +86,7 @@ plugins:
     expect(options.internalStrictness, ThrowIntent.possible);
     expect(options.thirdPartyStrictness, ThrowIntent.deliberate);
     expect(options.analyzeTestFiles, isFalse);
+    expect(options.analyzeGeneratedFiles, isFalse);
     expect(options.shouldAnalyzeTestFilesForRule('no_manual_throw'), isFalse);
   });
 
@@ -96,6 +103,49 @@ plugins:
       isA<Err<ExceptionAnalysisOptions, ExceptionAnalysisOptionsFailure>>(),
     );
     expect(result.errorOrNull, isA<ExceptionAnalysisOptionsWireParseFailure>());
+  });
+
+  test('returns error for malformed scalar configuration values', () {
+    final result = ExceptionAnalysisOptions.parseResult('''
+exception_analysis:
+  max_call_depth: -1
+  analyze_generated_files: yes
+''');
+    expect(
+      result,
+      isA<Err<ExceptionAnalysisOptions, ExceptionAnalysisOptionsFailure>>(),
+    );
+    expect(result.errorOrNull, isA<ExceptionAnalysisOptionsValueFailure>());
+  });
+
+  test('returns error for misspelled configuration keys', () {
+    final result = ExceptionAnalysisOptions.parseResult('''
+exception_analysis:
+  treat_parse_method_as_throwing: false
+''');
+
+    expect(
+      result.errorOrNull,
+      isA<ExceptionAnalysisOptionsUnknownKeyFailure>(),
+    );
+  });
+
+  test('validates nested report, strictness, and rule keys', () {
+    final result = ExceptionAnalysisOptions.parseResult('''
+exception_analysis:
+  report:
+    possbile_throw: true
+  strictness:
+    third_pary: unknown
+  rules:
+    catch_runtime_throw_sources:
+      analyze_test_files: true
+''');
+
+    expect(
+      result.errorOrNull,
+      isA<ExceptionAnalysisOptionsUnknownKeyFailure>(),
+    );
   });
 
   test('identifies test dart files', () {
@@ -135,6 +185,19 @@ plugins:
       ),
       isFalse,
     );
+  });
+
+  test('identifies common generated Dart files', () {
+    for (final path in const [
+      'lib/model.g.dart',
+      'lib/model.freezed.dart',
+      'lib/client.mocks.dart',
+      'lib/schema.graphql.dart',
+      'lib/api.routes.dart',
+    ]) {
+      expect(isGeneratedDartFile(path), isTrue, reason: path);
+    }
+    expect(isGeneratedDartFile('lib/handwritten.dart'), isFalse);
   });
 
   test('skips test files unless rule override enables them', () {

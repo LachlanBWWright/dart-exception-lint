@@ -144,6 +144,15 @@ final class ThrowSourceCatalog {
     );
   }
 
+  static ThrowSource matchAssertStatement(AssertStatement node) {
+    return const ThrowSource(
+      kind: ThrowSourceKind.assertion,
+      confidence: ThrowConfidence.possibleThrow,
+      displayName: 'assertion',
+      exceptionTypes: ['AssertionError'],
+    );
+  }
+
   static ThrowSource? _matchFunctionInvocation(
     FunctionExpressionInvocation node, {
     required String? libraryUri,
@@ -156,6 +165,16 @@ final class ThrowSourceCatalog {
         kind: ThrowSourceKind.decodeCall,
         confidence: ThrowConfidence.possibleThrow,
         displayName: 'jsonDecode',
+        exceptionTypes: ['FormatException'],
+      );
+    }
+
+    if (callableName == 'base64Decode' &&
+        _isExpectedLibrary(libraryUri, 'dart:convert')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.decodeCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'base64Decode',
         exceptionTypes: ['FormatException'],
       );
     }
@@ -178,6 +197,15 @@ final class ThrowSourceCatalog {
         displayName: 'Future.error',
         isAsync: true,
         exceptionTypes: _argumentExceptionTypes(node.argumentList),
+      );
+    }
+
+    if (className == 'Timer' && _isExpectedLibrary(libraryUri, 'dart:async')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Timer callback',
+        isAsync: true,
       );
     }
 
@@ -212,7 +240,10 @@ final class ThrowSourceCatalog {
     required ExceptionAnalysisOptions options,
   }) {
     final name = callableName ?? node.methodName.name;
-    final targetSource = enclosingClassName ?? node.target?.toSource();
+    final targetSource =
+        enclosingClassName ??
+        node.target?.staticType?.getDisplayString() ??
+        node.target?.toSource();
     if (options.treatParseMethodsAsThrowing &&
         name == 'parse' &&
         _isExpectedLibrary(libraryUri, 'dart:core')) {
@@ -262,6 +293,39 @@ final class ThrowSourceCatalog {
       }
     }
 
+    if (_isExpectedLibrary(libraryUri, 'dart:core') &&
+        enclosingClassName == 'Uri' &&
+        (name == 'decodeComponent' || name == 'decodeFull')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.decodeCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'Uri decoding',
+        exceptionTypes: ['FormatException'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:core') &&
+        enclosingClassName == 'UriData' &&
+        name == 'parse') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.parseCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'UriData.parse',
+        exceptionTypes: ['FormatException'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:core') &&
+        enclosingClassName == 'String' &&
+        (name == 'fromCharCode' || name == 'fromCharCodes')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'String character construction',
+        exceptionTypes: ['RangeError'],
+      );
+    }
+
     if (name == 'jsonDecode' &&
         targetSource == null &&
         _isExpectedLibrary(libraryUri, 'dart:convert')) {
@@ -282,15 +346,153 @@ final class ThrowSourceCatalog {
       );
     }
 
+    if (name == 'convert' &&
+        targetSource == 'JsonEncoder' &&
+        _isExpectedLibrary(libraryUri, 'dart:convert')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.decodeCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'JsonEncoder.convert',
+        exceptionTypes: ['JsonUnsupportedObjectError'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:convert') &&
+        (name == 'decode' &&
+            (targetSource == 'Utf8Codec' ||
+                targetSource == 'Base64Codec' ||
+                targetSource == 'AsciiCodec' ||
+                targetSource == 'Latin1Codec'))) {
+      return ThrowSource(
+        kind: ThrowSourceKind.decodeCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: '$targetSource.decode',
+        exceptionTypes: const ['FormatException'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:convert') &&
+        name == 'convert' &&
+        (targetSource == 'Utf8Decoder' ||
+            targetSource == 'Base64Decoder' ||
+            targetSource == 'AsciiDecoder' ||
+            targetSource == 'Latin1Decoder')) {
+      return ThrowSource(
+        kind: ThrowSourceKind.decodeCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: '$targetSource.convert',
+        exceptionTypes: const ['FormatException'],
+      );
+    }
+
+    // Stream terminal operations asynchronously surface both errors emitted
+    // by the stream and state errors such as an empty stream. Keep the
+    // exception list open because a stream may carry application-defined
+    // errors as well as SDK errors.
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'Stream' &&
+        (name == 'first' ||
+            name == 'last' ||
+            name == 'single' ||
+            name == 'elementAt' ||
+            name == 'firstWhere' ||
+            name == 'lastWhere' ||
+            name == 'singleWhere' ||
+            name == 'reduce' ||
+            name == 'fold' ||
+            name == 'toList')) {
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Stream.$name',
+        isAsync: true,
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'Stream' &&
+        (name == 'timeout' || name == 'drain' || name == 'toSet')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Stream terminal operation',
+        isAsync: true,
+      );
+    }
+
+    // These operations asynchronously surface errors from the source stream,
+    // callback, transformer, or destination sink.
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'Stream' &&
+        const {
+          'listen',
+          'asBroadcastStream',
+          'transform',
+          'pipe',
+          'join',
+          'contains',
+          'any',
+          'every',
+          'forEach',
+          'map',
+          'where',
+          'expand',
+          'asyncMap',
+          'asyncExpand',
+          'distinct',
+          'take',
+          'takeWhile',
+          'skip',
+          'skipWhile',
+          'whereType',
+          'cast',
+        }.contains(name)) {
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Stream.$name',
+        isAsync: true,
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:core') &&
+        enclosingClassName == 'ArgumentError' &&
+        name == 'checkNotNull') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'ArgumentError.checkNotNull',
+        exceptionTypes: ['ArgumentError'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:core') &&
+        enclosingClassName == 'RangeError' &&
+        (name == 'checkValidIndex' ||
+            name == 'checkValidRange' ||
+            name == 'checkValueInInterval')) {
+      return ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'RangeError.$name',
+        exceptionTypes: const ['RangeError'],
+      );
+    }
+
     if (options.treatCollectionStateAsThrowing &&
         _isExpectedLibrary(libraryUri, 'dart:core') &&
         (name == 'single' ||
+            name == 'reduce' ||
             name == 'first' ||
             name == 'last' ||
             name == 'elementAt' ||
             name == 'removeAt' ||
             name == 'insert' ||
             name == 'setRange' ||
+            name == 'setAll' ||
+            name == 'fillRange' ||
+            name == 'replaceRange' ||
+            name == 'removeRange' ||
             name == 'substring' ||
             name == 'codeUnitAt' ||
             name == 'byName')) {
@@ -299,6 +501,39 @@ final class ThrowSourceCatalog {
         confidence: ThrowConfidence.possibleThrow,
         displayName: name,
         exceptionTypes: const ['RangeError', 'StateError'],
+      );
+    }
+
+    if (options.treatCollectionStateAsThrowing &&
+        _isExpectedLibrary(libraryUri, 'dart:core') &&
+        const {
+          'getRange',
+          'insertAll',
+          'skip',
+          'take',
+          'skipWhile',
+          'takeWhile',
+        }.contains(name)) {
+      return ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: name,
+        exceptionTypes: const ['RangeError', 'ArgumentError'],
+      );
+    }
+
+    if (options.treatCollectionStateAsThrowing &&
+        _isExpectedLibrary(libraryUri, 'dart:core') &&
+        name == 'update' &&
+        (targetSource == 'Map' || targetSource?.startsWith('Map<') == true) &&
+        node.argumentList.arguments.whereType<NamedArgument>().every(
+          (argument) => argument.name.lexeme != 'ifAbsent',
+        )) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'Map.update',
+        exceptionTypes: ['StateError'],
       );
     }
 
@@ -356,12 +591,112 @@ final class ThrowSourceCatalog {
 
     if (_isExpectedLibrary(libraryUri, 'dart:async') &&
         enclosingClassName == 'Future' &&
+        const {'then', 'catchError', 'asStream'}.contains(name)) {
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Future.$name',
+        isAsync: true,
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'StreamController' &&
+        const {'addStream', 'close'}.contains(name)) {
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'StreamController.$name',
+        isAsync: true,
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'Future' &&
         name == 'timeout') {
       return const ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
         confidence: ThrowConfidence.asyncError,
         displayName: 'Future.timeout',
         isAsync: true,
+        exceptionTypes: ['TimeoutException'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'Future' &&
+        name == 'whenComplete') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Future.whenComplete',
+        isAsync: true,
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:isolate') &&
+        enclosingClassName == 'Isolate' &&
+        (name == 'spawn' || name == 'spawnUri')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Isolate spawn',
+        isAsync: true,
+        exceptionTypes: ['IsolateSpawnException'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:typed_data') &&
+        (name == 'getInt8' ||
+            name == 'getUint8' ||
+            name == 'getInt16' ||
+            name == 'getUint16' ||
+            name == 'getInt32' ||
+            name == 'getUint32' ||
+            name == 'getInt64' ||
+            name == 'getUint64' ||
+            name == 'getFloat32' ||
+            name == 'getFloat64' ||
+            name == 'setInt8' ||
+            name == 'setUint8' ||
+            name == 'setInt16' ||
+            name == 'setUint16' ||
+            name == 'setInt32' ||
+            name == 'setUint32' ||
+            name == 'setInt64' ||
+            name == 'setUint64' ||
+            name == 'setFloat32' ||
+            name == 'setFloat64')) {
+      return ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'ByteData.$name',
+        exceptionTypes: const ['RangeError'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:typed_data') &&
+        const {
+          'asInt8List',
+          'asUint8List',
+          'asInt16List',
+          'asUint16List',
+          'asInt32List',
+          'asUint32List',
+          'asInt64List',
+          'asUint64List',
+          'asFloat32List',
+          'asFloat64List',
+          'sublistView',
+          'sublist',
+          'getRange',
+          'setRange',
+        }.contains(name)) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'typed-data bounds operation',
+        exceptionTypes: ['RangeError'],
       );
     }
 
@@ -376,6 +711,17 @@ final class ThrowSourceCatalog {
       );
     }
 
+    if (name == 'complete' &&
+        enclosingClassName == 'Completer' &&
+        _isExpectedLibrary(libraryUri, 'dart:async')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'Completer.complete',
+        exceptionTypes: ['StateError'],
+      );
+    }
+
     if (name == 'addError' && _isExpectedLibrary(libraryUri, 'dart:async')) {
       return ThrowSource(
         kind: ThrowSourceKind.streamAddError,
@@ -383,6 +729,163 @@ final class ThrowSourceCatalog {
         displayName: 'StreamController.addError',
         isAsync: true,
         exceptionTypes: _argumentExceptionTypes(node.argumentList),
+      );
+    }
+
+    if (name == 'add' &&
+        enclosingClassName == 'StreamController' &&
+        _isExpectedLibrary(libraryUri, 'dart:async')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'StreamController.add',
+        exceptionTypes: ['StateError'],
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'Timer' &&
+        name == 'run') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Timer.run',
+        isAsync: true,
+      );
+    }
+
+    if (_isExpectedLibrary(libraryUri, 'dart:async') &&
+        enclosingClassName == 'Timer' &&
+        name == 'periodic') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'Timer.periodic',
+        isAsync: true,
+      );
+    }
+
+    if (options.treatIoOperationsAsThrowing &&
+        _isExpectedLibrary(libraryUri, 'dart:io')) {
+      final ioMethods = <String, List<String>>{
+        'File': [
+          'readAsBytes',
+          'readAsString',
+          'writeAsBytes',
+          'writeAsString',
+          'copy',
+          'create',
+          'delete',
+          'rename',
+          'open',
+          'openRead',
+          'openWrite',
+          'length',
+          'lastModified',
+          'setLastModified',
+          'setLastAccessed',
+          'readAsLines',
+          'renameSync',
+          'copySync',
+          'deleteSync',
+          'createSync',
+        ],
+        'Directory': [
+          'create',
+          'delete',
+          'list',
+          'rename',
+          'watch',
+          'exists',
+          'createTemp',
+          'createSync',
+          'deleteSync',
+          'listSync',
+          'renameSync',
+          'existsSync',
+        ],
+        'Socket': ['connect', 'connectSync', 'listen', 'bind', 'close'],
+        'ServerSocket': ['bind', 'bindSync', 'close'],
+        'RawSocket': ['connect', 'connectSync', 'startConnect'],
+        'SecureSocket': ['connect', 'connectSync'],
+        'HttpClient': [
+          'open',
+          'openUrl',
+          'get',
+          'getUrl',
+          'post',
+          'postUrl',
+          'put',
+          'putUrl',
+          'delete',
+          'deleteUrl',
+          'close',
+        ],
+        'HttpServer': ['bind', 'bindSecure', 'close'],
+        'InternetAddress': ['lookup'],
+        'NetworkInterface': ['list'],
+        'RandomAccessFile': [
+          'read',
+          'readByte',
+          'readInto',
+          'writeFrom',
+          'writeByte',
+          'setPosition',
+          'truncate',
+          'flush',
+          'lock',
+          'unlock',
+          'length',
+          'position',
+          'close',
+          'sync',
+        ],
+      };
+      if (ioMethods[enclosingClassName]?.contains(name) == true) {
+        final isAsync = name != 'connectSync';
+        return ThrowSource(
+          kind: ThrowSourceKind.asyncOperation,
+          confidence: isAsync
+              ? ThrowConfidence.asyncError
+              : ThrowConfidence.possibleThrow,
+          displayName: '$enclosingClassName.$name',
+          isAsync: isAsync,
+          exceptionTypes: const [
+            'FileSystemException',
+            'SocketException',
+            'HttpException',
+          ],
+        );
+      }
+    }
+
+    if (options.treatIoOperationsAsThrowing &&
+        _isExpectedLibrary(libraryUri, 'dart:io') &&
+        (enclosingClassName == 'FileSystemEntity' ||
+            enclosingClassName == 'FileStat') &&
+        (name == 'stat' || name == 'resolveSymbolicLinks' || name == 'watch')) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.asyncError,
+        displayName: 'filesystem operation',
+        isAsync: true,
+        exceptionTypes: ['FileSystemException'],
+      );
+    }
+
+    if (options.treatIoOperationsAsThrowing &&
+        _isExpectedLibrary(libraryUri, 'dart:io') &&
+        enclosingClassName == 'Process' &&
+        (name == 'run' || name == 'runSync' || name == 'start')) {
+      final isAsync = name != 'runSync';
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: isAsync
+            ? ThrowConfidence.asyncError
+            : ThrowConfidence.possibleThrow,
+        displayName: 'Process.$name',
+        isAsync: isAsync,
+        exceptionTypes: const ['ProcessException', 'FileSystemException'],
       );
     }
 

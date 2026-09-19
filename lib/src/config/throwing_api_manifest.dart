@@ -145,6 +145,20 @@ class ThrowingApiManifest {
       specifications.add(parsed.valueOrNull!);
     }
 
+    final seen = <String>{};
+    for (final specification in specifications) {
+      if (!seen.add(specification.identityKey)) {
+        return Err(
+          ManifestStructureFailure(
+            message:
+                'The throwing API manifest contains a duplicate entry for '
+                '${specification.identityKey}.',
+            sourcePath: entrySourcePath,
+          ),
+        );
+      }
+    }
+
     return Ok(ThrowingApiManifest(specifications));
   }
 }
@@ -175,6 +189,17 @@ class ThrowingApiSpecification {
   final ThrowConfidence confidence;
   final bool isAsync;
   final List<String> exceptionTypes;
+
+  String get identityKey => [
+    packageName,
+    libraryUri,
+    className ?? '',
+    methodName ?? '',
+    constructorName ?? '',
+    functionName ?? '',
+    isStatic?.toString() ?? '',
+    appliesToSubtypes.toString(),
+  ].join('|');
 
   static Result<ThrowingApiSpecification, ManifestFailure> fromYamlResult(
     Object? raw, {

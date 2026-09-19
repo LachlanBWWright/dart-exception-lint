@@ -18,6 +18,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
       - name: Analyze package
         run: dart analyze
+      - name: Validate external corpus manifest
+        run: dart run tool/corpus/validate_manifest.dart
       - name: Run tests
         run: dart test
       - name: Verify example consumer

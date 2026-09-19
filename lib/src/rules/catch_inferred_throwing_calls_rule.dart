@@ -7,6 +7,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/error/error.dart';
 
 import '../analysis/inferred_throw_analyzer.dart';
+import '../analysis/diagnostic_emission_guard.dart';
 import '../analysis/throw_protection.dart';
 import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
@@ -86,6 +87,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   final AnalysisRule rule;
   final InferredThrowAnalyzer analyzer;
+  final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
   final Map<Element, ExecutableElement> _callableAliases = {};
 
   @override
@@ -179,6 +181,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
 
+    if (!_emissions.claim(diagnosticTarget)) return;
     rule.reportAtNode(
       diagnosticTarget,
       arguments: [

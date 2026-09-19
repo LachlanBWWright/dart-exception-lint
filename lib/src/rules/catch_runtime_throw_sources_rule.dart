@@ -6,6 +6,8 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
 import '../analysis/throw_protection.dart';
+import '../analysis/exception_type_labels.dart';
+import '../analysis/diagnostic_emission_guard.dart';
 import '../analysis/throw_source_catalog.dart';
 import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
@@ -54,6 +56,7 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     registry.addAsExpression(this, visitor);
     registry.addBinaryExpression(this, visitor);
     registry.addSimpleIdentifier(this, visitor);
+    registry.addAssertStatement(this, visitor);
   }
 }
 
@@ -62,6 +65,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   final AnalysisRule rule;
   final ExceptionAnalysisOptions options;
+  final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
 
   @override
   void visitAsExpression(AsExpression node) {
@@ -140,6 +144,12 @@ final class _Visitor extends SimpleAstVisitor<void> {
     _report(node, node, source.displayName, source.exceptionTypes);
   }
 
+  @override
+  void visitAssertStatement(AssertStatement node) {
+    final source = ThrowSourceCatalog.matchAssertStatement(node);
+    _report(node, node.condition, source.displayName, source.exceptionTypes);
+  }
+
   void _report(
     AstNode node,
     AstNode diagnosticTarget,
@@ -150,6 +160,11 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
 
-    rule.reportAtNode(diagnosticTarget, arguments: [displayName]);
+    if (_emissions.claim(diagnosticTarget)) {
+      rule.reportAtNode(
+        diagnosticTarget,
+        arguments: [displayName, exceptionTypeLabel(exceptionTypes)],
+      );
+    }
   }
 }

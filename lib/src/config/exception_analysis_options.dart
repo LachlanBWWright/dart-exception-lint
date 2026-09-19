@@ -14,18 +14,22 @@ final class ExceptionAnalysisOptions {
     this.reportAsyncError = true,
     this.reportUnknown = true,
     this.maxCallDepth = 4,
+    this.maxSourcesPerSummary = 64,
+    this.maxDispatchCandidates = 64,
     this.analyzeThirdPartySource = true,
     this.analyzeSdkSource = true,
     this.treatDynamicInvocationAsThrowing = true,
     this.treatExternalCallsAsThrowing = true,
-    this.treatIndexAccessAsThrowing = false,
+    this.treatIndexAccessAsThrowing = true,
     this.treatCollectionStateAsThrowing = true,
     this.treatParseMethodsAsThrowing = true,
-    this.treatAsCastsAsThrowing = false,
+    this.treatAsCastsAsThrowing = true,
     this.treatLateInitializationAsThrowing = true,
     this.treatArithmeticAsThrowing = true,
+    this.treatIoOperationsAsThrowing = true,
     this.requireAsyncErrorHandling = true,
     this.analyzeTestFiles = false,
+    this.analyzeGeneratedFiles = false,
     this.ruleTestFileOverrides = const {},
     this.internalStrictness = ThrowIntent.possible,
     this.thirdPartyStrictness = ThrowIntent.deliberate,
@@ -36,6 +40,8 @@ final class ExceptionAnalysisOptions {
   final bool reportAsyncError;
   final bool reportUnknown;
   final int maxCallDepth;
+  final int maxSourcesPerSummary;
+  final int maxDispatchCandidates;
   final bool analyzeThirdPartySource;
   final bool analyzeSdkSource;
   final bool treatDynamicInvocationAsThrowing;
@@ -46,8 +52,10 @@ final class ExceptionAnalysisOptions {
   final bool treatAsCastsAsThrowing;
   final bool treatLateInitializationAsThrowing;
   final bool treatArithmeticAsThrowing;
+  final bool treatIoOperationsAsThrowing;
   final bool requireAsyncErrorHandling;
   final bool analyzeTestFiles;
+  final bool analyzeGeneratedFiles;
   final Map<String, bool> ruleTestFileOverrides;
   final ThrowIntent internalStrictness;
   final ThrowIntent thirdPartyStrictness;
@@ -162,6 +170,54 @@ final class ExceptionAnalysisOptions {
     final strictness = analysisConfig['strictness'];
     final rules = analysisConfig['rules'];
 
+    const knownKeys = {
+      'report',
+      'strictness',
+      'rules',
+      'max_call_depth',
+      'max_sources_per_summary',
+      'max_dispatch_candidates',
+      'analyze_third_party_source',
+      'analyze_sdk_source',
+      'treat_dynamic_invocation_as_throwing',
+      'treat_external_calls_as_throwing',
+      'treat_index_access_as_throwing',
+      'treat_collection_state_as_throwing',
+      'treat_parse_methods_as_throwing',
+      'treat_as_casts_as_throwing',
+      'treat_late_initialization_as_throwing',
+      'treat_arithmetic_as_throwing',
+      'treat_io_operations_as_throwing',
+      'require_async_error_handling',
+      'analyze_test_files',
+      'analyze_generated_files',
+    };
+    for (final key in analysisConfig.keys) {
+      if (key is String && !knownKeys.contains(key)) {
+        return Err(
+          ExceptionAnalysisOptionsUnknownKeyFailure(
+            key: key,
+            sourcePath: sourcePath ?? defaultRelativePath,
+          ),
+        );
+      }
+    }
+
+    final shapeFailure = _validateNestedShapes(
+      report,
+      strictness,
+      rules,
+      sourcePath ?? defaultRelativePath,
+    );
+    if (shapeFailure != null) return Err(shapeFailure);
+
+    final scalarFailure = _validateScalarValues(
+      analysisConfig,
+      report,
+      sourcePath ?? defaultRelativePath,
+    );
+    if (scalarFailure != null) return Err(scalarFailure);
+
     final internalStrictnessResult = _readThrowIntent(
       strictness,
       'internal',
@@ -186,7 +242,14 @@ final class ExceptionAnalysisOptions {
         reportPossibleThrow: _readBool(report, 'possible_throw') ?? true,
         reportAsyncError: _readBool(report, 'async_error') ?? true,
         reportUnknown: _readBool(report, 'unknown') ?? true,
-        maxCallDepth: _readInt(analysisConfig, 'max_call_depth') ?? 4,
+        maxCallDepth:
+            _readNonNegativeInt(analysisConfig, 'max_call_depth') ?? 4,
+        maxSourcesPerSummary:
+            _readNonNegativeInt(analysisConfig, 'max_sources_per_summary') ??
+            64,
+        maxDispatchCandidates:
+            _readNonNegativeInt(analysisConfig, 'max_dispatch_candidates') ??
+            64,
         analyzeThirdPartySource:
             _readBool(analysisConfig, 'analyze_third_party_source') ?? true,
         analyzeSdkSource:
@@ -198,8 +261,7 @@ final class ExceptionAnalysisOptions {
             _readBool(analysisConfig, 'treat_external_calls_as_throwing') ??
             true,
         treatIndexAccessAsThrowing:
-            _readBool(analysisConfig, 'treat_index_access_as_throwing') ??
-            false,
+            _readBool(analysisConfig, 'treat_index_access_as_throwing') ?? true,
         treatCollectionStateAsThrowing:
             _readBool(analysisConfig, 'treat_collection_state_as_throwing') ??
             true,
@@ -207,7 +269,7 @@ final class ExceptionAnalysisOptions {
             _readBool(analysisConfig, 'treat_parse_methods_as_throwing') ??
             true,
         treatAsCastsAsThrowing:
-            _readBool(analysisConfig, 'treat_as_casts_as_throwing') ?? false,
+            _readBool(analysisConfig, 'treat_as_casts_as_throwing') ?? true,
         treatLateInitializationAsThrowing:
             _readBool(
               analysisConfig,
@@ -216,10 +278,15 @@ final class ExceptionAnalysisOptions {
             true,
         treatArithmeticAsThrowing:
             _readBool(analysisConfig, 'treat_arithmetic_as_throwing') ?? true,
+        treatIoOperationsAsThrowing:
+            _readBool(analysisConfig, 'treat_io_operations_as_throwing') ??
+            true,
         requireAsyncErrorHandling:
             _readBool(analysisConfig, 'require_async_error_handling') ?? true,
         analyzeTestFiles:
             _readBool(analysisConfig, 'analyze_test_files') ?? false,
+        analyzeGeneratedFiles:
+            _readBool(analysisConfig, 'analyze_generated_files') ?? false,
         ruleTestFileOverrides: _readRuleTestFileOverrides(rules),
         internalStrictness:
             internalStrictnessResult.valueOrNull ?? ThrowIntent.possible,
@@ -257,6 +324,171 @@ final class ExceptionAnalysisOptions {
     }
     final value = map[key];
     return value is int ? value : null;
+  }
+
+  static int? _readNonNegativeInt(Object? map, String key) {
+    final value = _readInt(map, key);
+    return value != null && value >= 0 ? value : null;
+  }
+
+  static ExceptionAnalysisOptionsValueFailure? _validateScalarValues(
+    YamlMap analysisConfig,
+    Object? report,
+    String sourcePath,
+  ) {
+    const booleans = [
+      'analyze_third_party_source',
+      'analyze_sdk_source',
+      'treat_dynamic_invocation_as_throwing',
+      'treat_external_calls_as_throwing',
+      'treat_index_access_as_throwing',
+      'treat_collection_state_as_throwing',
+      'treat_parse_methods_as_throwing',
+      'treat_as_casts_as_throwing',
+      'treat_late_initialization_as_throwing',
+      'treat_arithmetic_as_throwing',
+      'treat_io_operations_as_throwing',
+      'require_async_error_handling',
+      'analyze_test_files',
+      'analyze_generated_files',
+    ];
+    for (final key in booleans) {
+      if (analysisConfig.containsKey(key) && analysisConfig[key] is! bool) {
+        return ExceptionAnalysisOptionsValueFailure(
+          key: key,
+          expected: 'a boolean',
+          sourcePath: sourcePath,
+        );
+      }
+    }
+    const integers = [
+      'max_call_depth',
+      'max_sources_per_summary',
+      'max_dispatch_candidates',
+    ];
+    for (final key in integers) {
+      if (analysisConfig.containsKey(key) && analysisConfig[key] is! int) {
+        return ExceptionAnalysisOptionsValueFailure(
+          key: key,
+          expected: 'a non-negative integer',
+          sourcePath: sourcePath,
+        );
+      }
+      if (analysisConfig[key] case final int value when value < 0) {
+        return ExceptionAnalysisOptionsValueFailure(
+          key: key,
+          expected: 'a non-negative integer',
+          sourcePath: sourcePath,
+        );
+      }
+    }
+    if (report is YamlMap) {
+      for (final key in const [
+        'definite_throw',
+        'possible_throw',
+        'async_error',
+        'unknown',
+      ]) {
+        if (report.containsKey(key) && report[key] is! bool) {
+          return ExceptionAnalysisOptionsValueFailure(
+            key: 'report.$key',
+            expected: 'a boolean',
+            sourcePath: sourcePath,
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  static ExceptionAnalysisOptionsFailure? _validateNestedShapes(
+    Object? report,
+    Object? strictness,
+    Object? rules,
+    String sourcePath,
+  ) {
+    if (report != null && report is! YamlMap) {
+      return ExceptionAnalysisOptionsValueFailure(
+        key: 'report',
+        expected: 'a map',
+        sourcePath: sourcePath,
+      );
+    }
+    if (strictness != null && strictness is! YamlMap) {
+      return ExceptionAnalysisOptionsValueFailure(
+        key: 'strictness',
+        expected: 'a map',
+        sourcePath: sourcePath,
+      );
+    }
+    if (rules != null && rules is! YamlMap) {
+      return ExceptionAnalysisOptionsValueFailure(
+        key: 'rules',
+        expected: 'a map',
+        sourcePath: sourcePath,
+      );
+    }
+    if (report is YamlMap) {
+      for (final key in report.keys) {
+        if (key is String &&
+            !const {
+              'definite_throw',
+              'possible_throw',
+              'async_error',
+              'unknown',
+            }.contains(key)) {
+          return ExceptionAnalysisOptionsUnknownKeyFailure(
+            key: 'report.$key',
+            sourcePath: sourcePath,
+          );
+        }
+      }
+    }
+    if (strictness is YamlMap) {
+      for (final key in strictness.keys) {
+        if (key is String && !const {'internal', 'third_party'}.contains(key)) {
+          return ExceptionAnalysisOptionsUnknownKeyFailure(
+            key: 'strictness.$key',
+            sourcePath: sourcePath,
+          );
+        }
+      }
+    }
+    if (rules is YamlMap) {
+      const ruleNames = {
+        'no_null_assertion',
+        'no_manual_throw',
+        'catch_throwing_third_party_calls',
+        'catch_runtime_throw_sources',
+        'catch_async_error_sources',
+        'catch_inferred_throwing_calls',
+        'catch_unknown_dynamic_calls',
+      };
+      for (final entry in rules.entries) {
+        if (entry.key is! String || !ruleNames.contains(entry.key)) {
+          return ExceptionAnalysisOptionsUnknownKeyFailure(
+            key: 'rules.${entry.key}',
+            sourcePath: sourcePath,
+          );
+        }
+        if (entry.value is! YamlMap) {
+          return ExceptionAnalysisOptionsValueFailure(
+            key: 'rules.${entry.key}',
+            expected: 'a map',
+            sourcePath: sourcePath,
+          );
+        }
+        for (final key in (entry.value as YamlMap).keys) {
+          if (key != 'analyze_test_files') {
+            return ExceptionAnalysisOptionsUnknownKeyFailure(
+              key: 'rules.${entry.key}.$key',
+              sourcePath: sourcePath,
+            );
+          }
+        }
+      }
+    }
+    return null;
   }
 
   static Map<String, bool> _readRuleTestFileOverrides(Object? map) {

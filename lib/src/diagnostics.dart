@@ -23,14 +23,14 @@ final class DartExceptionLintDiagnostics {
 
   static const LintCode catchRuntimeThrowSources = LintCode(
     'catch_runtime_throw_sources',
-    '{0} can throw at runtime and should be protected.',
+    '{0} can throw {1} at runtime and should be protected.',
     correctionMessage:
         'Try wrapping this operation in try/catch or using a safer alternative.',
   );
 
   static const LintCode catchAsyncErrorSources = LintCode(
     'catch_async_error_sources',
-    '{0} can complete with an error and should be handled.',
+    '{0} can complete with {1} and should be handled.',
     correctionMessage:
         'Try awaiting it inside try/catch or attaching an async error handler.',
   );
@@ -53,5 +53,11 @@ final class DartExceptionLintDiagnostics {
     'invalid_exception_analysis_config',
     'Invalid dart_exception_lint configuration: {0}',
     correctionMessage: 'Fix the referenced configuration file.',
+  );
+
+  static const LintCode invalidExceptionContract = LintCode(
+    'invalid_exception_contract',
+    'Invalid exception contract: {0}',
+    correctionMessage: 'Make the contract agree with the declaration.',
   );
 }

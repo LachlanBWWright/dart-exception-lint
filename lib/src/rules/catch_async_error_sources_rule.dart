@@ -7,6 +7,8 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/error/error.dart';
 
 import '../analysis/inferred_throw_analyzer.dart';
+import '../analysis/exception_type_labels.dart';
+import '../analysis/diagnostic_emission_guard.dart';
 import '../analysis/throw_protection.dart';
 import '../analysis/throw_source_catalog.dart';
 import '../analysis/throw_summary.dart';
@@ -80,7 +82,10 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   final AnalysisRule rule;
   final ExceptionAnalysisOptions options;
   final InferredThrowAnalyzer analyzer;
+  final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
   Map<Element, List<_DeferredAsyncEffect>> _deferredEffects = {};
+  final Map<Element, List<_DeferredAsyncEffect>> _escapedEffects = {};
+  final Map<String, List<_DeferredAsyncEffect>> _escapedEffectsByName = {};
 
   @override
   void visitBlockFunctionBody(BlockFunctionBody node) {
@@ -112,7 +117,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       )) {
         continue;
       }
-      rule.reportAtNode(effect.node, arguments: [effect.displayName]);
+      if (_emissions.claim(effect.node)) {
+        rule.reportAtNode(
+          effect.node,
+          arguments: [
+            effect.displayName,
+            exceptionTypeLabel(effect.exceptionTypes),
+          ],
+        );
+      }
     }
   }
 
@@ -139,6 +152,20 @@ final class _Visitor extends RecursiveAstVisitor<void> {
           _deferredEffects.remove(entry.key);
         }
       }
+      for (final entry in _escapedEffects.entries.toList(growable: false)) {
+        entry.value.removeWhere((effect) => identical(effect, storedEffect));
+        if (entry.value.isEmpty) {
+          _escapedEffects.remove(entry.key);
+        }
+      }
+      for (final entry in _escapedEffectsByName.entries.toList(
+        growable: false,
+      )) {
+        entry.value.removeWhere((effect) => identical(effect, storedEffect));
+        if (entry.value.isEmpty) {
+          _escapedEffectsByName.remove(entry.key);
+        }
+      }
     }
     if (analysis == null &&
         (source == null || !source.confidence.isAsync) &&
@@ -161,7 +188,12 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       return;
     }
 
-    rule.reportAtNode(node, arguments: [displayName]);
+    if (_emissions.claim(node)) {
+      rule.reportAtNode(
+        node,
+        arguments: [displayName, exceptionTypeLabel(exceptionTypes)],
+      );
+    }
   }
 
   @override
@@ -200,7 +232,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       requireAsyncProtection: requiresAsyncProtection,
       exceptionTypes: analysis.exceptionTypes,
     )) {
-      rule.reportAtNode(node, arguments: [analysis.displayName]);
+      if (_emissions.claim(node)) {
+        rule.reportAtNode(
+          node,
+          arguments: [
+            analysis.displayName,
+            exceptionTypeLabel(analysis.exceptionTypes),
+          ],
+        );
+      }
     }
   }
 
@@ -257,7 +297,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       )) {
         return;
       }
-      rule.reportAtNode(node.methodName, arguments: [effect.displayName]);
+      if (_emissions.claim(node.methodName)) {
+        rule.reportAtNode(
+          node.methodName,
+          arguments: [
+            effect.displayName,
+            exceptionTypeLabel(effect.exceptionTypes),
+          ],
+        );
+      }
       return;
     }
 
@@ -284,8 +332,20 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     final source = directSource ?? chainedSource;
     if (source == null || !source.confidence.isAsync) {
       if (_isUnhandledListen(node)) {
-        rule.reportAtNode(node.methodName, arguments: ['Stream.listen']);
+        if (_emissions.claim(node.methodName)) {
+          rule.reportAtNode(
+            node.methodName,
+            arguments: ['Stream.listen', 'an exception'],
+          );
+        }
       }
+      return;
+    }
+
+    // Stream.listen has dedicated handling below so an explicit onError
+    // callback is respected. Treating it like every other async operation
+    // would report already-handled listeners.
+    if (source.displayName == 'Stream.listen' && !_isUnhandledListen(node)) {
       return;
     }
 
@@ -305,7 +365,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       return;
     }
 
-    rule.reportAtNode(node.methodName, arguments: [source.displayName]);
+    if (_emissions.claim(node.methodName)) {
+      rule.reportAtNode(
+        node.methodName,
+        arguments: [
+          source.displayName,
+          exceptionTypeLabel(source.exceptionTypes),
+        ],
+      );
+    }
   }
 
   void _reportDirectAsyncSource(
@@ -344,7 +412,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       )) {
         return;
       }
-      rule.reportAtNode(diagnosticTarget, arguments: [effect.displayName]);
+      if (_emissions.claim(diagnosticTarget)) {
+        rule.reportAtNode(
+          diagnosticTarget,
+          arguments: [
+            effect.displayName,
+            exceptionTypeLabel(effect.exceptionTypes),
+          ],
+        );
+      }
       return;
     }
     final source = ThrowSourceCatalog.matchResolvedInvocation(
@@ -367,7 +443,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     )) {
       return;
     }
-    rule.reportAtNode(diagnosticTarget, arguments: [source.displayName]);
+    if (_emissions.claim(diagnosticTarget)) {
+      rule.reportAtNode(
+        diagnosticTarget,
+        arguments: [
+          source.displayName,
+          exceptionTypeLabel(source.exceptionTypes),
+        ],
+      );
+    }
   }
 
   bool _isUnhandledListen(MethodInvocation node) {
@@ -381,9 +465,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       return false;
     }
 
-    return node.argumentList.arguments.whereType<NamedArgument>().every(
-      (argument) => argument.name.lexeme != 'onError',
-    );
+    final onErrorArguments = node.argumentList.arguments
+        .whereType<NamedArgument>()
+        .where((argument) => argument.name.lexeme == 'onError')
+        .toList(growable: false);
+    if (onErrorArguments.isEmpty) return true;
+    final onError = onErrorArguments.first;
+    // `onError: null` is equivalent to omitting the handler; merely seeing the
+    // named argument is not proof that the asynchronous error is consumed.
+    return onError.argumentExpression is NullLiteral;
   }
 
   Element? _elementForInvocation(Expression expression) {
@@ -416,6 +506,17 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     // it will eventually be awaited, but reporting it as an abandoned local
     // Future is incorrect because another method may own the consumption.
     if (element == null && _isEscapingAssignment(node)) {
+      final name = _escapingAssignmentName(node);
+      if (name != null) {
+        (_escapedEffectsByName[name] ??= <_DeferredAsyncEffect>[]).add(
+          _DeferredAsyncEffect(
+            node: node,
+            displayName: displayName,
+            exceptionTypes: exceptionTypes,
+            mayEscapeScope: true,
+          ),
+        );
+      }
       return true;
     }
     if (element == null) return false;
@@ -425,7 +526,10 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       exceptionTypes: exceptionTypes,
       mayEscapeScope: element is! LocalVariableElement,
     );
-    (_deferredEffects[element] ??= <_DeferredAsyncEffect>[]).add(effect);
+    final destination = element is LocalVariableElement
+        ? _deferredEffects
+        : _escapedEffects;
+    (destination[element] ??= <_DeferredAsyncEffect>[]).add(effect);
     return true;
   }
 
@@ -445,11 +549,30 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     };
   }
 
+  String? _escapingAssignmentName(AstNode node) {
+    final parent = node.parent;
+    if (parent is! AssignmentExpression ||
+        !identical(parent.rightHandSide, node)) {
+      return null;
+    }
+    return switch (parent.leftHandSide) {
+      PropertyAccess(:final propertyName) => propertyName.name,
+      SimpleIdentifier(:final name) => name,
+      _ => null,
+    };
+  }
+
   _DeferredAsyncEffect? _effectForExpression(Expression expression) {
     switch (expression) {
       case SimpleIdentifier(:final element):
-        final effects = _deferredEffects[element];
-        return effects == null || effects.isEmpty ? null : effects.first;
+        final effects = _deferredEffects[element] ?? _escapedEffects[element];
+        if (effects case final effects? when effects.isNotEmpty) {
+          return effects.first;
+        }
+        final namedEffects = _escapedEffectsByName[expression.name];
+        return namedEffects == null || namedEffects.isEmpty
+            ? null
+            : namedEffects.first;
       case ParenthesizedExpression(:final expression):
         return _effectForExpression(expression);
       case PropertyAccess(:final target):
@@ -458,6 +581,9 @@ final class _Visitor extends RecursiveAstVisitor<void> {
         return _effectForExpression(prefix);
       case IndexExpression(:final realTarget):
         return _effectForExpression(realTarget);
+      case PostfixExpression(:final operator, :final operand)
+          when operator.lexeme == '!':
+        return _effectForExpression(operand);
       case ConditionalExpression(:final thenExpression, :final elseExpression):
         return _effectForExpression(thenExpression) ??
             _effectForExpression(elseExpression);

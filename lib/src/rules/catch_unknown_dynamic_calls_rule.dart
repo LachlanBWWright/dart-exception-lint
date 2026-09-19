@@ -8,6 +8,7 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
 import '../analysis/inferred_throw_analyzer.dart';
+import '../analysis/diagnostic_emission_guard.dart';
 import '../analysis/throw_protection.dart';
 import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
@@ -64,6 +65,7 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
     };
     final visitor = _Visitor(
       this,
+      options,
       InferredThrowAnalyzer(
         manifest: manifest,
         options: options,
@@ -81,14 +83,24 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
     registry.addBinaryExpression(this, visitor);
     registry.addPrefixedIdentifier(this, visitor);
     registry.addAwaitExpression(this, visitor);
+    registry.addForStatement(this, visitor);
+    registry.addSpreadElement(this, visitor);
+    registry.addYieldStatement(this, visitor);
+    registry.addIfStatement(this, visitor);
+    registry.addWhileStatement(this, visitor);
+    registry.addDoStatement(this, visitor);
+    registry.addConditionalExpression(this, visitor);
+    registry.addSwitchStatement(this, visitor);
   }
 }
 
 final class _Visitor extends SimpleAstVisitor<void> {
-  _Visitor(this.rule, this.analyzer);
+  _Visitor(this.rule, this.options, this.analyzer);
 
   final AnalysisRule rule;
+  final ExceptionAnalysisOptions options;
   final InferredThrowAnalyzer analyzer;
+  final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
@@ -138,14 +150,107 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitAwaitExpression(AwaitExpression node) {
-    if (node.expression.staticType is! DynamicType) {
+    if (!options.treatDynamicInvocationAsThrowing ||
+        node.expression.staticType is! DynamicType) {
       return;
     }
     if (isProtectedByCatch(node)) {
       return;
     }
 
-    rule.reportAtNode(node.expression, arguments: ['dynamic await']);
+    if (_emissions.claim(node.expression)) {
+      rule.reportAtNode(node.expression, arguments: ['dynamic await']);
+    }
+  }
+
+  @override
+  void visitForStatement(ForStatement node) {
+    if (node.forLoopParts is! ForEachParts) return;
+    if (!options.treatDynamicInvocationAsThrowing) return;
+    final iterable = (node.forLoopParts as ForEachParts).iterable;
+    if (iterable.staticType is! DynamicType || isProtectedByCatch(node)) {
+      return;
+    }
+    if (_emissions.claim(node)) {
+      rule.reportAtNode(
+        node,
+        arguments: [
+          node.awaitKeyword == null
+              ? 'dynamic iteration'
+              : 'dynamic async iteration',
+        ],
+      );
+    }
+  }
+
+  @override
+  void visitSpreadElement(SpreadElement node) {
+    if (!options.treatDynamicInvocationAsThrowing ||
+        node.expression.staticType is! DynamicType ||
+        isProtectedByCatch(node)) {
+      return;
+    }
+    if (_emissions.claim(node.expression)) {
+      rule.reportAtNode(node.expression, arguments: ['dynamic spread']);
+    }
+  }
+
+  @override
+  void visitYieldStatement(YieldStatement node) {
+    if (!options.treatDynamicInvocationAsThrowing ||
+        node.star == null ||
+        node.expression.staticType is! DynamicType ||
+        isProtectedByCatch(node)) {
+      return;
+    }
+    if (_emissions.claim(node.expression)) {
+      rule.reportAtNode(node.expression, arguments: ['dynamic yield*']);
+    }
+  }
+
+  @override
+  void visitIfStatement(IfStatement node) {
+    _reportDynamicBoolean(node, node.expression, 'dynamic condition');
+    super.visitIfStatement(node);
+  }
+
+  @override
+  void visitWhileStatement(WhileStatement node) {
+    _reportDynamicBoolean(node, node.condition, 'dynamic condition');
+    super.visitWhileStatement(node);
+  }
+
+  @override
+  void visitDoStatement(DoStatement node) {
+    _reportDynamicBoolean(node, node.condition, 'dynamic condition');
+    super.visitDoStatement(node);
+  }
+
+  @override
+  void visitConditionalExpression(ConditionalExpression node) {
+    _reportDynamicBoolean(node, node.condition, 'dynamic condition');
+    super.visitConditionalExpression(node);
+  }
+
+  @override
+  void visitSwitchStatement(SwitchStatement node) {
+    _reportDynamicBoolean(node, node.expression, 'dynamic switch value');
+    super.visitSwitchStatement(node);
+  }
+
+  void _reportDynamicBoolean(
+    AstNode reportNode,
+    Expression expression,
+    String displayName,
+  ) {
+    if (!options.treatDynamicInvocationAsThrowing ||
+        expression.staticType is! DynamicType ||
+        isProtectedByCatch(reportNode)) {
+      return;
+    }
+    if (_emissions.claim(expression)) {
+      rule.reportAtNode(expression, arguments: [displayName]);
+    }
   }
 
   void _report(
@@ -167,6 +272,8 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
 
-    rule.reportAtNode(diagnosticTarget, arguments: [analysis.displayName]);
+    if (_emissions.claim(diagnosticTarget)) {
+      rule.reportAtNode(diagnosticTarget, arguments: [analysis.displayName]);
+    }
   }
 }

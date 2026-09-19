@@ -6,3 +6,7 @@ pubspec.lock
 .idea/
 .vscode/
 *.iml
+
+tool/corpus/results.tsv
+tool/corpus/*.log
+tool/corpus/summary.md

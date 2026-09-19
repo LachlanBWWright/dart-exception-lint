@@ -381,6 +381,7 @@ final class InferredThrowAnalyzer {
       dependencyElementKeys: visitor.dependencies,
       complete: visitor.complete,
       truncationReason: visitor.truncationReason,
+      maxSources: options.maxSourcesPerSummary,
     );
   }
 
@@ -610,8 +611,12 @@ final class InferredThrowAnalyzer {
       );
     });
 
+    final candidateList = candidates.toList();
+    final candidateLimit = options.maxDispatchCandidates < 0
+        ? 0
+        : options.maxDispatchCandidates;
     final candidateSummaries = <ThrowSummary>[];
-    for (final candidate in candidates) {
+    for (final candidate in candidateList.take(candidateLimit)) {
       final callable = ResolvedCallable.tryCreate(candidate);
       final key =
           callable?.elementKey ??
@@ -629,6 +634,8 @@ final class InferredThrowAnalyzer {
     }
     if (candidateSummaries.isEmpty) return baseSummary;
 
+    final dispatchWasTruncated = candidateList.length > candidateLimit;
+
     return ThrowSummary.merge(
       baseSummary.elementKey,
       [
@@ -642,8 +649,11 @@ final class InferredThrowAnalyzer {
       ],
       complete:
           baseSummary.complete &&
-          candidateSummaries.every((summary) => summary.complete),
-      truncationReason: baseSummary.truncationReason,
+          candidateSummaries.every((summary) => summary.complete) &&
+          !dispatchWasTruncated,
+      truncationReason: dispatchWasTruncated
+          ? 'max_dispatch_candidates'
+          : baseSummary.truncationReason,
     );
   }
 
@@ -963,6 +973,11 @@ final class InferredThrowAnalyzer {
     } on FileSystemException {
       return parseString(content: '', path: path, featureSet: _featureSet).unit;
     } on FormatException {
+      return parseString(content: '', path: path, featureSet: _featureSet).unit;
+    } catch (_) {
+      // Analyzer plugins run while files and generated sources are being
+      // rewritten. Unknown parser/filesystem failures must widen the result to
+      // source-unavailable rather than bringing down the analysis server.
       return parseString(content: '', path: path, featureSet: _featureSet).unit;
     }
   }
@@ -1289,6 +1304,40 @@ final class _BodySummaryVisitor extends RecursiveAstVisitor<void> {
     } else {
       node.elseStatement?.accept(this);
     }
+  }
+
+  @override
+  void visitSwitchStatement(SwitchStatement node) {
+    node.expression.accept(this);
+    _conditionalDepth++;
+    for (final member in node.members) {
+      member.accept(this);
+    }
+    _conditionalDepth--;
+  }
+
+  @override
+  void visitForStatement(ForStatement node) {
+    node.forLoopParts.accept(this);
+    _conditionalDepth++;
+    node.body.accept(this);
+    _conditionalDepth--;
+  }
+
+  @override
+  void visitWhileStatement(WhileStatement node) {
+    node.condition.accept(this);
+    _conditionalDepth++;
+    node.body.accept(this);
+    _conditionalDepth--;
+  }
+
+  @override
+  void visitDoStatement(DoStatement node) {
+    _conditionalDepth++;
+    node.body.accept(this);
+    _conditionalDepth--;
+    node.condition.accept(this);
   }
 
   @override

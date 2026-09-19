@@ -5,9 +5,21 @@ bool isGeneratedDartFile(String? path) {
     return false;
   }
 
-  return path.endsWith('.g.dart') ||
-      path.endsWith('.freezed.dart') ||
-      path.endsWith('.gen.dart');
+  const generatedSuffixes = [
+    '.g.dart',
+    '.freezed.dart',
+    '.gen.dart',
+    '.mocks.dart',
+    '.mock.dart',
+    '.gr.dart',
+    '.graphql.dart',
+    '.chopper.dart',
+    '.config.dart',
+    '.mapper.dart',
+    '.routes.dart',
+    '.json.dart',
+  ];
+  return generatedSuffixes.any(path.endsWith);
 }
 
 bool isTestDartFile(String? path, {String? packageRoot}) {
@@ -39,7 +51,7 @@ bool shouldSkipLintRuleForFile({
   required String? filePath,
   String? packageRoot,
 }) {
-  if (isGeneratedDartFile(filePath)) {
+  if (isGeneratedDartFile(filePath) && !options.analyzeGeneratedFiles) {
     return true;
   }
 

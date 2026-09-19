@@ -21,7 +21,10 @@ void main() {
       'catch_inferred_throwing_calls',
       'catch_unknown_dynamic_calls',
     });
-    expect(registry.warningRules.keys, {'invalid_exception_analysis_config'});
+    expect(registry.warningRules.keys, {
+      'invalid_exception_analysis_config',
+      'invalid_exception_contract',
+    });
   });
 }
 

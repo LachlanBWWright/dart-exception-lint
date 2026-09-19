@@ -80,3 +80,25 @@ final class ExceptionAnalysisOptionsWireParseFailure
   final WireParseFailure cause;
   final String? optionsSourcePath;
 }
+
+final class ExceptionAnalysisOptionsValueFailure
+    extends ExceptionAnalysisOptionsFailure {
+  const ExceptionAnalysisOptionsValueFailure({
+    required this.key,
+    required this.expected,
+    super.sourcePath,
+  }) : super(message: 'The "$key" value must be $expected.');
+
+  final String key;
+  final String expected;
+}
+
+final class ExceptionAnalysisOptionsUnknownKeyFailure
+    extends ExceptionAnalysisOptionsFailure {
+  ExceptionAnalysisOptionsUnknownKeyFailure({
+    required this.key,
+    super.sourcePath,
+  }) : super(message: 'Unsupported exception_analysis key "$key".');
+
+  final String key;
+}
