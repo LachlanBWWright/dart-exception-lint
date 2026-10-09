@@ -1,4 +1,6 @@
+import 'package:analyzer/dart/element/type.dart';
 import '../result.dart';
+import '../engine/exception_effect.dart';
 
 sealed class WireParseFailure {
   const WireParseFailure(this.value);
@@ -144,7 +146,11 @@ final class ThrowSource {
     this.intent,
     this.isAsync = false,
     this.timing,
+    this.channel,
+    this.certainty,
     this.exceptionTypes = const [],
+    this.resolvedExceptionTypes = const [],
+    this.exceptionSupertypes = const {},
     this.origin,
   });
 
@@ -154,7 +160,15 @@ final class ThrowSource {
   final ThrowIntent? intent;
   final bool isAsync;
   final ThrowTiming? timing;
+  final ExceptionChannel? channel;
+  final ExceptionCertainty? certainty;
+
+  /// Independently possible thrown types; an empty list means unknown types.
   final List<String> exceptionTypes;
+  final List<DartType> resolvedExceptionTypes;
+
+  /// Known ancestors of each thrown type, retained through inferred calls.
+  final Map<String, List<String>> exceptionSupertypes;
   final ThrowOrigin? origin;
 
   ThrowIntent get effectiveIntent => intent ?? kind.defaultIntent;
@@ -231,18 +245,35 @@ final class ThrowSummary {
       canThrowSynchronously: false,
       canCompleteWithDeferredError: false,
       canCompleteWithAsyncError: false,
-      sources: sources,
+      sources: sources.isEmpty
+          ? [
+              ThrowSource(
+                kind: ThrowSourceKind.unresolvedCall,
+                confidence: ThrowConfidence.unknown,
+                displayName: elementKey,
+              ),
+            ]
+          : sources,
       dependencyElementKeys: dependencyElementKeys,
       complete: complete,
       truncationReason: reason,
     );
   }
 
+  Iterable<ExceptionEffect> get effects =>
+      sources.map(ExceptionEffect.fromSource);
+
+  bool get hasUnknownEffects =>
+      sources.any((source) => source.confidence == ThrowConfidence.unknown);
+
+  Iterable<ExceptionEffect> effectsFor(ExceptionChannel channel) =>
+      effects.where((effect) => effect.channel == channel);
+
   bool get hasAnyThrowSource =>
       canThrowSynchronously ||
       canCompleteWithDeferredError ||
       canCompleteWithAsyncError ||
-      confidence == ThrowConfidence.unknown;
+      hasUnknownEffects;
 
   static ThrowSummary merge(
     String elementKey,
@@ -254,12 +285,17 @@ final class ThrowSummary {
   }) {
     final uniqueSources = <String, ThrowSource>{};
     for (final source in sources) {
+      if (source.confidence == ThrowConfidence.noObviousThrow) continue;
       final key = [
         source.kind,
         source.confidence,
         source.displayName,
         source.effectiveTiming,
+        source.channel,
+        source.certainty,
+        source.resolvedExceptionTypes,
         source.exceptionTypes.join(','),
+        source.exceptionSupertypes,
         source.intent,
         source.origin?.displayName,
         source.origin?.filePath,
@@ -268,17 +304,46 @@ final class ThrowSummary {
       ].join('|');
       uniqueSources.putIfAbsent(key, () => source);
     }
+    if (!complete &&
+        !uniqueSources.values.any(
+          (source) => source.confidence == ThrowConfidence.unknown,
+        )) {
+      uniqueSources['incomplete'] = ThrowSource(
+        kind: ThrowSourceKind.unresolvedCall,
+        confidence: ThrowConfidence.unknown,
+        displayName: truncationReason ?? 'incomplete exception analysis',
+      );
+    }
     final sourceLimit = maxSources < 0 ? 0 : maxSources;
     final boundedSources = uniqueSources.values.take(sourceLimit).toList();
     final wasTruncated = uniqueSources.length > boundedSources.length;
     if (wasTruncated) {
-      boundedSources.add(
-        const ThrowSource(
-          kind: ThrowSourceKind.truncation,
-          confidence: ThrowConfidence.unknown,
-          displayName: 'additional exception sources omitted',
-        ),
-      );
+      final omittedChannels = uniqueSources.values
+          .skip(sourceLimit)
+          .map((source) => ExceptionEffect.fromSource(source).channel)
+          .toSet();
+      // Delivery channels are independent: a synchronous catch must not hide a
+      // scheduled failure merely because its concrete source exceeded a budget.
+      // At most one unknown sentinel per channel survives outside the budget.
+      for (final channel in ExceptionChannel.values) {
+        if (!omittedChannels.contains(channel)) continue;
+        final timing = switch (channel) {
+          ExceptionChannel.synchronous => ThrowTiming.synchronous,
+          ExceptionChannel.deferred => ThrowTiming.deferred,
+          _ => ThrowTiming.asynchronous,
+        };
+        boundedSources.add(
+          ThrowSource(
+            kind: ThrowSourceKind.truncation,
+            confidence: ThrowConfidence.unknown,
+            displayName: 'additional exception sources omitted',
+            channel: channel,
+            certainty: ExceptionCertainty.unknown,
+            timing: timing,
+            isAsync: timing == ThrowTiming.asynchronous,
+          ),
+        );
+      }
     }
     final collectedSources = boundedSources;
     final canThrowSynchronously = collectedSources.any(
@@ -326,7 +391,7 @@ final class ThrowSummary {
       canCompleteWithAsyncError: canCompleteWithAsyncError,
       sources: collectedSources,
       dependencyElementKeys: dependencyElementKeys.toSet().toList()..sort(),
-      complete: complete,
+      complete: complete && !wasTruncated,
       truncationReason: wasTruncated
           ? (truncationReason ?? 'max_sources_per_summary')
           : truncationReason,

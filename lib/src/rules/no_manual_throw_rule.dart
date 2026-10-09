@@ -7,16 +7,19 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
-import '../config/exception_analysis_options.dart';
+import '../analysis/inferred_throw_analyzer.dart';
 import '../diagnostics.dart';
-import '../result.dart';
+import '../engine/callback_values.dart';
+import '../engine/error_producers.dart';
+import '../engine/exception_analysis_service.dart';
 import '../utils/source_utils.dart';
 
 class NoManualThrowRule extends AnalysisRule {
   NoManualThrowRule()
     : super(
         name: DartExceptionLintDiagnostics.noManualThrow.lowerCaseName,
-        description: 'Reports manually written throw expressions.',
+        description:
+            'Reports explicit throws and asynchronous error production.',
       );
 
   @override
@@ -27,32 +30,80 @@ class NoManualThrowRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    final options = switch (ExceptionAnalysisOptions.loadResult(
-      packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
-    )) {
-      Ok(value: final options) => options,
-      Err() => const ExceptionAnalysisOptions(),
-    };
+    final service = ExceptionAnalysisService.forContext(context);
+    final options = service.options;
     if (shouldSkipLintRuleForFile(
       ruleName: name,
       options: options,
-      filePath: context.currentUnit?.file.path,
+      filePath: context.definingUnit.file.path,
       packageRoot: context.package?.root.path,
     )) {
       return;
     }
 
-    final visitor = _Visitor(this);
+    final visitor = _Visitor(this, service.analyzer);
     registry.addThrowExpression(this, visitor);
     registry.addRethrowExpression(this, visitor);
+    registry.addMethodInvocation(this, visitor);
+    registry.addInstanceCreationExpression(this, visitor);
+    registry.addFunctionExpressionInvocation(this, visitor);
   }
 }
 
 final class _Visitor extends SimpleAstVisitor<void> {
-  _Visitor(this.rule);
+  _Visitor(this.rule, this.analyzer);
 
   final AnalysisRule rule;
+  final InferredThrowAnalyzer analyzer;
+
+  @override
+  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
+    _reportProducer(
+      explicitProducerInvocationTargets(
+        analyzer.resolveInvokedCallback(node),
+        node.argumentList,
+        analyzer.resolveCallbackValue,
+      ),
+      node.function,
+    );
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    _reportProducer(
+      explicitProducerInvocationTargets(
+        analyzer.resolveInvokedCallback(node),
+        node.argumentList,
+        analyzer.resolveCallbackValue,
+      ),
+      node.methodName,
+    );
+  }
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    _reportProducer(
+      analyzer.callbackValueForElement(node.constructorName.element),
+      node.constructorName,
+    );
+  }
+
+  void _reportProducer(CallbackValue value, AstNode target) {
+    final producers =
+        value.targets
+            .map(explicitErrorProducer)
+            .whereType<ErrorProducer>()
+            .toList()
+          ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    if (producers.isEmpty) return;
+    final producer = producers.first;
+    // Report once per invocation even when several possible targets produce
+    // errors. An unresolved alternative does not erase a known producer.
+    rule.reportAtNode(
+      target,
+      arguments: ['an error via ${producer.displayName}'],
+    );
+  }
 
   @override
   void visitThrowExpression(ThrowExpression node) {

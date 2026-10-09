@@ -12,21 +12,28 @@ import 'rules/no_manual_throw_rule.dart';
 import 'rules/no_null_assertion_rule.dart';
 import 'rules/validate_exception_analysis_config_rule.dart';
 import 'rules/validate_exception_contract_rule.dart';
+import 'rules/validate_exception_environment_rule.dart';
+import 'engine/analysis_compatibility.dart';
 
 class DartExceptionLintPlugin extends Plugin {
   @override
   String get name => 'dart_exception_lint';
 
   @override
-  FutureOr<void> register(PluginRegistry registry) {
-    registry.registerLintRule(NoNullAssertionRule());
-    registry.registerLintRule(NoManualThrowRule());
-    registry.registerLintRule(CatchThrowingThirdPartyCallsRule());
-    registry.registerLintRule(CatchRuntimeThrowSourcesRule());
-    registry.registerLintRule(CatchAsyncErrorSourcesRule());
-    registry.registerLintRule(CatchInferredThrowingCallsRule());
-    registry.registerLintRule(CatchUnknownDynamicCallsRule());
+  Future<void> register(PluginRegistry registry) async {
+    await AnalysisCompatibility.initialize();
+    // The registry's warning category controls default enablement separately
+    // from diagnostic severity. Enabling this plugin activates its policy;
+    // consumers can still disable individual diagnostics explicitly.
+    registry.registerWarningRule(NoNullAssertionRule());
+    registry.registerWarningRule(NoManualThrowRule());
+    registry.registerWarningRule(CatchThrowingThirdPartyCallsRule());
+    registry.registerWarningRule(CatchRuntimeThrowSourcesRule());
+    registry.registerWarningRule(CatchAsyncErrorSourcesRule());
+    registry.registerWarningRule(CatchInferredThrowingCallsRule());
+    registry.registerWarningRule(CatchUnknownDynamicCallsRule());
     registry.registerWarningRule(ValidateExceptionAnalysisConfigRule());
     registry.registerWarningRule(ValidateExceptionContractRule());
+    registry.registerWarningRule(ValidateExceptionEnvironmentRule());
   }
 }

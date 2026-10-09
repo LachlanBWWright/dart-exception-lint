@@ -8,12 +8,11 @@ import 'package:analyzer/error/error.dart';
 
 import '../analysis/inferred_throw_analyzer.dart';
 import '../analysis/diagnostic_emission_guard.dart';
-import '../analysis/throw_protection.dart';
 import '../analysis/throw_summary.dart';
-import '../config/exception_analysis_options.dart';
-import '../config/throwing_api_manifest.dart';
+import '../engine/exception_analysis_service.dart';
+import '../engine/invocation_targets.dart';
+import '../analysis/throw_source_catalog.dart';
 import '../diagnostics.dart';
-import '../result.dart';
 import '../utils/source_utils.dart';
 
 class CatchInferredThrowingCallsRule extends AnalysisRule {
@@ -35,42 +34,17 @@ class CatchInferredThrowingCallsRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    final optionsResult = ExceptionAnalysisOptions.loadResult(
-      packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
-    );
-    final options = switch (optionsResult) {
-      Ok(value: final options) => options,
-      Err() => const ExceptionAnalysisOptions(),
-    };
+    final service = ExceptionAnalysisService.forContext(context);
+    final options = service.options;
     if (shouldSkipLintRuleForFile(
       ruleName: name,
       options: options,
-      filePath: context.currentUnit?.file.path,
+      filePath: context.definingUnit.file.path,
       packageRoot: context.package?.root.path,
     )) {
       return;
     }
-    final manifestResult = ThrowingApiManifest.loadResult(
-      packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
-    );
-    final manifest = switch (manifestResult) {
-      Ok(value: final manifest) => manifest,
-      Err() => ThrowingApiManifest.empty(),
-    };
-    final visitor = _Visitor(
-      this,
-      InferredThrowAnalyzer(
-        manifest: manifest,
-        options: options,
-        featureSet: context.libraryElement!.featureSet,
-        packageRootPath: context.package?.root.path,
-        knownUnits: {
-          for (final unit in context.allUnits) unit.file.path: unit.unit,
-        },
-      ),
-    );
+    final visitor = _Visitor(this, service.analyzer, context.libraryElement!);
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
@@ -78,15 +52,23 @@ class CatchInferredThrowingCallsRule extends AnalysisRule {
     registry.addPropertyAccess(this, visitor);
     registry.addPrefixedIdentifier(this, visitor);
     registry.addBinaryExpression(this, visitor);
+    registry.addAssignmentExpression(this, visitor);
+    registry.addPrefixExpression(this, visitor);
+    registry.addPostfixExpression(this, visitor);
+    registry.addInterpolationExpression(this, visitor);
     registry.addIndexExpression(this, visitor);
+    registry.addPatternField(this, visitor);
+    registry.addRelationalPattern(this, visitor);
+    registry.addConstantPattern(this, visitor);
   }
 }
 
 final class _Visitor extends SimpleAstVisitor<void> {
-  _Visitor(this.rule, this.analyzer);
+  _Visitor(this.rule, this.analyzer, this.library);
 
   final AnalysisRule rule;
   final InferredThrowAnalyzer analyzer;
+  final LibraryElement library;
   final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
   final Map<Element, ExecutableElement> _callableAliases = {};
 
@@ -158,26 +140,92 @@ final class _Visitor extends SimpleAstVisitor<void> {
     _report(node, element: node.element, diagnosticTarget: node);
   }
 
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPostfixExpression(PostfixExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitInterpolationExpression(InterpolationExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPatternField(PatternField node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitRelationalPattern(RelationalPattern node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitConstantPattern(ConstantPattern node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
   void _report(
     AstNode node, {
     required Element? element,
     required AstNode diagnosticTarget,
   }) {
-    final analysis =
-        analyzer.analyzeResolvedCall(
+    // Direct numeric diagnostics belong to the runtime-source adapter. Only
+    // the operator target is excluded; compound getters/setters still infer.
+    final directNumeric = switch (node) {
+      BinaryExpression() => ThrowSourceCatalog.matchBinaryExpression(
+        node,
+        analyzer.options,
+      ),
+      AssignmentExpression()
+          when element?.baseElement == node.element?.baseElement =>
+        ThrowSourceCatalog.matchAssignmentExpression(node, analyzer.options),
+      _ => null,
+    };
+    if (directNumeric != null) return;
+    if (ThrowSourceCatalog.matchResolvedInvocation(
           node,
-          element: element,
-          treatUnknownAsReportable: false,
-          requireObservedAsyncError: false,
-          includeManifestOverrides: false,
-        ) ??
-        (node is FunctionExpressionInvocation
-            ? analyzer.analyzeInlineFunctionInvocation(node)
-            : null);
+          element,
+          analyzer.options,
+        ) !=
+        null) {
+      return;
+    }
+    final analysis = analyzer.analyzeResolvedCall(
+      node,
+      element: element,
+      treatUnknownAsReportable: false,
+      requireObservedAsyncError: false,
+      includeManifestOverrides: false,
+    );
     if (analysis == null || analysis.isAsync || analysis.isDeferred) {
       return;
     }
-    if (isProtectedByCatch(node, exceptionTypes: analysis.exceptionTypes)) {
+    if (analysis.isProtectedAt(node)) {
       return;
     }
 

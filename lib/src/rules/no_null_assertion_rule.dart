@@ -28,7 +28,7 @@ class NoNullAssertionRule extends AnalysisRule {
   ) {
     final options = switch (ExceptionAnalysisOptions.loadResult(
       packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
+      currentFilePath: context.definingUnit.file.path,
     )) {
       Ok(value: final options) => options,
       Err() => const ExceptionAnalysisOptions(),
@@ -36,13 +36,15 @@ class NoNullAssertionRule extends AnalysisRule {
     if (shouldSkipLintRuleForFile(
       ruleName: name,
       options: options,
-      filePath: context.currentUnit?.file.path,
+      filePath: context.definingUnit.file.path,
       packageRoot: context.package?.root.path,
     )) {
       return;
     }
 
-    registry.addPostfixExpression(this, _Visitor(this));
+    final visitor = _Visitor(this);
+    registry.addPostfixExpression(this, visitor);
+    registry.addNullAssertPattern(this, visitor);
   }
 }
 
@@ -50,6 +52,11 @@ final class _Visitor extends SimpleAstVisitor<void> {
   _Visitor(this.rule);
 
   final AnalysisRule rule;
+
+  @override
+  void visitNullAssertPattern(NullAssertPattern node) {
+    if (!node.operator.isSynthetic) rule.reportAtToken(node.operator);
+  }
 
   @override
   void visitPostfixExpression(PostfixExpression node) {

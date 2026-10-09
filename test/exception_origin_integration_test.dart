@@ -7,6 +7,38 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'resolved package bodies distinguish safe, contained and escaping calls',
+    () async {
+      final result = await _analyzeFixture(
+        dependencySource: '''
+void safe() {}
+void fail() { _fail(); }
+void _fail() { throw 'failure'; }
+''',
+        mainSource: '''
+import 'package:third_party_stub/third_party_stub.dart';
+void safeCaller() { safe(); }
+void caughtCaller() { try { fail(); } on String {} }
+void escapingCaller() { fail(); }
+''',
+      );
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      final callerDiagnostics = result.stdout
+          .toString()
+          .split('\n')
+          .where((line) => line.contains(' - lib/main.dart:'))
+          .join('\n');
+      expect(
+        _countCode(callerDiagnostics, 'catch_inferred_throwing_calls'),
+        1,
+        reason: result.stdout.toString(),
+      );
+      expect(_countCode(result.stdout, 'catch_unknown_dynamic_calls'), 0);
+      expect(result.stdout, contains('lib/main.dart:4:25'));
+    },
+  );
+
   test('infers throws from third-party helper bodies', () async {
     final result = await _analyzeFixture(
       dependencySource: '''

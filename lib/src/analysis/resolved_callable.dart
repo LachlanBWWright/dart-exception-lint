@@ -37,7 +37,7 @@ final class ResolvedCallable {
     final constructorSegment = constructorName == null
         ? ''
         : '#$constructorName';
-    return '$libraryUri::$classSegment$callableName$constructorSegment';
+    return '$libraryUri::${kind.name}:$classSegment$callableName$constructorSegment';
   }
 
   static ResolvedCallable? tryCreate(Element? element) {
@@ -91,8 +91,10 @@ final class ResolvedCallable {
               ? CallableKind.staticMethod
               : CallableKind.instanceMethod,
           isStatic: element.isStatic,
-          enclosingClassName: enclosingElement is InterfaceElement
-              ? enclosingElement.name
+          enclosingClassName:
+              enclosingElement is InterfaceElement ||
+                  enclosingElement is ExtensionElement
+              ? enclosingElement?.name
               : null,
           supertypeKeys: enclosingElement is InterfaceElement
               ? _supertypeKeys(enclosingElement)
@@ -114,7 +116,9 @@ final class ResolvedCallable {
               ? CallableKind.setter
               : CallableKind.getter,
           isStatic: element.isStatic,
-          enclosingClassName: enclosingElement is InterfaceElement
+          enclosingClassName:
+              enclosingElement is InterfaceElement ||
+                  enclosingElement is ExtensionElement
               ? enclosingElement.name
               : null,
           supertypeKeys: enclosingElement is InterfaceElement

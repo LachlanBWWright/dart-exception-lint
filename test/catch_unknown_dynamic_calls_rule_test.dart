@@ -13,6 +13,169 @@ void main() {
 
 @reflectiveTest
 class CatchUnknownDynamicCallsRuleTest extends AnalysisRuleTest {
+  Future<void> test_finallyReturn_doesNotContainUnobservedFuture() async {
+    const code = r'''
+void f(Future<void> Function() callback) {
+  try { callback(); } finally { return; }
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback();'), 8)]);
+  }
+
+  Future<void>
+  test_unknownFuture_awaitedConsumerDoesNotProveObservation() async {
+    const code = r'''
+Future<void> discard(Future<void> value) async {}
+Future<void> f(Future<void> Function() callback) async {
+  try { await discard(callback()); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback()'), 8)]);
+  }
+
+  Future<void>
+  test_unknownFuture_consumerHandlerDoesNotProveObservation() async {
+    const code = r'''
+Future<void> discard(Future<void> value) async {}
+void f(Future<void> Function() callback) {
+  try { discard(callback()).catchError((_) {}); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback()'), 8)]);
+  }
+
+  Future<void>
+  test_unknownFuture_parenthesizedAwaitRetainsScheduledUncertainty() async {
+    const code = r'''
+Future<void> f(Future<void> Function() callback) async {
+  try { await (callback()); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback()'), 8)]);
+  }
+
+  Future<void> test_externalFuture_creationCatchRetainsUncertainty() async {
+    const code = r'''
+external Future<void> nativeOperation();
+void f() {
+  try { nativeOperation(); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('nativeOperation();'), 15),
+    ]);
+  }
+
+  Future<void> test_externalFuture_awaitCatchContainsBothChannels() async {
+    await assertNoDiagnostics(r'''
+external Future<void> nativeOperation();
+Future<void> f() async {
+  try { await nativeOperation(); } catch (_) {}
+}
+''');
+  }
+
+  Future<void> test_externalFuture_abandonedByWrapperCannotBeCaught() async {
+    const code = r'''
+external Future<void> nativeOperation();
+Future<void> wrapper() async {
+  try { nativeOperation(); } catch (_) {}
+}
+Future<void> f() async {
+  try { await wrapper(); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('nativeOperation();'), 15),
+      lint(code.lastIndexOf('wrapper();'), 7),
+    ]);
+  }
+
+  Future<void> test_unknownFuture_creationCatchRetainsUncertainty() async {
+    const code = r'''
+void f(Future<void> Function() callback) {
+  try { callback(); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback();'), 8)]);
+  }
+
+  Future<void>
+  test_unknownFuture_awaitCatchRetainsScheduledUncertainty() async {
+    const code = r'''
+Future<void> f(Future<void> Function() callback) async {
+  try { await callback(); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback()'), 8)]);
+  }
+
+  Future<void>
+  test_unknownFuture_handlerDoesNotContainSynchronousThrow() async {
+    const code = r'''
+void f(Future<void> Function() callback) {
+  callback().catchError((_) {});
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('callback().'), 8),
+      lint(code.indexOf('catchError'), 10),
+    ]);
+  }
+
+  Future<void>
+  test_unknownFuture_handlerAndCatchRetainScheduledUncertainty() async {
+    const code = r'''
+void f(Future<void> Function() callback) {
+  try { callback().catchError((_) {}); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback()'), 8)]);
+  }
+
+  Future<void> test_objectAndPrimitivePatterns_failedMatchIsNormal() async {
+    await assertNoDiagnostics(r'''
+final class Data { int get value => 1; }
+void f(Object value) {
+  if (value case Data(value: 1)) {}
+}
+void numeric(int value) {
+  if (value case > 0 && < 10) {}
+}
+''');
+  }
+
+  Future<void> test_nestedExternal_isIndependentOfDeclarationOrder() async {
+    const code = r'''
+void caller() { wrapper(); }
+void wrapper() { nativeOperation(); }
+external void nativeOperation();
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('wrapper();'), 7),
+      lint(code.indexOf('nativeOperation();'), 15),
+    ]);
+  }
+
+  Future<void> test_scheduledMicrotask_surroundingCatchCannotContain() async {
+    // The analyzer's mock SDK omits this real dart:async declaration.
+    final asyncFile = sdkRoot.getFile('lib/async/async.dart');
+    newFile(
+      asyncFile.path,
+      '${asyncFile.readAsStringSync()}\n'
+      'void scheduleMicrotask(void Function() callback) {}\n',
+    );
+    const code = r'''
+import 'dart:async';
+void f(void Function() callback) {
+  try { scheduleMicrotask(callback); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('scheduleMicrotask'), 17),
+    ]);
+  }
+
   @override
   String get analysisRule => _rule.name;
 
@@ -35,6 +198,22 @@ void f(dynamic value) {
     await assertDiagnostics(code, [lint(code.indexOf('run'), 'run'.length)]);
   }
 
+  Future<void> test_abstractReceiverReportsIncompleteDispatch() async {
+    const code = r'''
+abstract class Worker {
+  void run() {}
+}
+
+void f(Worker worker) {
+  worker.run();
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('run'), 'run'.length),
+    ]);
+  }
+
   Future<void> test_dynamicMethodCall_reports() async {
     const code = r'''
 void f(dynamic client) {
@@ -49,12 +228,36 @@ void f(dynamic client) {
 
   Future<void> test_dynamicMethodCall_insideTryCatch_notReported() async {
     await assertNoDiagnostics(r'''
-void f(dynamic client) {
+Future<void> f(dynamic client) async {
   try {
-    client.fetch();
+    await client.fetch();
   } catch (_) {}
 }
     ''');
+  }
+
+  Future<void> test_unknownBoundary_insideNarrowTypedCatch_reports() async {
+    const code = r'''
+void f(dynamic client) {
+  try {
+    client.fetch();
+  } on Exception {}
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('fetch'), 'fetch'.length),
+    ]);
+  }
+
+  Future<void> test_unknownBoundary_insideObjectCatch_isHandled() async {
+    await assertNoDiagnostics(r'''
+Future<void> f(dynamic client) async {
+  try {
+    await client.fetch();
+  } on Object {}
+}
+''');
   }
 
   Future<void> test_dynamicFunctionInvocation_reports() async {
@@ -82,14 +285,15 @@ void f(Function callback) {
   }
 
   Future<void>
-  test_dynamicFunctionInvocation_insideTryCatch_notReported() async {
-    await assertNoDiagnostics(r'''
-void f(dynamic callback) {
+  test_dynamicFunctionInvocation_awaitCatchRetainsScheduledUncertainty() async {
+    const code = r'''
+Future<void> f(dynamic callback) async {
   try {
-    callback();
+    await callback();
   } catch (_) {}
 }
-''');
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('callback()'), 8)]);
   }
 
   Future<void> test_dynamicAwait_reports() async {
@@ -108,7 +312,7 @@ Future<void> f(dynamic future) async {
     const code = r'''
 void f(dynamic values) {
   for (final value in values) {
-    print(value);
+    value;
   }
 }
 ''';
@@ -122,7 +326,7 @@ void f(dynamic values) {
     const code = r'''
 Future<void> f(dynamic values) async {
   await for (final value in values) {
-    print(value);
+    value;
   }
 }
 ''';
@@ -167,7 +371,7 @@ void f(dynamic value) {
   if (value) {}
   while (value) {}
   do {} while (value);
-  value ? print('yes') : print('no');
+  value ? 'yes' : 'no';
   switch (value) { case true: break; }
 }
 ''';
@@ -179,14 +383,12 @@ void f(dynamic value) {
       'value',
       code.indexOf(';', doOffset) + 1,
     );
-    final switchOffset = code.lastIndexOf('value');
 
     await assertDiagnostics(code, [
       lint(ifOffset, 'value'.length),
       lint(whileOffset, 'value'.length),
       lint(doOffset, 'value'.length),
       lint(conditionalOffset, 'value'.length),
-      lint(switchOffset, 'value'.length),
     ]);
   }
 
@@ -214,11 +416,32 @@ void f(dynamic client) {
 
   Future<void> test_dynamicConditionalCall_insideTryCatch_notReported() async {
     await assertNoDiagnostics(r'''
-void f(dynamic first, dynamic second, bool useFirst) {
+Future<void> f(dynamic first, dynamic second, bool useFirst) async {
   try {
-    (useFirst ? first : second).fetch();
+    await (useFirst ? first : second).fetch();
   } catch (_) {}
 }
 ''');
+  }
+
+  Future<void> test_universalCatch_dischargesUnknownCallerEffect() async {
+    await assertNoDiagnostics(
+      'external void nativeOperation(); void helper() { try { nativeOperation(); } catch (_) {} } void f() { helper(); }',
+    );
+  }
+
+  Future<void> test_knownThrow_doesNotHideUnknownEffect() async {
+    const code =
+        'void helper(dynamic value) { value.go(); throw FormatException(); } void f(dynamic value) { helper(value); }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('go()'), 2),
+      lint(code.lastIndexOf('helper(value)'), 6),
+    ]);
+  }
+
+  Future<void> test_dynamicSwitchSubject_isSafe() async {
+    await assertNoDiagnostics(
+      'void f(dynamic value) { switch (value) { case true: break; } }',
+    );
   }
 }

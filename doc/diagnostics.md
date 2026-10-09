@@ -1,8 +1,11 @@
 # Diagnostics
 
-All diagnostics skip generated Dart files (`*.g.dart`, `*.freezed.dart`, and
-`*.gen.dart`). Test files are also skipped by default: files under `test/` and
-files named `*_test.dart` are not analyzed unless configuration opts them in.
+Effect and syntax diagnostics analyze test and generated files by default.
+Generated-file suffixes include `*.g.dart`, `*.freezed.dart`, `*.gen.dart`,
+`*.mocks.dart`, `*.graphql.dart`, `*.chopper.dart`, `*.config.dart`,
+`*.mapper.dart`, `*.routes.dart`, and `*.json.dart`. To exclude their diagnostics,
+set `analyze_generated_files: false`. To exclude tests, set
+`analyze_test_files: false`, optionally overriding individual rules:
 
 ```yaml
 exception_analysis:
@@ -16,13 +19,26 @@ Save this as `tool/dart_exception_lint/exception_analysis.yaml`. The analyzer
 plugin configuration only supports its standard keys, so exception-analysis
 settings live in this plugin-owned file to avoid unsupported-option warnings.
 
+Invalid YAML, unsupported values, and malformed manifest entries produce an
+`invalid_exception_analysis_config` warning on the package's defining library.
+
+## Exception boundaries
+
+Import `package:dart_exception_lint/dart_exception_lint.dart` and annotate an
+intentional propagation endpoint or class with `@ExceptionBoundary()`. Inferred,
+manifest, runtime, and async source diagnostics treat effects inside that
+callable as intentional propagation. The annotation does not make the API
+safe for callers: inferred and async effects remain visible at calls outside
+the boundary. Explicit error-production rules such as `no_manual_throw` and
+`no_null_assertion` still report their own constructs.
+
 `exception_analysis.analyze_test_files` controls the package-wide default.
 `exception_analysis.rules.<rule>.analyze_test_files` overrides that setting for
 one diagnostic.
 
 ## `no_null_assertion`
 
-Reports postfix `!` operators.
+Reports expression and pattern null assertions.
 
 ```dart
 String? name = loadName();
@@ -44,7 +60,22 @@ to prove whether the value is actually null at runtime.
 
 ## `no_manual_throw`
 
-Reports manually written `throw` and `rethrow` expressions, including arrow functions and closures.
+Reports manually written `throw` and `rethrow` expressions, including arrow
+functions and closures. Also reports resolved SDK error producers, including
+`Error.throwWithStackTrace`, `Future.error`, `Stream.error`,
+`Completer.completeError`, stream/I/O sink `addError`,
+`MultiStreamController.addErrorSync`, and zone `handleUncaughtError`, even when
+the produced error is subsequently caught or ignored.
+
+Native callable targets are followed through unwritten local aliases,
+conditional/switch alternatives, immutable records, const collections and
+supported factory returns. Explicit `.call` and native `Function.apply`
+forwarding also preserve the prohibition. A known producer remains prohibited
+beside an unknown alternative. Merely creating a tearoff or an error object does
+not produce an error. Mutable aliases and unverified capture/heap paths remain
+uncertainty for the effect rules instead of stale explicit-producer claims.
+The [SDK inventory](sdk-error-producers.md) records audited identities and
+remaining scope; this classifier does not prove exception delivery timing.
 
 ```dart
 void fail() {
@@ -52,7 +83,8 @@ void fail() {
 }
 ```
 
-Prefer returning an error result or moving exception handling to a safer boundary.
+Handle failures locally or represent them as application-defined values.
+The linter does not require a particular Result type.
 The diagnostic message distinguishes thrown `Exception`, `Error`, and
 non-`Exception` values when static type information is available.
 
@@ -91,6 +123,9 @@ Use this rule for package APIs whose failure behavior is known but cannot be
 inferred reliably from source. Manifest matches support top-level functions,
 methods, constructors, static/instance discrimination, subtype matching,
 confidence overrides, async metadata, and exception type metadata.
+SDK entries are supported with `package: dart`, for example
+`library: dart:core`; this provides an extensible escape hatch for SDK APIs
+whose throwing behavior is not available from analyzer source metadata.
 
 ## Exception Analysis Strictness
 
@@ -123,7 +158,10 @@ exception_analysis:
 
 ## `catch_runtime_throw_sources`
 
-Reports direct runtime throw sources outside local `try`/`catch`, including known parse/decode and collection-state APIs.
+Reports direct runtime throw sources outside local `try`/`catch`, including known
+parse/decode APIs, assertions, argument/range validation helpers,
+serialization failures, typed-data bounds checks, collection-state APIs, and
+async terminal operations on `Future`, `Stream`, and isolate spawning APIs.
 
 ```dart
 void f(String value) {
@@ -142,9 +180,26 @@ void f(String value) {
 ```
 
 The reported source set is controlled by `exception_analysis` booleans such as
-`treat_parse_methods_as_throwing`, `treat_index_access_as_throwing`, and
-`treat_as_casts_as_throwing`. This rule only reports direct sources in the
-current file; use `catch_inferred_throwing_calls` to follow helper calls.
+`treat_parse_methods_as_throwing`, `treat_index_access_as_throwing`,
+`treat_as_casts_as_throwing`, `treat_late_initialization_as_throwing`, and
+`treat_arithmetic_as_throwing`, and `treat_collection_state_as_throwing`.
+Collection-state detection covers bounds-sensitive operations such as
+`firstWhere`, `lastWhere`, `singleWhere`, `elementAt`, `substring`, and
+`codeUnitAt`. It also covers reads of uninitialized `late`
+variables. Native numeric and BigInt division, remainder, modulo, shifts, compounds,
+modular/width operations, clamp, formatting and integer conversions retain
+their specific exception types, including VM/JavaScript differences. Direct
+SDK `Random()` and `Random.secure()` calls also retain `RangeError` when
+`nextInt` receives a maximum outside `1..2^32`; `Random.secure()` retains
+`UnsupportedError` for platforms without secure randomness. Literal and const
+proofs also suppress numeric parse failures when the source text and radix are
+proven valid. `tryParse` retains only invalid-radix and incompatible dynamic
+argument effects because malformed text returns `null`. Ordinary variable
+initializers do not establish those proofs. See the
+[numeric inventory](sdk-numeric-exceptions.md) for covered and remaining families.
+This rule only reports direct
+sources in the current file; use `catch_inferred_throwing_calls` to follow
+helper calls.
 
 ## `catch_async_error_sources`
 
@@ -167,8 +222,34 @@ Future<void> f() async {
 ```
 
 The rule reports async error sources only when `require_async_error_handling` is
-enabled. Awaited calls are considered handled inside `try`/`catch`; direct stream
-listens are considered handled when an `onError` callback is supplied.
+enabled. Awaited calls are considered handled only when surrounding catches
+cover every known thrown type; `on Exception` does not catch `Error` values.
+Separate or nested catches can collectively cover the effects. Unknown thrown
+types require a universal catch. Direct stream listens require a non-null
+`onError` callback or an unconditional SDK `handleError` transformer.
+`catchError` and `handleError` filters preserve the incoming error effect unless
+they are absent, null, or visibly return `true` for every input. Callback bodies
+are analyzed independently, so a handler can itself introduce a new failure.
+Errors stored in a local future are reported at the later `await`, or at the
+creation site when the future is abandoned without an observation. An
+unawaited future inside a synchronous `try`/`catch` is still reported because
+that catch cannot handle the future's later error. `unawaited(...)` documents
+intentional abandonment but is not treated as an error handler. Returning a
+known failing Future is also reported, because the local function still exposes
+an error effect. Field storage does not prove handling: known effects without
+a consumer in the analyzed unit are reported at creation. Resolved field
+identity is used, so unrelated fields with the same name do not share effects.
+Consumption tracking is bounded and does not prove that a later method will
+run or that an error handler is attached before the Future completes.
+Native callable values are followed through unwritten local initializer aliases
+and conditional/switch alternatives. Reassignment or a captured write preserves
+unknown behavior instead of reusing the initial callback proof. Creating a
+method tearoff does not execute its body; effects follow the eventual call.
+Immutable record fields, const list/map entries selected by literal or const local keys, and
+simple synchronous top-level/static factory returns also preserve targets.
+A catch around factory creation does not contain later callback execution.
+Mutable collections, virtual factory returns and escaping closure environments
+remain unknown until their value flow can be proven.
 
 ## `catch_inferred_throwing_calls`
 
@@ -184,11 +265,16 @@ void f() {
 }
 ```
 
-This diagnostic honors `exception_analysis.strictness`. With the default `third_party: deliberate`, a third-party helper that explicitly throws is reported, while one that only calls `int.parse` is filtered out unless `third_party` is set to `possible` or `unknown`.
+This diagnostic honors `exception_analysis.strictness`. The default is
+`unknown` for both local and dependency code. Setting
+`third_party: deliberate` deliberately filters input-dependent APIs such as
+`int.parse` and unknown dependency boundaries.
 It inspects available package, SDK, and in-workspace source according to
 `analyze_third_party_source`, `analyze_sdk_source`, and `max_call_depth`.
 Manifest entries are intentionally excluded here so this rule reports only
-implementation-inferred sources.
+implementation-inferred sources. An explicit `super.noSuchMethod(invocation)` call
+is modeled as throwing `NoSuchMethodError`, so wrappers that delegate a missing
+member to `Object.noSuchMethod` carry that effect through their callers.
 
 ## `catch_unknown_dynamic_calls`
 
@@ -202,5 +288,21 @@ void f(dynamic client) {
 
 Unknown sources inferred from implementation bodies honor `exception_analysis.strictness` and require an `unknown` threshold. Direct dynamic calls in the analyzed file are still reported when this diagnostic and `report.unknown` are enabled. This includes dynamic method calls, dynamic and `Function`-typed function calls, and awaiting a value whose type is `dynamic`.
 Use this rule when unknown exception boundaries should be made explicit through
-typing, safer wrappers, or local protection. Disable `report.unknown` to turn off
+typing, safer wrappers, or local protection. An opaque callback may also schedule
+work independently of its returned Future; awaiting and catching that Future
+does not discharge scheduling uncertainty. Callback value/context budgets and
+source-budget truncation preserve the unresolved channels. Disable `report.unknown` to turn off
 unknown-boundary reports while keeping the other exception diagnostics active.
+Diagnostics include a reason such as `dynamic_or_unresolved_call`,
+`external_or_abstract`, `max_call_depth`, or `abstract_dispatch_incomplete` so
+the warning identifies which analysis boundary needs attention. Incomplete
+dispatch through an abstract receiver is retained as an unknown effect even
+when the known base implementation appears safe; configured strictness still
+controls whether that effect is reported.
+
+## `invalid_exception_analysis_config`
+
+Reports malformed `exception_analysis.yaml` and `throwing_apis.yaml` files.
+The warning is emitted once on the defining library rather than once per
+analyzed file. Fix the referenced configuration before relying on exception
+coverage from the other diagnostics.

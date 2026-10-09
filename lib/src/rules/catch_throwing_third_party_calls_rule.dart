@@ -9,10 +9,12 @@ import 'package:analyzer/error/error.dart';
 
 import '../config/config_failures.dart';
 import '../analysis/diagnostic_emission_guard.dart';
+import '../analysis/resolved_callable.dart';
+import '../engine/invocation_targets.dart';
+import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
 import '../analysis/throw_protection.dart';
-import '../analysis/exception_annotations.dart';
 import '../diagnostics.dart';
 import '../result.dart';
 import '../utils/source_utils.dart';
@@ -41,7 +43,7 @@ class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
   ) {
     final options = switch (ExceptionAnalysisOptions.loadResult(
       packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
+      currentFilePath: context.definingUnit.file.path,
     )) {
       Ok(value: final options) => options,
       Err() => const ExceptionAnalysisOptions(),
@@ -49,7 +51,7 @@ class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
     if (shouldSkipLintRuleForFile(
       ruleName: name,
       options: options,
-      filePath: context.currentUnit?.file.path,
+      filePath: context.definingUnit.file.path,
       packageRoot: context.package?.root.path,
     )) {
       return;
@@ -57,7 +59,7 @@ class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
 
     final manifest = switch (loader.load(
       context.package?.root.path,
-      context.currentUnit?.file.path,
+      context.definingUnit.file.path,
     )) {
       Ok(value: final manifest) => manifest,
       Err() => ThrowingApiManifest.empty(),
@@ -66,10 +68,20 @@ class CatchThrowingThirdPartyCallsRule extends AnalysisRule {
       return;
     }
 
-    final visitor = _Visitor(this, manifest);
+    final visitor = _Visitor(this, manifest, options, context.libraryElement!);
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
+    registry.addPropertyAccess(this, visitor);
+    registry.addPrefixedIdentifier(this, visitor);
+    registry.addBinaryExpression(this, visitor);
+    registry.addIndexExpression(this, visitor);
+    registry.addPatternField(this, visitor);
+    registry.addRelationalPattern(this, visitor);
+    registry.addConstantPattern(this, visitor);
+    registry.addAssignmentExpression(this, visitor);
+    registry.addPrefixExpression(this, visitor);
+    registry.addPostfixExpression(this, visitor);
   }
 }
 
@@ -88,10 +100,12 @@ class ThrowingApiManifestLoader {
 }
 
 final class _Visitor extends SimpleAstVisitor<void> {
-  _Visitor(this.rule, this.manifest);
+  _Visitor(this.rule, this.manifest, this.options, this.library);
 
   final AnalysisRule rule;
   final ThrowingApiManifest manifest;
+  final ExceptionAnalysisOptions options;
+  final LibraryElement library;
   final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
 
   @override
@@ -121,21 +135,98 @@ final class _Visitor extends SimpleAstVisitor<void> {
     );
   }
 
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    _reportIfNeeded(
+      node,
+      element: node.propertyName.element,
+      diagnosticTarget: node,
+    );
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    _reportIfNeeded(
+      node,
+      element: node.identifier.element,
+      diagnosticTarget: node,
+    );
+  }
+
+  @override
+  void visitBinaryExpression(BinaryExpression node) {
+    _reportIfNeeded(node, element: node.element, diagnosticTarget: node);
+  }
+
+  @override
+  void visitIndexExpression(IndexExpression node) {
+    _reportIfNeeded(node, element: node.element, diagnosticTarget: node);
+  }
+
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _reportIfNeeded(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _reportIfNeeded(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPostfixExpression(PostfixExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _reportIfNeeded(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPatternField(PatternField node) {
+    for (final element in invocationTargets(node, library)) {
+      _reportIfNeeded(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitRelationalPattern(RelationalPattern node) {
+    for (final element in invocationTargets(node, library)) {
+      _reportIfNeeded(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitConstantPattern(ConstantPattern node) {
+    for (final element in invocationTargets(node, library)) {
+      _reportIfNeeded(node, element: element, diagnosticTarget: node);
+    }
+  }
+
   void _reportIfNeeded(
     AstNode node, {
     required Element? element,
     required AstNode diagnosticTarget,
   }) {
-    if (element != null && hasExceptionBoundaryAnnotation(element)) {
-      return;
-    }
     final callable = ResolvedCallable.tryCreate(element);
     final matchedSpec = callable == null
         ? _findSyntaxFallback(node)
-        : _findMatch(callable) ?? _findSyntaxFallback(node);
-    if (matchedSpec == null || isProtectedByCatch(node)) {
-      return;
-    }
+        : _findMatch(callable);
+    if (matchedSpec == null) return;
+    final hasResidual = matchedSpec.sources.any(
+      (source) =>
+          source.confidence != ThrowConfidence.noObviousThrow &&
+          options.shouldReport(source.confidence) &&
+          !isProtectedByCatch(
+            node,
+            exceptionTypes: source.exceptionTypes,
+            requireAsyncProtection: source.isAsync,
+            channel: source.channel,
+          ),
+    );
+    if (!hasResidual) return;
 
     if (_emissions.claim(diagnosticTarget)) {
       rule.reportAtNode(diagnosticTarget, arguments: [matchedSpec.displayName]);
@@ -147,7 +238,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
     var bestScore = -1;
 
     for (final spec in manifest.apis) {
-      final score = _matchScore(spec, callable);
+      final score = spec.matchScore(callable);
       if (score > bestScore) {
         bestScore = score;
         bestMatch = spec;
@@ -261,175 +352,5 @@ final class _Visitor extends SimpleAstVisitor<void> {
     return unit.directives.whereType<ImportDirective>().any((directive) {
       return directive.uri.stringValue == libraryUri;
     });
-  }
-
-  int _matchScore(ThrowingApiSpecification spec, ResolvedCallable callable) {
-    if (spec.packageName != callable.packageName) {
-      return -1;
-    }
-
-    if (spec.functionName case final functionName?) {
-      return spec.libraryUri == callable.libraryUri &&
-              callable.kind == CallableKind.topLevelFunction &&
-              callable.callableName == functionName
-          ? 10
-          : -1;
-    }
-
-    if (spec.constructorName case final constructorName?) {
-      if (spec.libraryUri != callable.libraryUri ||
-          callable.kind != CallableKind.constructor ||
-          !_matchesClass(spec, callable)) {
-        return -1;
-      }
-      return callable.constructorName == constructorName ? 30 : -1;
-    }
-
-    if (spec.methodName case final methodName?) {
-      if (callable.kind != CallableKind.instanceMethod &&
-          callable.kind != CallableKind.staticMethod) {
-        return -1;
-      }
-      if (!_matchesClass(spec, callable) ||
-          callable.callableName != methodName) {
-        return -1;
-      }
-      if (spec.isStatic != null && spec.isStatic != callable.isStatic) {
-        return -1;
-      }
-      return spec.isStatic == callable.isStatic ? 40 : 35;
-    }
-
-    return -1;
-  }
-
-  bool _matchesClass(ThrowingApiSpecification spec, ResolvedCallable callable) {
-    final specClassName = spec.className;
-    if (specClassName == null) {
-      return callable.enclosingClassName == null;
-    }
-
-    if (callable.enclosingClassName == specClassName) {
-      return true;
-    }
-
-    if (!spec.appliesToSubtypes) {
-      return false;
-    }
-
-    return callable.supertypeKeys.contains(
-      '${spec.libraryUri}::$specClassName',
-    );
-  }
-}
-
-enum CallableKind {
-  topLevelFunction,
-  instanceMethod,
-  staticMethod,
-  constructor,
-}
-
-final class ResolvedCallable {
-  ResolvedCallable({
-    required this.packageName,
-    required this.libraryUri,
-    required this.callableName,
-    required this.kind,
-    required this.isStatic,
-    this.enclosingClassName,
-    this.constructorName,
-    required this.supertypeKeys,
-  });
-
-  final String packageName;
-  final String libraryUri;
-  final String callableName;
-  final CallableKind kind;
-  final bool isStatic;
-  final String? enclosingClassName;
-  final String? constructorName;
-  final Set<String> supertypeKeys;
-
-  static ResolvedCallable? tryCreate(Element? element) {
-    switch (element) {
-      case TopLevelFunctionElement():
-        final sourceUri = _libraryUriFor(element);
-        final packageName = _packageNameFromUri(sourceUri);
-        final callableName = element.name;
-        if (packageName == null || callableName == null) {
-          return null;
-        }
-        return ResolvedCallable(
-          packageName: packageName,
-          libraryUri: sourceUri.toString(),
-          callableName: callableName,
-          kind: CallableKind.topLevelFunction,
-          isStatic: true,
-          supertypeKeys: const {},
-        );
-      case ConstructorElement():
-        final sourceUri = _libraryUriFor(element);
-        final packageName = _packageNameFromUri(sourceUri);
-        final enclosingElement = element.enclosingElement;
-        final className = enclosingElement.name;
-        if (packageName == null || className == null) {
-          return null;
-        }
-        return ResolvedCallable(
-          packageName: packageName,
-          libraryUri: sourceUri.toString(),
-          callableName: className,
-          kind: CallableKind.constructor,
-          isStatic: true,
-          enclosingClassName: className,
-          constructorName: element.name,
-          supertypeKeys: _supertypeKeys(enclosingElement),
-        );
-      case MethodElement():
-        final sourceUri = _libraryUriFor(element);
-        final packageName = _packageNameFromUri(sourceUri);
-        final callableName = element.name;
-        if (packageName == null || callableName == null) {
-          return null;
-        }
-        final enclosingElement = element.enclosingElement;
-        return ResolvedCallable(
-          packageName: packageName,
-          libraryUri: sourceUri.toString(),
-          callableName: callableName,
-          kind: element.isStatic
-              ? CallableKind.staticMethod
-              : CallableKind.instanceMethod,
-          isStatic: element.isStatic,
-          enclosingClassName: enclosingElement is InterfaceElement
-              ? enclosingElement.name
-              : null,
-          supertypeKeys: enclosingElement is InterfaceElement
-              ? _supertypeKeys(enclosingElement)
-              : const {},
-        );
-      default:
-        return null;
-    }
-  }
-
-  static Uri _libraryUriFor(Element element) {
-    return element.library!.firstFragment.source.uri;
-  }
-
-  static String? _packageNameFromUri(Uri uri) {
-    if (uri.scheme != 'package' || uri.pathSegments.isEmpty) {
-      return null;
-    }
-    return uri.pathSegments.first;
-  }
-
-  static Set<String> _supertypeKeys(InterfaceElement element) {
-    return {
-      for (final type in element.allSupertypes)
-        if (type.element.name case final name?)
-          '${type.element.library.firstFragment.source.uri}::$name',
-    };
   }
 }

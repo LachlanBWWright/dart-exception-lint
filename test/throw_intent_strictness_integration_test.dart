@@ -167,10 +167,8 @@ int thirdPartyParse(String value) {
   return int.parse(value);
 }
 
-void thirdPartyDynamic(dynamic target) {
-  try {
-    target.call();
-  } catch (_) {}
+Future<void> thirdPartyDynamic(dynamic target) async {
+  await target.call();
 }
 ''',
     );
@@ -198,7 +196,17 @@ Future<void> _writeFile(String path, String content) async {
 }
 
 int _countCode(String output, String code) {
-  return RegExp('\\b$code\\b').allMatches(output).length;
+  // The path dependency lives below the fixture root and is also analyzed.
+  // This suite verifies the caller package's third-party policy, independently
+  // of diagnostics emitted inside the dependency under its own local policy.
+  return output
+      .split('\n')
+      .where(
+        (line) =>
+            line.contains(' - lib/main.dart:') &&
+            RegExp('\\b$code\\b').hasMatch(line),
+      )
+      .length;
 }
 
 String _yamlPath(String path) {

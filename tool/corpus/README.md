@@ -1,6 +1,6 @@
 # External corpus evaluation
 
-`projects.tsv` is a reproducible evaluation corpus of 50 widely used Dart and
+`projects.tsv` is a revision-pinned inventory of 52 widely used Dart and
 Flutter repositories. The list is intentionally a mixture of SDK/tooling
 packages, foundational packages, application infrastructure, and Flutter
 plugins. Some rows point at a monorepo; the runner discovers analyzable package
@@ -19,12 +19,12 @@ CORPUS_LIMIT=10 CORPUS_REFRESH=1 tool/corpus/run_corpus.sh
 CORPUS_ROOT=/tmp/dart-exception-corpus CORPUS_TIMEOUT=180 tool/corpus/run_corpus.sh
 ```
 
-The runner clones shallow copies, injects a temporary local plugin configuration
+The runner checks out the exact commit recorded in each row, injects a temporary local plugin configuration
 into each package, runs dependency resolution, runs the analyzer, restores the
 package files, and writes machine-readable results to
 `tool/corpus/results.tsv`. Clones and generated results are ignored by git.
 
-The corpus is an evaluation harness, not a claim that every repository has a
+This repository inventory measures diagnostic volume and execution failures. It does not measure precision or recall; it has no reviewed expected-diagnostic labels. It is not a claim that every repository has a
 single canonical package root. Failures caused by unavailable platform SDKs,
 private dependencies, repository-specific tooling, or analyzer-plugin
 compilation are recorded separately from linter diagnostics. The TSV has

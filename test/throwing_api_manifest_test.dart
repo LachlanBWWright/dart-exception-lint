@@ -4,6 +4,8 @@ import 'package:dart_exception_lint/src/analysis/throw_summary.dart';
 import 'package:dart_exception_lint/src/config/config_failures.dart';
 import 'package:dart_exception_lint/src/config/throwing_api_manifest.dart';
 import 'package:dart_exception_lint/src/result.dart';
+import 'package:dart_exception_lint/src/engine/exception_effect.dart';
+import 'package:dart_exception_lint/src/analysis/resolved_callable.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -153,5 +155,64 @@ apis:
     final result = ThrowingApiManifest.loadResult(packageRoot: tempRoot.path);
     expect(result, isA<Err<ThrowingApiManifest, ManifestFailure>>());
     expect(result.errorOrNull, isA<ManifestFileReadFailure>());
+  });
+  test('models accessor effects independently in multiple channels', () {
+    final result = ThrowingApiManifest.parseResult('''
+apis:
+  - package: example
+    library: package:example/api.dart
+    class: C
+    getter: pending
+    effects:
+      - channel: synchronous
+        certainty: possible
+        exception_types: [StateError]
+      - channel: future
+        certainty: unknown
+''');
+    expect(result.errorOrNull, isNull);
+    final spec = result.valueOrNull!.apis.single;
+    expect(spec.sources.map((source) => source.channel), [
+      ExceptionChannel.synchronous,
+      ExceptionChannel.future,
+    ]);
+    final summary = ThrowSummary.merge(
+      'getter',
+      spec.sources,
+      dependencyElementKeys: const [],
+      complete: true,
+    );
+    expect(summary.canThrowSynchronously, isTrue);
+    expect(summary.canCompleteWithAsyncError, isTrue);
+    expect(summary.hasUnknownEffects, isTrue);
+  });
+
+  test('same-named classes in different libraries do not match', () {
+    final spec = ThrowingApiSpecification(
+      packageName: 'example',
+      libraryUri: 'package:example/a.dart',
+      className: 'C',
+      methodName: 'run',
+    );
+    final callable = ResolvedCallable(
+      packageName: 'example',
+      libraryUri: 'package:example/b.dart',
+      callableName: 'run',
+      kind: CallableKind.instanceMethod,
+      isStatic: false,
+      enclosingClassName: 'C',
+      supertypeKeys: const {},
+    );
+    expect(spec.matchScore(callable), -1);
+  });
+
+  test('rejects unknown manifest keys and mixed effect encodings', () {
+    for (final input in [
+      'unknown: []',
+      'apis:\n  - package: x\n    library: package:x/x.dart\n    function: f\n    typo: true',
+      'apis:\n  - package: x\n    library: package:x/x.dart\n    function: f\n    async: true\n    effects:\n      - channel: future\n        certainty: possible',
+    ]) {
+      expect(ThrowingApiManifest.parseResult(input).errorOrNull, isNotNull);
+    }
   });
 }

@@ -4,7 +4,9 @@ library;
 /// Marks a callable as an intentional exception-propagation boundary.
 ///
 /// The linter does not require effects reaching this callable to be caught
-/// locally. Direct syntax rules such as `no_manual_throw` still apply.
+/// locally. Callers outside the boundary must still handle its outward effects.
+/// Direct rules such as `no_manual_throw` still apply to explicit throws and
+/// asynchronous error production.
 class ExceptionBoundary {
   const ExceptionBoundary();
 }

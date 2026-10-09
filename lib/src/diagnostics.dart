@@ -1,6 +1,13 @@
 import 'package:analyzer/error/error.dart';
 
 final class DartExceptionLintDiagnostics {
+  static const unsupportedExceptionEnvironment = LintCode(
+    'unsupported_exception_analysis_environment',
+    'Exception analysis is running outside its verified environment: {0}',
+    severity: DiagnosticSeverity.WARNING,
+    correctionMessage:
+        'Use a supported SDK/analyzer or update the plugin models.',
+  );
   static const LintCode noNullAssertion = LintCode(
     'no_null_assertion',
     "Avoid null assertions with '!'.",
@@ -44,7 +51,7 @@ final class DartExceptionLintDiagnostics {
 
   static const LintCode catchUnknownDynamicCalls = LintCode(
     'catch_unknown_dynamic_calls',
-    '{0} could not be resolved safely and should be protected or avoided.',
+    '{0} could not be resolved safely ({1}) and should be protected or avoided.',
     correctionMessage:
         'Try adding type information, using a known safe API, or protecting this call.',
   );
@@ -52,12 +59,14 @@ final class DartExceptionLintDiagnostics {
   static const LintCode invalidExceptionAnalysisConfig = LintCode(
     'invalid_exception_analysis_config',
     'Invalid dart_exception_lint configuration: {0}',
+    severity: DiagnosticSeverity.WARNING,
     correctionMessage: 'Fix the referenced configuration file.',
   );
 
   static const LintCode invalidExceptionContract = LintCode(
     'invalid_exception_contract',
     'Invalid exception contract: {0}',
+    severity: DiagnosticSeverity.WARNING,
     correctionMessage: 'Make the contract agree with the declaration.',
   );
 }

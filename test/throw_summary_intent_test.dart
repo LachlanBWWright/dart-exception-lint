@@ -100,7 +100,7 @@ void main() {
 
       expect(summary.sources, hasLength(2));
       expect(summary.sources.last.kind, ThrowSourceKind.truncation);
-      expect(summary.complete, isTrue);
+      expect(summary.complete, isFalse);
       expect(summary.truncationReason, 'max_sources_per_summary');
     },
   );
@@ -120,7 +120,7 @@ void main() {
       maxSources: -1,
     );
 
-    expect(summary.complete, isTrue);
+    expect(summary.complete, isFalse);
     expect(summary.truncationReason, 'max_sources_per_summary');
     expect(summary.confidence, ThrowConfidence.unknown);
   });

@@ -11,7 +11,7 @@ void main() {
     final line = lines[lineNumber - 1];
     if (line.trim().isEmpty || line.startsWith('#')) continue;
     final fields = line.split('\t');
-    if (fields.length != 3 || fields.any((field) => field.trim().isEmpty)) {
+    if (fields.length != 4 || fields.any((field) => field.trim().isEmpty)) {
       stderr.writeln('Invalid corpus row at line $lineNumber: $line');
       valid = false;
       continue;
@@ -29,6 +29,12 @@ void main() {
         !fields[1].startsWith('https://github.com/') ||
         !fields[1].endsWith('.git')) {
       stderr.writeln('Unsupported repository URL at line $lineNumber');
+      valid = false;
+    }
+    if (!RegExp(r'^[0-9a-f]{40}$').hasMatch(fields[3])) {
+      stderr.writeln(
+        'Corpus revision must be a full commit hash at line $lineNumber',
+      );
       valid = false;
     }
     if (fields[2] != 'dart' && fields[2] != 'flutter') {

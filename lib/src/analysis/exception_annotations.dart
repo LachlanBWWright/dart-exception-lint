@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/constant/value.dart';
+import 'package:analyzer/dart/element/type.dart';
 
 bool hasExceptionBoundaryAnnotation(Element element) {
   if (_hasDirectExceptionBoundaryAnnotation(element)) {
@@ -15,17 +16,23 @@ bool hasExceptionBoundaryAnnotation(Element element) {
       _hasDirectExceptionBoundaryAnnotation(enclosing);
 }
 
-bool _hasDirectExceptionBoundaryAnnotation(Element element) {
-  return element.metadata.annotations.any((annotation) {
-    final annotatedElement = annotation.element;
-    return switch (annotatedElement) {
-      ConstructorElement(:final enclosingElement)
-          when enclosingElement.name == 'ExceptionBoundary' =>
-        true,
-      _ => annotatedElement?.name == 'ExceptionBoundary',
-    };
-  });
+/// Names alone never establish a contract: use the evaluated annotation type
+/// so import prefixes, re-exports, and constant aliases resolve consistently.
+String? exceptionAnnotationName(ElementAnnotation annotation) {
+  final type = annotation.computeConstantValue()?.type;
+  if (type is! InterfaceType ||
+      type.element.library.uri.toString() !=
+          'package:dart_exception_lint/dart_exception_lint.dart') {
+    return null;
+  }
+  return type.element.name;
 }
+
+bool _hasDirectExceptionBoundaryAnnotation(Element element) =>
+    element.metadata.annotations.any(
+      (annotation) =>
+          exceptionAnnotationName(annotation) == 'ExceptionBoundary',
+    );
 
 bool isInsideExceptionBoundary(AstNode node) {
   AstNode? current = node;
@@ -47,21 +54,27 @@ bool isInsideExceptionBoundary(AstNode node) {
 
 /// The contract declared by a public exception annotation.
 final class ExceptionContract {
-  const ExceptionContract({required this.kind, required this.exceptionTypes});
+  const ExceptionContract({
+    required this.kind,
+    required this.exceptionTypes,
+    this.exceptionSupertypes = const {},
+    this.resolvedExceptionTypes = const [],
+  });
 
   final ExceptionContractKind kind;
   final List<String> exceptionTypes;
+  final List<DartType> resolvedExceptionTypes;
+  final Map<String, List<String>> exceptionSupertypes;
 }
 
 enum ExceptionContractKind { mayThrow, failingFuture, doesNotThrow }
 
-ExceptionContract? exceptionContractFor(Element element) {
+ExceptionContract? exceptionContractFor(Element element) =>
+    exceptionContractsFor(element).firstOrNull;
+
+Iterable<ExceptionContract> exceptionContractsFor(Element element) sync* {
   for (final annotation in element.metadata.annotations) {
-    final name = switch (annotation.element) {
-      ConstructorElement(:final enclosingElement) => enclosingElement.name,
-      final annotatedElement? => annotatedElement.name,
-      _ => null,
-    };
+    final name = exceptionAnnotationName(annotation);
     final kind = switch (name) {
       'MayThrow' => ExceptionContractKind.mayThrow,
       'ReturnsFailingFuture' => ExceptionContractKind.failingFuture,
@@ -70,22 +83,34 @@ ExceptionContract? exceptionContractFor(Element element) {
     };
     if (kind == null) continue;
     if (kind == ExceptionContractKind.doesNotThrow) {
-      return const ExceptionContract(
+      yield const ExceptionContract(
         kind: ExceptionContractKind.doesNotThrow,
         exceptionTypes: [],
       );
+      continue;
     }
 
     final value = annotation.computeConstantValue();
     final types = value?.getField('exceptionTypes')?.toListValue();
-    return ExceptionContract(
+    yield ExceptionContract(
       kind: kind,
+      resolvedExceptionTypes: [
+        for (final value in types ?? const <DartObject>[]) ?value.toTypeValue(),
+      ],
       exceptionTypes: [
         for (final type in types ?? const <DartObject>[]) _typeName(type),
       ],
+      exceptionSupertypes: {
+        for (final value in types ?? const <DartObject>[])
+          if (value.toTypeValue() case final InterfaceType type)
+            _typeName(value): [
+              for (final supertype in type.allSupertypes)
+                ?supertype.element.name,
+            ],
+      },
     );
   }
-  return null;
 }
 
-String _typeName(DartObject value) => value.type?.element?.name ?? 'Object';
+String _typeName(DartObject value) =>
+    value.toTypeValue()?.element?.name ?? 'Object';

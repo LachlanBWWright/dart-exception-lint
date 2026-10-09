@@ -7,21 +7,45 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk: ['3.11.0', stable]
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
+          sdk: ${{ matrix.sdk }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Install dependencies
         run: dart pub get
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed .
       - name: Analyze package
         run: dart analyze
+      - name: Verify analyzer syntax inventory
+        run: dart run tool/verification/check_syntax_inventory.dart
       - name: Validate external corpus manifest
         run: dart run tool/corpus/validate_manifest.dart
       - name: Run tests
-        run: dart test
+        run: dart test --timeout 4x
+      - name: Check inference performance budgets
+        run: dart run tool/verification/benchmark.dart
+      - name: Check callback inference performance budgets
+        run: dart run tool/verification/callback_benchmark.dart
+      - name: Compare inferred effects with VM and JavaScript behavior
+        run: dart run tool/verification/runtime_differential.dart
+      - name: Compare callback effects with VM and JavaScript behavior
+        run: dart run tool/verification/callback_value_runtime.dart
+      - name: Compare stored and returned callbacks with VM and JavaScript behavior
+        run: dart run tool/verification/callback_storage_runtime.dart
+      - name: Compare explicit error producers with VM and JavaScript behavior
+        run: dart run tool/verification/error_producer_runtime.dart
+      - name: Compare numeric effects with VM and JavaScript behavior
+        run: dart run tool/verification/numeric_runtime.dart
+      - name: Compare numeric parser effects with VM and JavaScript behavior
+        run: dart run tool/verification/numeric_parse_runtime.dart
       - name: Verify example consumer
         working-directory: example
         run: |
@@ -29,3 +53,5 @@ jobs:
           dart analyze
       - name: Publish dry run
         run: dart pub publish --dry-run
+      - name: Verify clean release snapshot and enable-only consumer
+        run: dart run tool/verification/release_smoke.dart

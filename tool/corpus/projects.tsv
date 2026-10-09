@@ -1,53 +1,53 @@
-# id<TAB>repository URL<TAB>package manager
-dart_sdk	https://github.com/dart-lang/sdk.git	dart
-dart_linter	https://github.com/dart-lang/linter.git	dart
-dart_test	https://github.com/dart-lang/test.git	dart
-dart_http	https://github.com/dart-lang/http.git	dart
-dart_path	https://github.com/dart-lang/path.git	dart
-dart_args	https://github.com/dart-lang/args.git	dart
-dart_collection	https://github.com/dart-lang/collection.git	dart
-dart_crypto	https://github.com/dart-lang/crypto.git	dart
-dart_intl	https://github.com/dart-lang/intl.git	dart
-dart_yaml	https://github.com/dart-lang/yaml.git	dart
-dart_source_span	https://github.com/dart-lang/source_span.git	dart
-dart_async	https://github.com/dart-lang/async.git	dart
-dart_ffi	https://github.com/dart-lang/ffi.git	dart
-dart_build	https://github.com/dart-lang/build.git	dart
-dart_json_serializable	https://github.com/google/json_serializable.dart.git	dart
-dart_flutter	https://github.com/flutter/flutter.git	flutter
-flutter_packages	https://github.com/flutter/packages.git	flutter
-flutter_samples	https://github.com/flutter/samples.git	flutter
-flutterfire	https://github.com/firebase/flutterfire.git	flutter
-riverpod	https://github.com/rrousselGit/riverpod.git	dart
-freezed	https://github.com/rrousselGit/freezed.git	dart
-bloc	https://github.com/felangel/bloc.git	dart
-equatable	https://github.com/felangel/equatable.git	dart
-hydrated_bloc	https://github.com/felangel/hydrated_bloc.git	dart
-replay_bloc	https://github.com/felangel/replay_bloc.git	dart
-dio	https://github.com/cfug/dio.git	dart
-drift	https://github.com/simolus3/drift.git	dart
-isar	https://github.com/isar/isar.git	dart
-hive	https://github.com/isar/hive.git	dart
-getx	https://github.com/jonataslaw/getx.git	flutter
-get_it	https://github.com/fluttercommunity/get_it.git	dart
-auto_route	https://github.com/Milad-Akarie/auto_route_library.git	dart
-retrofit	https://github.com/trevorwang/retrofit.dart.git	dart
-fpdart	https://github.com/SandroMagliani/fpdart.git	dart
-rxdart	https://github.com/ReactiveX/rxdart.git	dart
-mocktail	https://github.com/felangel/mocktail.git	dart
-very_good_cli	https://github.com/VeryGoodOpenSource/very_good_cli.git	dart
-very_good_analysis	https://github.com/VeryGoodOpenSource/very_good_analysis.git	dart
-very_good_flutter	https://github.com/VeryGoodOpenSource/very_good_flutter.git	flutter
-patrol	https://github.com/leancodepl/patrol.git	flutter
-melos	https://github.com/invertase/melos.git	dart
-mason	https://github.com/felangel/mason.git	dart
-serverpod	https://github.com/serverpod/serverpod.git	dart
-supabase_flutter	https://github.com/supabase/supabase-flutter.git	flutter
-permission_handler	https://github.com/Baseflow/flutter-permission-handler.git	flutter
-plus_plugins	https://github.com/fluttercommunity/plus_plugins.git	flutter
-flutter_hooks	https://github.com/rrousselGit/flutter_hooks.git	flutter
-provider	https://github.com/rrousselGit/provider.git	flutter
-workmanager	https://github.com/fluttercommunity/flutter_workmanager.git	flutter
-sqflite	https://github.com/tekartik/sqflite.git	flutter
-flutter_quill	https://github.com/singerdmx/flutter-quill.git	flutter
-window_manager	https://github.com/leanflutter/window_manager.git	flutter
+# id	url	manager	commit (HEAD observed 2026-10-04; fixed thereafter)
+dart_sdk	https://github.com/dart-lang/sdk.git	dart	7ca61c210632aa1c96d85aa17e916fabfb955243
+dart_linter	https://github.com/dart-lang/linter.git	dart	4b53999c3af99229fa7b47ca52cf40a2a8d62b3a
+dart_test	https://github.com/dart-lang/test.git	dart	3be2f547208fc569964973d6f13ec1985c4a9fdd
+dart_http	https://github.com/dart-lang/http.git	dart	47c57df399bf38927d2c9f047a1a5e3c049c0271
+dart_path	https://github.com/dart-lang/path.git	dart	7e3d5d87220133ad9cc99f82e85a826011a62859
+dart_args	https://github.com/dart-lang/args.git	dart	7a2dfb528768f0a2e5680f711dbfb948f1d6c255
+dart_collection	https://github.com/dart-lang/collection.git	dart	96afcc2fce622ea7e75053af5b73f8db07491bc4
+dart_crypto	https://github.com/dart-lang/crypto.git	dart	255edfb5ab8d01e7bb2302b97a7f5124ef82fd1b
+dart_intl	https://github.com/dart-lang/intl.git	dart	5d65e3808ce40e6282e40881492607df4e35669f
+dart_yaml	https://github.com/dart-lang/yaml.git	dart	fbb921d7568dc36ea40774a1478ba3d6ebdead4a
+dart_source_span	https://github.com/dart-lang/source_span.git	dart	e6a34591b7f7880c7ca0fcb95b858ccf7f8be304
+dart_async	https://github.com/dart-lang/async.git	dart	d6a6a4dbe0c636e42d6cf4ede88ed5a33e35a6ca
+dart_ffi	https://github.com/dart-lang/ffi.git	dart	fb9345230221a7f069690e06cacdc00b031729cb
+dart_build	https://github.com/dart-lang/build.git	dart	4800d7e734f7d9a2704d7f1d525c7bd131bac5e5
+dart_json_serializable	https://github.com/google/json_serializable.dart.git	dart	f65cd713ddd22de091ba9b0bd2e86ebac8980b61
+dart_flutter	https://github.com/flutter/flutter.git	flutter	53d381d9067f16b1d4132f5b8f059a9cc5ddb9ec
+flutter_packages	https://github.com/flutter/packages.git	flutter	10cde9a3b14d04f4f8ab8892e1dadcbad885fa48
+flutter_samples	https://github.com/flutter/samples.git	flutter	a05867daaad66d9b89609b5eeb766acb0ac4e76c
+flutterfire	https://github.com/firebase/flutterfire.git	flutter	0a41f05f82b344b5966055d27999ee68346475ff
+riverpod	https://github.com/rrousselGit/riverpod.git	dart	90c5a0bb144c3d782475c0d525cb2f6e45eef1c8
+freezed	https://github.com/rrousselGit/freezed.git	dart	154a1e779c7a0fe3474fadab2fbb15a00a7de90f
+bloc	https://github.com/felangel/bloc.git	dart	b9be1e252ee24ffbe9f2fb629edc7624b2cfbf05
+equatable	https://github.com/felangel/equatable.git	dart	832990678125b10103b26500ce8ce7188d775925
+hydrated_bloc	https://github.com/felangel/hydrated_bloc.git	dart	bb69309d683ff7d0b724300f643917880e4880b9
+dart_lints	https://github.com/dart-lang/lints.git	dart	deff4270a7800197c402eb1c76915ad3fac2d512
+dio	https://github.com/cfug/dio.git	dart	4684e29dabaa2655606f1620a4ed316ee3f8c963
+drift	https://github.com/simolus3/drift.git	dart	f7e4c72bd10d92b9e1a8bfb768730ca1096b1341
+isar	https://github.com/isar/isar.git	dart	713001bf1615ea15460d9bc8d3fb9c8cb4150a2e
+hive	https://github.com/isar/hive.git	dart	1b4febe967370f790759823a5e154adc383e53d3
+getx	https://github.com/jonataslaw/getx.git	flutter	e3c8fa04ae65ebf7ff0128dbeb2dc91d4dafa429
+get_it	https://github.com/fluttercommunity/get_it.git	dart	f4c447fc8d3fc2425dc43efe86905ef86905442e
+auto_route	https://github.com/Milad-Akarie/auto_route_library.git	dart	1505c67a42466bb929c2ad833c5b15d67b94b2f9
+retrofit	https://github.com/trevorwang/retrofit.dart.git	dart	81c39a6169a86c27e9dfd7260ff58f2520748987
+fpdart	https://github.com/SandroMaglione/fpdart.git	dart	27e0576669fc86197db02f042ef3455b2ec153ee
+rxdart	https://github.com/ReactiveX/rxdart.git	dart	d1f3ba64f71669a137489341009345f59ec84614
+mocktail	https://github.com/felangel/mocktail.git	dart	d6a96e15b9203d33af61083e02e8c40ac07192d6
+very_good_cli	https://github.com/VeryGoodOpenSource/very_good_cli.git	dart	255af7c3ed0809d323d8d3f6ed9496d0b6857840
+very_good_analysis	https://github.com/VeryGoodOpenSource/very_good_analysis.git	dart	0261a0a008067eafb130d6ab45f4c583eade3032
+flutter_native_splash	https://github.com/jonbhanson/flutter_native_splash.git	flutter	3de495d6cc4d4a2bce0e2e12286e1ffee15f1a35
+patrol	https://github.com/leancodepl/patrol.git	flutter	4e84f9b71681c702e6a74050190239a8edb7e73f
+melos	https://github.com/invertase/melos.git	dart	073b15060c5269496b065aa5629008bb1b5a2bfe
+mason	https://github.com/felangel/mason.git	dart	5beba2574aac1555ad09abe59b3d5ef85fa4c8a6
+serverpod	https://github.com/serverpod/serverpod.git	dart	b693774b77613a21a3ebca3e1d310e59ca578c13
+supabase_flutter	https://github.com/supabase/supabase-flutter.git	flutter	1eefe0ee2b22c883fb26ac21cb5bbe38d7df2493
+permission_handler	https://github.com/Baseflow/flutter-permission-handler.git	flutter	06844691889603bf867ef03e8f3ca24b83f9f1a0
+plus_plugins	https://github.com/fluttercommunity/plus_plugins.git	flutter	53e5ecf38c8775af21c62c2932d07f88bad1a3b2
+flutter_hooks	https://github.com/rrousselGit/flutter_hooks.git	flutter	6f7344fc09f3800c1a9944d06ae56d5324e084e3
+provider	https://github.com/rrousselGit/provider.git	flutter	3ed4c6d6b1700c08256f25a034bb93f943bd7236
+workmanager	https://github.com/fluttercommunity/flutter_workmanager.git	flutter	896c4c1122f5e267ed472b044219c884305246d3
+sqflite	https://github.com/tekartik/sqflite.git	flutter	aaabf90828645125bf7f4bd8e9a6fe4e3935b076
+flutter_quill	https://github.com/singerdmx/flutter-quill.git	flutter	e880534f8750072c879fecd72ada72d0902bc5e8
+window_manager	https://github.com/leanflutter/window_manager.git	flutter	4080b59c0b1084c6085f1613c660382cd164ad76

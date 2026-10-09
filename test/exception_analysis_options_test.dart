@@ -6,6 +6,22 @@ import 'package:dart_exception_lint/src/utils/source_utils.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('explicit null configuration shapes are rejected', () {
+    for (final yaml in [
+      'exception_analysis: null',
+      'plugins: null',
+      'plugins:\n  dart_exception_lint: null',
+      'exception_analysis:\n  report: null',
+      'exception_analysis:\n  strictness: null',
+      'exception_analysis:\n  rules: null',
+    ]) {
+      expect(
+        ExceptionAnalysisOptions.parseResult(yaml),
+        isA<Err<ExceptionAnalysisOptions, ExceptionAnalysisOptionsFailure>>(),
+        reason: yaml,
+      );
+    }
+  });
   test('parses exception analysis options', () {
     final result = ExceptionAnalysisOptions.parseResult('''
 plugins:
@@ -83,11 +99,11 @@ plugins:
     );
     final options = result.valueOrNull!;
 
-    expect(options.internalStrictness, ThrowIntent.possible);
-    expect(options.thirdPartyStrictness, ThrowIntent.deliberate);
-    expect(options.analyzeTestFiles, isFalse);
-    expect(options.analyzeGeneratedFiles, isFalse);
-    expect(options.shouldAnalyzeTestFilesForRule('no_manual_throw'), isFalse);
+    expect(options.internalStrictness, ThrowIntent.unknown);
+    expect(options.thirdPartyStrictness, ThrowIntent.unknown);
+    expect(options.analyzeTestFiles, isTrue);
+    expect(options.analyzeGeneratedFiles, isTrue);
+    expect(options.shouldAnalyzeTestFilesForRule('no_manual_throw'), isTrue);
   });
 
   test('returns error for unsupported strictness wire value', () {
@@ -201,7 +217,7 @@ exception_analysis:
   });
 
   test('skips test files unless rule override enables them', () {
-    const defaultOptions = ExceptionAnalysisOptions();
+    const defaultOptions = ExceptionAnalysisOptions(analyzeTestFiles: false);
     const overrideOptions = ExceptionAnalysisOptions(
       ruleTestFileOverrides: {'no_null_assertion': true},
     );
@@ -233,4 +249,26 @@ exception_analysis:
       isFalse,
     );
   });
+  test(
+    'rejects malformed roots, values, and conflicting configuration locations',
+    () {
+      for (final input in [
+        '[]',
+        'false',
+        'null',
+        'exception_analysis: false',
+        'plugins: []',
+        'exception_analysis: {}\nplugins:\n  dart_exception_lint:\n    exception_analysis: {}',
+        'exception_analysis:\n  strictness:\n    internal: true',
+        'exception_analysis:\n  rules:\n    no_manual_throw:\n      analyze_test_files: no',
+        'unknown_root: true',
+      ]) {
+        expect(
+          ExceptionAnalysisOptions.parseResult(input).errorOrNull,
+          isNotNull,
+          reason: input,
+        );
+      }
+    },
+  );
 }

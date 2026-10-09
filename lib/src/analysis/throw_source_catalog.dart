@@ -4,6 +4,9 @@ import 'package:analyzer/dart/element/type.dart';
 
 import '../config/exception_analysis_options.dart';
 import 'throw_summary.dart';
+import '../engine/exception_effect.dart';
+import '../engine/numeric_checks.dart';
+import '../engine/numeric_parse_checks.dart';
 
 final class ThrowSourceCatalog {
   const ThrowSourceCatalog._();
@@ -13,6 +16,18 @@ final class ThrowSourceCatalog {
     Element? element,
     ExceptionAnalysisOptions options,
   ) {
+    if (NumericParseChecks.modelsInvocation(node, element)) {
+      return options.treatParseMethodsAsThrowing
+          ? NumericParseChecks.invocation(node, element)
+          : null;
+    }
+    if (NumericChecks.modelsInvocation(node, element)) {
+      // A modeled pure numeric call must not fall through to broad legacy
+      // constructor classifications (notably BigInt.from as parsing).
+      return options.treatArithmeticAsThrowing
+          ? NumericChecks.invocation(node, element)
+          : null;
+    }
     return switch (node) {
       MethodInvocation() => _matchMethodInvocation(
         node,
@@ -75,11 +90,44 @@ final class ThrowSourceCatalog {
       return null;
     }
 
-    return const ThrowSource(
+    final target = node.realTarget;
+    final type = target.staticType;
+    final index = node.index;
+    final sdkList =
+        type is InterfaceType &&
+        (type.isDartCoreList ||
+            type.allSupertypes.any((type) => type.isDartCoreList));
+    final sdkString = type is InterfaceType && type.isDartCoreString;
+    if (!sdkList && !sdkString) return null;
+    final literalLength = switch (target) {
+      ListLiteral(:final elements)
+          when elements.every((element) => element is Expression) =>
+        elements.length,
+      SimpleStringLiteral() => target.value.length,
+      _ => null,
+    };
+    if (node.inGetterContext() &&
+        !node.inSetterContext() &&
+        index is IntegerLiteral &&
+        literalLength != null &&
+        index.value != null &&
+        index.value! >= 0 &&
+        index.value! < literalLength) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.indexAccess,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: 'proven in-bounds literal index',
+      );
+    }
+    return ThrowSource(
       kind: ThrowSourceKind.indexAccess,
       confidence: ThrowConfidence.possibleThrow,
       displayName: 'index access',
-      exceptionTypes: ['RangeError'],
+      exceptionTypes: [
+        'RangeError',
+        if (index.staticType is DynamicType) 'TypeError',
+        if (node.inSetterContext()) 'UnsupportedError',
+      ],
     );
   }
 
@@ -112,6 +160,12 @@ final class ThrowSourceCatalog {
     if (!options.treatLateInitializationAsThrowing || !isLate) {
       return null;
     }
+    final variable = element is PropertyAccessorElement
+        ? element.variable
+        : element;
+    if (variable is PropertyInducingElement && variable.hasInitializer) {
+      return null;
+    }
     if (node.parent is VariableDeclaration) {
       return null;
     }
@@ -127,22 +181,16 @@ final class ThrowSourceCatalog {
     BinaryExpression node,
     ExceptionAnalysisOptions options,
   ) {
-    if (!options.treatArithmeticAsThrowing ||
-        (node.operator.lexeme != '~/' && node.operator.lexeme != '%')) {
-      return null;
-    }
-    if (node.operator.lexeme == '%' &&
-        (node.leftOperand.staticType?.getDisplayString() != 'int' ||
-            node.rightOperand.staticType?.getDisplayString() != 'int')) {
-      return null;
-    }
-    return const ThrowSource(
-      kind: ThrowSourceKind.arithmeticOperation,
-      confidence: ThrowConfidence.possibleThrow,
-      displayName: 'integer arithmetic',
-      exceptionTypes: ['IntegerDivisionByZeroException'],
-    );
+    return options.treatArithmeticAsThrowing
+        ? NumericChecks.binary(node)
+        : null;
   }
+
+  static ThrowSource? matchAssignmentExpression(
+    AssignmentExpression node,
+    ExceptionAnalysisOptions options,
+  ) =>
+      options.treatArithmeticAsThrowing ? NumericChecks.assignment(node) : null;
 
   static ThrowSource matchAssertStatement(AssertStatement node) {
     return const ThrowSource(
@@ -159,6 +207,15 @@ final class ThrowSourceCatalog {
     required String? callableName,
     required ExceptionAnalysisOptions options,
   }) {
+    if (libraryUri == 'dart:async' && callableName == 'scheduleMicrotask') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.unknown,
+        displayName: 'scheduled microtask callback',
+        isAsync: true,
+        channel: ExceptionChannel.scheduled,
+      );
+    }
     if (callableName == 'jsonDecode' &&
         _isExpectedLibrary(libraryUri, 'dart:convert')) {
       return const ThrowSource(
@@ -188,6 +245,48 @@ final class ThrowSourceCatalog {
     required String? className,
     required String? constructorName,
   }) {
+    // Audited core constructors only initialize fields; allocation failure is
+    // outside the Dart-exception contract. Argument checks remain separate.
+    if (libraryUri == 'dart:core' &&
+        (constructorName == null ||
+            constructorName.isEmpty ||
+            constructorName == 'new') &&
+        const {
+          'Object',
+          'Exception',
+          'FormatException',
+          'StateError',
+          'UnsupportedError',
+          'UnimplementedError',
+        }.contains(className)) {
+      return ThrowSource(
+        kind: ThrowSourceKind.inferredCall,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: '$className constructor',
+      );
+    }
+
+    if (libraryUri == 'dart:async' &&
+        className == 'Future' &&
+        constructorName == 'value') {
+      final argument =
+          node.argumentList.arguments.firstOrNull?.argumentExpression;
+      final type = argument?.staticType;
+      final assimilatesFuture =
+          type is DynamicType ||
+          type is TypeParameterType ||
+          (type is InterfaceType &&
+              (type.isDartAsyncFuture || type.isDartAsyncFutureOr));
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: assimilatesFuture
+            ? ThrowConfidence.asyncError
+            : ThrowConfidence.noObviousThrow,
+        displayName: 'Future.value',
+        isAsync: assimilatesFuture,
+      );
+    }
+
     if (className == 'Future' &&
         constructorName == 'error' &&
         _isExpectedLibrary(libraryUri, 'dart:async')) {
@@ -197,6 +296,15 @@ final class ThrowSourceCatalog {
         displayName: 'Future.error',
         isAsync: true,
         exceptionTypes: _argumentExceptionTypes(node.argumentList),
+        exceptionSupertypes: _argumentExceptionSupertypes(node.argumentList),
+        resolvedExceptionTypes: [
+          ?node
+              .argumentList
+              .arguments
+              .firstOrNull
+              ?.argumentExpression
+              .staticType,
+        ],
       );
     }
 
@@ -206,6 +314,7 @@ final class ThrowSourceCatalog {
         confidence: ThrowConfidence.asyncError,
         displayName: 'Timer callback',
         isAsync: true,
+        channel: ExceptionChannel.scheduled,
       );
     }
 
@@ -220,7 +329,8 @@ final class ThrowSourceCatalog {
     }
 
     if (_isExpectedLibrary(libraryUri, 'dart:core') &&
-        (className == 'RegExp' || className == 'BigInt')) {
+        (className == 'RegExp' ||
+            className == 'BigInt' && constructorName == 'parse')) {
       return ThrowSource(
         kind: ThrowSourceKind.parseCall,
         confidence: ThrowConfidence.possibleThrow,
@@ -240,10 +350,57 @@ final class ThrowSourceCatalog {
     required ExceptionAnalysisOptions options,
   }) {
     final name = callableName ?? node.methodName.name;
+    if (libraryUri == 'dart:core' &&
+        enclosingClassName == 'Object' &&
+        node.target is SuperExpression &&
+        name == 'noSuchMethod') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.inferredCall,
+        confidence: ThrowConfidence.definiteThrow,
+        displayName: 'Object.noSuchMethod',
+        exceptionTypes: ['NoSuchMethodError'],
+        exceptionSupertypes: {
+          'NoSuchMethodError': ['Error', 'Object'],
+        },
+      );
+    }
+    if (libraryUri == 'dart:async' && name == 'scheduleMicrotask') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.unknown,
+        displayName: 'scheduled microtask callback',
+        isAsync: true,
+        channel: ExceptionChannel.scheduled,
+      );
+    }
     final targetSource =
         enclosingClassName ??
         node.target?.staticType?.getDisplayString() ??
         node.target?.toSource();
+    if (libraryUri == 'dart:async' &&
+        name == 'value' &&
+        targetSource == 'Future') {
+      final type = node
+          .argumentList
+          .arguments
+          .firstOrNull
+          ?.argumentExpression
+          .staticType;
+      final assimilatesFuture =
+          type is DynamicType ||
+          type is TypeParameterType ||
+          (type is InterfaceType &&
+              (type.isDartAsyncFuture || type.isDartAsyncFutureOr));
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: assimilatesFuture
+            ? ThrowConfidence.asyncError
+            : ThrowConfidence.noObviousThrow,
+        displayName: 'Future.value',
+        isAsync: assimilatesFuture,
+      );
+    }
+
     if (options.treatParseMethodsAsThrowing &&
         name == 'parse' &&
         _isExpectedLibrary(libraryUri, 'dart:core')) {
@@ -500,7 +657,12 @@ final class ThrowSourceCatalog {
         kind: ThrowSourceKind.collectionStateCall,
         confidence: ThrowConfidence.possibleThrow,
         displayName: name,
-        exceptionTypes: const ['RangeError', 'StateError'],
+        exceptionTypes:
+            const {'single', 'reduce', 'first', 'last'}.contains(name)
+            ? const ['StateError']
+            : name == 'byName'
+            ? const ['ArgumentError']
+            : const ['RangeError'],
       );
     }
 
@@ -571,6 +733,15 @@ final class ThrowSourceCatalog {
         displayName: 'Future.error',
         isAsync: true,
         exceptionTypes: _argumentExceptionTypes(node.argumentList),
+        exceptionSupertypes: _argumentExceptionSupertypes(node.argumentList),
+        resolvedExceptionTypes: [
+          ?node
+              .argumentList
+              .arguments
+              .firstOrNull
+              ?.argumentExpression
+              .staticType,
+        ],
       );
     }
 
@@ -708,6 +879,15 @@ final class ThrowSourceCatalog {
         displayName: 'Completer.completeError',
         isAsync: true,
         exceptionTypes: _argumentExceptionTypes(node.argumentList),
+        exceptionSupertypes: _argumentExceptionSupertypes(node.argumentList),
+        resolvedExceptionTypes: [
+          ?node
+              .argumentList
+              .arguments
+              .firstOrNull
+              ?.argumentExpression
+              .staticType,
+        ],
       );
     }
 
@@ -729,6 +909,15 @@ final class ThrowSourceCatalog {
         displayName: 'StreamController.addError',
         isAsync: true,
         exceptionTypes: _argumentExceptionTypes(node.argumentList),
+        exceptionSupertypes: _argumentExceptionSupertypes(node.argumentList),
+        resolvedExceptionTypes: [
+          ?node
+              .argumentList
+              .arguments
+              .firstOrNull
+              ?.argumentExpression
+              .staticType,
+        ],
       );
     }
 
@@ -751,6 +940,7 @@ final class ThrowSourceCatalog {
         confidence: ThrowConfidence.asyncError,
         displayName: 'Timer.run',
         isAsync: true,
+        channel: ExceptionChannel.scheduled,
       );
     }
 
@@ -762,6 +952,7 @@ final class ThrowSourceCatalog {
         confidence: ThrowConfidence.asyncError,
         displayName: 'Timer.periodic',
         isAsync: true,
+        channel: ExceptionChannel.scheduled,
       );
     }
 
@@ -915,9 +1106,21 @@ final class ThrowSourceCatalog {
     if (expression is NamedArgument) return const [];
     final type = expression.argumentExpression.staticType;
     if (type is! InterfaceType) return const [];
+    return [?type.element.name];
+  }
+
+  static Map<String, List<String>> _argumentExceptionSupertypes(
+    ArgumentList arguments,
+  ) {
+    if (arguments.arguments.isEmpty) return const {};
+    final expression = arguments.arguments.first;
+    if (expression is NamedArgument) return const {};
+    final type = expression.argumentExpression.staticType;
+    if (type is! InterfaceType || type.element.name == null) return const {};
     return {
-      type.element.name,
-      for (final supertype in type.allSupertypes) supertype.element.name,
-    }.whereType<String>().toList();
+      type.element.name!: [
+        for (final supertype in type.allSupertypes) ?supertype.element.name,
+      ],
+    };
   }
 }

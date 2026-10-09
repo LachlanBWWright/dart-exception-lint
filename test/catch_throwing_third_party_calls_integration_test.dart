@@ -7,6 +7,41 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'malformed configuration emits a visible warning during registration',
+    () async {
+      final result = await _analyzeFixture({
+        'lib/main.dart': 'void f() {}',
+        'tool/dart_exception_lint/exception_analysis.yaml':
+            'exception_analysis: [invalid]',
+      });
+      expect(_countCode(result.stdout, 'invalid_exception_analysis_config'), 1);
+      expect(result.exitCode, 2);
+    },
+  );
+
+  test(
+    'generated-file exclusion is applied during rule registration',
+    () async {
+      final result = await _analyzeFixture({
+        'lib/main.dart': 'void f() {}',
+        'lib/generated.g.dart': "void generated() { throw 'failure'; }",
+        'tool/dart_exception_lint/exception_analysis.yaml':
+            'exception_analysis:\n  analyze_generated_files: false',
+      });
+      expect(_countCode(result.stdout, 'no_manual_throw'), 0);
+      expect(result.exitCode, 0);
+    },
+  );
+
+  test('test files are analyzed by default', () async {
+    final result = await _analyzeFixture({
+      'lib/main.dart': 'void f() {}',
+      'test/fixture_test.dart': "void example() { throw 'failure'; }",
+    });
+    expect(_countCode(result.stdout, 'no_manual_throw'), 1);
+  });
+
   test('reports uncaught configured calls across invocation shapes', () async {
     final result = await _analyzeFixture({
       'lib/main.dart': '''
@@ -99,7 +134,9 @@ class DerivedClient extends DangerousClient {
       }, enableInferred: true);
 
       expect(_countCode(result.stdout, 'catch_throwing_third_party_calls'), 1);
-      expect(_countCode(result.stdout, 'catch_inferred_throwing_calls'), 1);
+      // The manifest adapter owns this direct call even when matching through
+      // an override in a different library; inference must not duplicate it.
+      expect(_countCode(result.stdout, 'catch_inferred_throwing_calls'), 0);
     },
   );
 }

@@ -12,9 +12,10 @@ import '../analysis/diagnostic_emission_guard.dart';
 import '../analysis/throw_protection.dart';
 import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
-import '../config/throwing_api_manifest.dart';
+import '../engine/exception_analysis_service.dart';
+import '../engine/invocation_targets.dart';
+import '../engine/syntax_coverage.dart';
 import '../diagnostics.dart';
-import '../result.dart';
 import '../utils/source_utils.dart';
 
 class CatchUnknownDynamicCallsRule extends AnalysisRule {
@@ -35,18 +36,12 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    final optionsResult = ExceptionAnalysisOptions.loadResult(
-      packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
-    );
-    final options = switch (optionsResult) {
-      Ok(value: final options) => options,
-      Err() => const ExceptionAnalysisOptions(),
-    };
+    final service = ExceptionAnalysisService.forContext(context);
+    final options = service.options;
     if (shouldSkipLintRuleForFile(
       ruleName: name,
       options: options,
-      filePath: context.currentUnit?.file.path,
+      filePath: context.definingUnit.file.path,
       packageRoot: context.package?.root.path,
     )) {
       return;
@@ -55,32 +50,26 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
       return;
     }
 
-    final manifestResult = ThrowingApiManifest.loadResult(
-      packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
-    );
-    final manifest = switch (manifestResult) {
-      Ok(value: final manifest) => manifest,
-      Err() => ThrowingApiManifest.empty(),
-    };
     final visitor = _Visitor(
       this,
       options,
-      InferredThrowAnalyzer(
-        manifest: manifest,
-        options: options,
-        featureSet: context.libraryElement!.featureSet,
-        packageRootPath: context.package?.root.path,
-        knownUnits: {
-          for (final unit in context.allUnits) unit.file.path: unit.unit,
-        },
-      ),
+      service.analyzer,
+      context.libraryElement!,
     );
+    registry.addCompilationUnit(this, _CoverageVisitor(this));
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
     registry.addPropertyAccess(this, visitor);
     registry.addBinaryExpression(this, visitor);
+    registry.addIndexExpression(this, visitor);
+    registry.addPatternField(this, visitor);
+    registry.addRelationalPattern(this, visitor);
+    registry.addConstantPattern(this, visitor);
+    registry.addAssignmentExpression(this, visitor);
+    registry.addPrefixExpression(this, visitor);
+    registry.addPostfixExpression(this, visitor);
+    registry.addInterpolationExpression(this, visitor);
     registry.addPrefixedIdentifier(this, visitor);
     registry.addAwaitExpression(this, visitor);
     registry.addForStatement(this, visitor);
@@ -90,16 +79,16 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
     registry.addWhileStatement(this, visitor);
     registry.addDoStatement(this, visitor);
     registry.addConditionalExpression(this, visitor);
-    registry.addSwitchStatement(this, visitor);
   }
 }
 
 final class _Visitor extends SimpleAstVisitor<void> {
-  _Visitor(this.rule, this.options, this.analyzer);
+  _Visitor(this.rule, this.options, this.analyzer, this.library);
 
   final AnalysisRule rule;
   final ExceptionAnalysisOptions options;
   final InferredThrowAnalyzer analyzer;
+  final LibraryElement library;
   final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
 
   @override
@@ -144,6 +133,11 @@ final class _Visitor extends SimpleAstVisitor<void> {
   }
 
   @override
+  void visitIndexExpression(IndexExpression node) {
+    _report(node, element: node.element, diagnosticTarget: node);
+  }
+
+  @override
   void visitBinaryExpression(BinaryExpression node) {
     _report(node, element: node.element, diagnosticTarget: node);
   }
@@ -159,7 +153,10 @@ final class _Visitor extends SimpleAstVisitor<void> {
     }
 
     if (_emissions.claim(node.expression)) {
-      rule.reportAtNode(node.expression, arguments: ['dynamic await']);
+      rule.reportAtNode(
+        node.expression,
+        arguments: ['dynamic await', 'dynamic_await'],
+      );
     }
   }
 
@@ -178,6 +175,9 @@ final class _Visitor extends SimpleAstVisitor<void> {
           node.awaitKeyword == null
               ? 'dynamic iteration'
               : 'dynamic async iteration',
+          node.awaitKeyword == null
+              ? 'dynamic_iteration'
+              : 'dynamic_async_iteration',
         ],
       );
     }
@@ -191,7 +191,10 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
     if (_emissions.claim(node.expression)) {
-      rule.reportAtNode(node.expression, arguments: ['dynamic spread']);
+      rule.reportAtNode(
+        node.expression,
+        arguments: ['dynamic spread', 'dynamic_spread'],
+      );
     }
   }
 
@@ -204,7 +207,10 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
     if (_emissions.claim(node.expression)) {
-      rule.reportAtNode(node.expression, arguments: ['dynamic yield*']);
+      rule.reportAtNode(
+        node.expression,
+        arguments: ['dynamic yield*', 'dynamic_yield'],
+      );
     }
   }
 
@@ -232,12 +238,6 @@ final class _Visitor extends SimpleAstVisitor<void> {
     super.visitConditionalExpression(node);
   }
 
-  @override
-  void visitSwitchStatement(SwitchStatement node) {
-    _reportDynamicBoolean(node, node.expression, 'dynamic switch value');
-    super.visitSwitchStatement(node);
-  }
-
   void _reportDynamicBoolean(
     AstNode reportNode,
     Expression expression,
@@ -249,7 +249,59 @@ final class _Visitor extends SimpleAstVisitor<void> {
       return;
     }
     if (_emissions.claim(expression)) {
-      rule.reportAtNode(expression, arguments: [displayName]);
+      rule.reportAtNode(
+        expression,
+        arguments: [displayName, 'dynamic_condition'],
+      );
+    }
+  }
+
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPostfixExpression(PostfixExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitInterpolationExpression(InterpolationExpression node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitPatternField(PatternField node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitRelationalPattern(RelationalPattern node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
+    }
+  }
+
+  @override
+  void visitConstantPattern(ConstantPattern node) {
+    for (final element in invocationTargets(node, library)) {
+      _report(node, element: element, diagnosticTarget: node);
     }
   }
 
@@ -268,12 +320,35 @@ final class _Visitor extends SimpleAstVisitor<void> {
     if (analysis == null || analysis.confidence != ThrowConfidence.unknown) {
       return;
     }
-    if (isProtectedByCatch(node, exceptionTypes: analysis.exceptionTypes)) {
+    if (analysis.isProtectedAt(node)) {
       return;
     }
 
     if (_emissions.claim(diagnosticTarget)) {
-      rule.reportAtNode(diagnosticTarget, arguments: [analysis.displayName]);
+      rule.reportAtNode(
+        diagnosticTarget,
+        arguments: [
+          analysis.displayName,
+          analysis.unknownReason ?? 'unknown_boundary',
+        ],
+      );
     }
+  }
+}
+
+final class _CoverageVisitor extends GeneralizingAstVisitor<void> {
+  _CoverageVisitor(this.rule);
+  final AnalysisRule rule;
+
+  @override
+  void visitNode(AstNode node) {
+    if (SyntaxCoverageInventory.requiresUnknown(node) &&
+        !isProtectedByCatch(node)) {
+      rule.reportAtNode(
+        node,
+        arguments: [SyntaxCoverageInventory.kind(node), 'unmodeled_syntax'],
+      );
+    }
+    super.visitNode(node);
   }
 }

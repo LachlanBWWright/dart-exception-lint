@@ -19,22 +19,24 @@ final class ExceptionTypeHierarchy {
   }
 
   static const _parents = <String, List<String>>{
-    'RangeError': ['ArgumentError', 'Exception'],
-    'IndexError': ['RangeError', 'ArgumentError', 'Exception'],
+    'ArgumentError': ['Error'],
+    'RangeError': ['ArgumentError'],
+    'IndexError': ['RangeError'],
     'FormatException': ['Exception'],
     'StateError': ['Error'],
+    'UnsupportedError': ['Error'],
     'ConcurrentModificationError': ['Error'],
     'AssertionError': ['Error'],
     'TypeError': ['Error'],
     'CastError': ['TypeError', 'Error'],
     'LateInitializationError': ['Error'],
-    'IntegerDivisionByZeroException': ['Exception'],
+    'IntegerDivisionByZeroException': ['UnsupportedError', 'Exception'],
     'FileSystemException': ['IOException', 'Exception'],
     'SocketException': ['IOException', 'Exception'],
     'HttpException': ['IOException', 'Exception'],
     'WebSocketException': ['IOException', 'Exception'],
     'IsolateSpawnException': ['Exception'],
-    'JsonUnsupportedObjectError': ['ArgumentError', 'Exception'],
+    'JsonUnsupportedObjectError': ['Error'],
     'TimeoutException': ['Exception'],
     'SendPortException': ['Exception'],
   };

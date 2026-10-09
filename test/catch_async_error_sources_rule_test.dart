@@ -4,6 +4,7 @@ import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:analyzer/src/lint/registry.dart';
 import 'package:dart_exception_lint/src/rules/catch_async_error_sources_rule.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
+import 'support/exception_annotations.dart';
 
 void main() {
   defineReflectiveSuite(() {
@@ -13,6 +14,111 @@ void main() {
 
 @reflectiveTest
 class CatchAsyncErrorSourcesRuleTest extends AnalysisRuleTest {
+  Future<void> test_asyncStreamConsumer_failureReachesWrapperFuture() async {
+    const code = r'''
+Stream<int> values() async* { throw 'failure'; }
+Future<void> helper() async {
+  await for (final value in values()) {}
+}
+void caller() { helper(); }
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('await for'),
+        'await for (final value in values()) {}'.length,
+      ),
+      lint(code.lastIndexOf('helper();'), 6),
+    ]);
+  }
+
+  Future<void> test_asyncIterableConsumer_failureReachesWrapperFuture() async {
+    const code = r'''
+Iterable<int> values() sync* { throw 'failure'; }
+Future<void> helper() async {
+  for (final value in values()) {}
+}
+void caller() { helper(); }
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('for (final'),
+        'for (final value in values()) {}'.length,
+      ),
+      lint(code.lastIndexOf('helper();'), 6),
+    ]);
+  }
+
+  Future<void> test_asyncStreamConsumer_callerTypedAwaitCatchContains() async {
+    const code = r'''
+Stream<int> values() async* { throw 'failure'; }
+Future<void> helper() async {
+  await for (final value in values()) {}
+}
+Future<void> caller() async { try { await helper(); } on String {} }
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('await for'),
+        'await for (final value in values()) {}'.length,
+      ),
+    ]);
+  }
+
+  Future<void>
+  test_asyncStreamConsumer_localTypedCatchDischargesWrapper() async {
+    await assertNoDiagnostics(r'''
+Stream<int> values() async* { throw 'failure'; }
+Future<void> helper() async {
+  try { await for (final value in values()) {} } on String {}
+}
+void caller() { helper(); }
+''');
+  }
+
+  Future<void> test_streamContract_awaitObjectDoesNotContain() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ReturnsFailingFuture([String])
+Stream<int> values() async* {}
+Future<void> f() async { try { await values(); } on String {} }
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('await values()'), 14),
+    ]);
+  }
+
+  Future<void> test_streamContract_awaitForContains() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ReturnsFailingFuture([String])
+Stream<int> values() async* {}
+Future<void> f() async {
+  try { await for (final item in values()) {} } on String {}
+}
+''');
+  }
+
+  Future<void> test_storedFuture_multipleTypesAreCheckedIndependently() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ReturnsFailingFuture([String, Exception])
+Future<int> load() => Future.value(1);
+Future<void> f() async {
+  final pending = load();
+  try { await pending; } on String {} on Exception {}
+}
+''');
+  }
+
+  Future<void> test_finallyReturn_containsAwaitedFutureFailure() async {
+    await assertNoDiagnostics(r'''
+Future<void> helper() async {
+  try { await Future.error('failure'); } finally { return; }
+}
+Future<void> caller() async { await helper(); }
+''');
+  }
+
   @override
   String get analysisRule => _rule.name;
 
@@ -20,16 +126,126 @@ class CatchAsyncErrorSourcesRuleTest extends AnalysisRuleTest {
   void setUp() {
     Registry.ruleRegistry.registerLintRule(_rule);
     super.setUp();
+    installExceptionAnnotations(this);
   }
 
   static final CatchAsyncErrorSourcesRule _rule = CatchAsyncErrorSourcesRule();
 
+  Future<void> test_inlineAsyncClosure_creationCatchDoesNotContain() async {
+    const code = r'''
+void f() {
+  try { (() async { throw 'failure'; })(); } catch (_) {}
+}
+''';
+    final start = code.indexOf('(() async');
+    await assertDiagnostics(code, [
+      lint(start, "(() async { throw 'failure'; })".length),
+    ]);
+  }
+
+  Future<void> test_inlineAsyncClosure_typedAwaitContains() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  try { await (() async { throw 'failure'; })(); } on String {}
+}
+''');
+  }
+
+  Future<void> test_mixedContract_futureCatchUsesOnlyFutureTypes() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@MayThrow([String])
+@ReturnsFailingFuture([Exception])
+Future<int> load() => Future.value(1);
+Future<void> caller() async {
+  try { await load(); } on Exception {}
+}
+''');
+  }
+
+  Future<void> test_mixedContract_creationCatchRetainsFutureEffect() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@MayThrow([String])
+@ReturnsFailingFuture([Exception])
+Future<int> load() => Future.value(1);
+void caller() {
+  try { load(); } on String {}
+}
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('load();'), 4)]);
+  }
+
+  Future<void> test_failingFutureGetter_unobservedRead_reports() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+final class Api {
+  @ReturnsFailingFuture([Exception])
+  Future<int> get load => Future.value(1);
+}
+void f(Api api) { api.load; }
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('load'), 4)]);
+  }
+
+  Future<void> test_failingFutureGetter_typedAwaitContains() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+final class Api {
+  @ReturnsFailingFuture([Exception])
+  Future<int> get load => Future.value(1);
+}
+Future<void> f(Api api) async {
+  try { await api.load; } on Exception {}
+}
+''');
+  }
+
+  Future<void> test_conditionalConsumer_oneBranchRetainsOwnership() async {
+    const code = r'''
+void f(bool condition) {
+  final pending = Future<void>.error(Exception());
+  condition ? pending.catchError((_) {}) : null;
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future<void>.error'),
+        'Future<void>.error(Exception())'.length,
+      ),
+    ]);
+  }
+
+  Future<void> test_conditionalConsumer_bothBranchesDischargeOwnership() async {
+    await assertNoDiagnostics(r'''
+void f(bool condition) {
+  final pending = Future<void>.error(Exception());
+  condition ? pending.catchError((_) {}) : pending.catchError((_) {});
+}
+''');
+  }
+
+  Future<void> test_switchConsumer_oneCaseRetainsOwnership() async {
+    const code = r'''
+void f(int choice) {
+  final pending = Future<void>.error(Exception());
+  switch (choice) {
+    case 1: pending.catchError((_) {});
+    default: break;
+  }
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future<void>.error'),
+        'Future<void>.error(Exception())'.length,
+      ),
+    ]);
+  }
+
   Future<void> test_failingFutureContract_reportsAtAwait() async {
     const code = r'''
-class ReturnsFailingFuture {
-  const ReturnsFailingFuture(this.exceptionTypes);
-  final List<Type> exceptionTypes;
-}
+import 'package:dart_exception_lint/dart_exception_lint.dart';
 
 @ReturnsFailingFuture([FormatException])
 Future<String> load() => Future.value('ok');
@@ -56,6 +272,7 @@ Future<void> f() async {
 ''';
 
     await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
       lint(
         code.indexOf('await'),
         'await load()'.length,
@@ -64,8 +281,8 @@ Future<void> f() async {
     ]);
   }
 
-  Future<void> test_awaitedHelperInsideTryCatch_notReported() async {
-    await assertNoDiagnostics(r'''
+  Future<void> test_awaitedHelperInsideTryCatch_onlyProducerReports() async {
+    const code = r'''
 class BoomException implements Exception {}
 
 Future<String> load() => Future.error(BoomException());
@@ -75,7 +292,10 @@ Future<void> f() async {
     await load();
   } catch (_) {}
 }
-''');
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
+    ]);
   }
 
   Future<void> test_awaitedHelperWithCaughtFutureError_notReported() async {
@@ -196,6 +416,18 @@ Future<void> f() async {
     ]);
   }
 
+  Future<void> test_futureError_withNullPositionalOnError_reports() async {
+    const code = r'''
+import 'dart:async';
+
+Future<void> f() async {
+  Future.error(Exception('boom')).then<void>((_) {}, onError: null);
+}
+''';
+
+    await assertDiagnostics(code, [lint(code.indexOf('then'), 'then'.length)]);
+  }
+
   Future<void> test_unawaitedFutureError_insideTryCatch_stillReports() async {
     const code = r'''
 import 'dart:async';
@@ -286,6 +518,34 @@ void f(Stream<int> stream) {
     ]);
   }
 
+  Future<void> test_streamListen_withNullCastOnError_reports() async {
+    const code = r'''
+import 'dart:async';
+
+void f(Stream<int> stream) {
+  stream.listen((value) {}, onError: null as dynamic);
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('listen'), 'listen'.length),
+    ]);
+  }
+
+  Future<void> test_nullHandleErrorDoesNotProtectListener() async {
+    const code = r'''
+import 'dart:async';
+
+void f(Stream<int> stream) {
+  stream.handleError(null as dynamic).listen((value) {});
+}
+''';
+
+    await assertDiagnostics(code, [
+      lint(code.indexOf('listen'), 'listen'.length),
+    ]);
+  }
+
   Future<void> test_unawaitedFutureError_reports() async {
     const code = r'''
 void f() {
@@ -325,7 +585,7 @@ void f() {
     await assertDiagnostics(code, [lint(code.indexOf('Future.error'), 31)]);
   }
 
-  Future<void> test_fieldFuture_canBeConsumedByAnotherMethod() async {
+  Future<void> test_fieldFuture_separateConsumerDoesNotProveHandling() async {
     const code = r'''
 import 'dart:async';
 
@@ -343,6 +603,10 @@ class Holder {
 ''';
 
     await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future.error'),
+        "Future.error(Exception('boom'))".length,
+      ),
       lint(code.indexOf('await pending!'), 'await pending!'.length),
     ]);
   }
@@ -402,9 +666,8 @@ Future<void> f() async {
     ]);
   }
 
-  Future<void>
-  test_futureStoredInField_isNotReportedAsLocalAbandonment() async {
-    await assertNoDiagnostics(r'''
+  Future<void> test_futureStoredInField_withoutConsumer_reports() async {
+    const code = r'''
 import 'dart:async';
 
 class Holder {
@@ -414,7 +677,13 @@ class Holder {
     this.pending = Future.error(Exception('boom'));
   }
 }
-''');
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future.error'),
+        "Future.error(Exception('boom'))".length,
+      ),
+    ]);
   }
 
   Future<void> test_unawaitedFutureError_isNotConsideredHandled() async {
@@ -426,7 +695,9 @@ void f() {
 }
 ''';
 
-    await assertDiagnostics(code, [lint(code.indexOf('Future.error'), 31)]);
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
+    ]);
   }
 
   Future<void> test_handledChainedFuture_isNotReportedAsAbandoned() async {
@@ -466,6 +737,7 @@ void f() {
 ''';
 
     await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
       lint(code.lastIndexOf('load'), 'load'.length),
     ]);
   }
@@ -504,6 +776,27 @@ void f() {
     ]);
   }
 
+  Future<void> test_asyncGenerator_awaitForCatch_contains() async {
+    await assertNoDiagnostics(r'''
+Stream<int> values() async* { throw 'failure'; }
+Future<void> f() async {
+  try { await for (final value in values()) {} } on String {}
+}
+''');
+  }
+
+  Future<void> test_streamObjectAwait_doesNotSubscribe() async {
+    const code = r'''
+Stream<int> values() async* { throw 'failure'; }
+Future<void> f() async {
+  try { await values(); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('await values()'), 14),
+    ]);
+  }
+
   Future<void> test_asyncGenerator_awaitFor_reports() async {
     const code = r'''
 import 'dart:async';
@@ -526,5 +819,148 @@ Future<void> f() async {
         'await for (final value in values()) {\n    print(value);\n  }'.length,
       ),
     ]);
+  }
+
+  Future<void> test_filteredCatchError_false_reports() async {
+    const code =
+        'void f() { Future.error(Exception()).catchError((_) {}, test: (_) => false); }';
+    await assertDiagnostics(code, [lint(code.indexOf('catchError'), 10)]);
+  }
+
+  Future<void> test_filteredCatchError_unknown_reports() async {
+    const code =
+        'void f(bool Function(Object) accepts) { Future.error(Exception()).catchError((_) {}, test: accepts); }';
+    await assertDiagnostics(code, [lint(code.indexOf('catchError'), 10)]);
+  }
+
+  Future<void> test_filteredCatchError_true_isHandled() async {
+    await assertNoDiagnostics(
+      'void f() { Future.error(Exception()).catchError((_) {}, test: (_) => true); }',
+    );
+  }
+
+  Future<void> test_filteredStreamHandler_false_reports() async {
+    const code =
+        'void f(Stream<int> s) { s.handleError((_) {}, test: (_) => false).listen((_) {}); }';
+    await assertDiagnostics(code, [lint(code.indexOf('listen'), 6)]);
+  }
+
+  Future<void> test_filteredStreamHandler_true_isHandled() async {
+    await assertNoDiagnostics(
+      'void f(Stream<int> s) { s.handleError((_) {}, test: (_) => true).listen((_) {}); }',
+    );
+  }
+
+  Future<void> test_customCatchErrorName_doesNotProtectProducer() async {
+    const code =
+        'void catchError(Future<dynamic> future) {} void f() { catchError(Future.error(Exception())); }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
+    ]);
+  }
+
+  Future<void> test_explicitFieldAwait_hasConsistentOwnership() async {
+    const code =
+        'class Holder { Future<void>? pending; void start() { this.pending = Future.error(Exception()); } Future<void> finish() async { await this.pending!; } }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error(Exception())'.length),
+      lint(code.indexOf('await this.pending!'), 'await this.pending!'.length),
+    ]);
+  }
+
+  Future<void> test_sameNamedFields_doNotShareOwnership() async {
+    const code =
+        'class A { Future<void>? pending; void start() { pending = Future.error(Exception()); } } class B { Future<void>? pending; Future<void> finish() async { await pending!; } }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error(Exception())'.length),
+      lint(code.indexOf('await pending!'), 'await pending!'.length),
+    ]);
+  }
+
+  Future<void> test_returnedFailingFuture_reports() async {
+    const code = 'Future<void> f() { return Future.error(Exception()); }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
+    ]);
+  }
+
+  Future<void> test_storedFuture_laterCatchError_handlesOwnership() async {
+    await assertNoDiagnostics(
+      'void f() { final pending = Future.error(Exception()); pending.catchError((_) {}); }',
+    );
+  }
+
+  Future<void>
+  test_storedFuture_laterFilteredCatchError_doesNotHandleOwnership() async {
+    const code =
+        'void f() { final pending = Future.error(Exception()); pending.catchError((_) {}, test: (_) => false); }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error(Exception())'.length),
+      lint(code.indexOf('catchError'), 'catchError'.length),
+    ]);
+  }
+
+  Future<void> test_returnedFailingHelper_reportsWithoutCaller() async {
+    const code =
+        'Future<void> load() => Future.error(Exception()); Future<void> f() => load();';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error'.length),
+      lint(code.lastIndexOf('load()'), 'load'.length),
+    ]);
+  }
+
+  Future<void> test_failingFutureContract_typedCatch_isHandled() async {
+    await assertNoDiagnostics(
+      'import \'package:dart_exception_lint/dart_exception_lint.dart\'; @ReturnsFailingFuture([FormatException]) Future<String> load() => Future.value("ok"); Future<void> f() async { try { await load(); } on FormatException {} }',
+    );
+  }
+
+  Future<void> test_handlerOnOnlyOneBranch_retainsOwnership() async {
+    const code =
+        'void f(bool handle) { final future = Future.error(Exception()); if (handle) { future.catchError((_) {}); } }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error(Exception())'.length),
+    ]);
+  }
+
+  Future<void> test_handlerOnBothBranches_dischargesOwnership() async {
+    await assertNoDiagnostics(
+      'void f(bool handle) { final future = Future.error(Exception()); if (handle) { future.catchError((_) {}); } else { future.catchError((_) {}); } }',
+    );
+  }
+
+  Future<void> test_localAlias_preservesOwnership() async {
+    await assertNoDiagnostics(
+      'void f() { final future = Future.error(Exception()); final alias = future; alias.catchError((_) {}); }',
+    );
+  }
+
+  Future<void> test_reassignment_retainsAbandonedOldFuture() async {
+    const code =
+        'void f() { var future = Future.error(Exception()); future = Future.error(Exception()); future.catchError((_) {}); }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error(Exception())'.length),
+    ]);
+  }
+
+  Future<void> test_fieldInstances_doNotShareOwnership() async {
+    const code =
+        'class H { Future<void>? future; } void f(H a, H b) { a.future = Future.error(Exception()); b.future?.catchError((_) {}); }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future.error'), 'Future.error(Exception())'.length),
+    ]);
+  }
+
+  Future<void> test_unverifiedFutureParameter_requiresHandling() async {
+    const code = 'Future<void> f(Future<void> input) async { await input; }';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await input'), 'await input'.length),
+    ]);
+  }
+
+  Future<void> test_unverifiedFutureParameter_universalCatchHandles() async {
+    await assertNoDiagnostics(
+      'Future<void> f(Future<void> input) async { try { await input; } catch (_) {} }',
+    );
   }
 }

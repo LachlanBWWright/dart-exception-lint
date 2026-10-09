@@ -4,6 +4,8 @@ import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 import '../analysis/throw_summary.dart';
+import '../analysis/resolved_callable.dart';
+import '../engine/exception_effect.dart';
 import '../result.dart';
 import 'config_failures.dart';
 
@@ -14,6 +16,28 @@ class ThrowingApiManifest {
   const ThrowingApiManifest(this.apis);
 
   final List<ThrowingApiSpecification> apis;
+
+  String get cacheKey => apis
+      .map(
+        (api) => [
+          api.packageName,
+          api.libraryUri,
+          api.className,
+          api.methodName,
+          api.constructorName,
+          api.functionName,
+          api.getterName,
+          api.setterName,
+          api.operatorName,
+          api.effects.map((effect) => effect.cacheKey).join(','),
+          api.isStatic,
+          api.appliesToSubtypes,
+          api.confidence,
+          api.isAsync,
+          api.exceptionTypes.join(','),
+        ].join('|'),
+      )
+      .join('\n');
 
   static ThrowingApiManifest empty() => const ThrowingApiManifest([]);
 
@@ -61,9 +85,7 @@ class ThrowingApiManifest {
   }) {
     if (packageRoot != null) {
       final manifestPath = p.join(packageRoot, defaultRelativePath);
-      if (_pathExists(manifestPath)) {
-        return manifestPath;
-      }
+      return _pathExists(manifestPath) ? manifestPath : null;
     }
 
     if (currentFilePath == null) {
@@ -118,6 +140,16 @@ class ThrowingApiManifest {
       );
     }
 
+    for (final key in document.keys) {
+      if (key != 'apis') {
+        return Err(
+          ManifestStructureFailure(
+            message: 'Unknown manifest key: $key',
+            sourcePath: sourcePath ?? defaultRelativePath,
+          ),
+        );
+      }
+    }
     final rawApis = document['apis'];
     if (rawApis == null) {
       return Ok(empty());
@@ -171,6 +203,10 @@ class ThrowingApiSpecification {
     this.methodName,
     this.constructorName,
     this.functionName,
+    this.getterName,
+    this.setterName,
+    this.operatorName,
+    this.effects = const [],
     this.isStatic,
     this.appliesToSubtypes = false,
     this.confidence = ThrowConfidence.possibleThrow,
@@ -184,6 +220,10 @@ class ThrowingApiSpecification {
   final String? methodName;
   final String? constructorName;
   final String? functionName;
+  final String? getterName;
+  final String? setterName;
+  final String? operatorName;
+  final List<ManifestExceptionEffect> effects;
   final bool? isStatic;
   final bool appliesToSubtypes;
   final ThrowConfidence confidence;
@@ -197,6 +237,9 @@ class ThrowingApiSpecification {
     methodName ?? '',
     constructorName ?? '',
     functionName ?? '',
+    getterName ?? '',
+    setterName ?? '',
+    operatorName ?? '',
     isStatic?.toString() ?? '',
     appliesToSubtypes.toString(),
   ].join('|');
@@ -212,6 +255,67 @@ class ThrowingApiSpecification {
           sourcePath: sourcePath,
         ),
       );
+    }
+
+    const knownKeys = {
+      'package',
+      'library',
+      'class',
+      'method',
+      'constructor',
+      'function',
+      'getter',
+      'setter',
+      'operator',
+      'static',
+      'subtypes',
+      'confidence',
+      'async',
+      'exception_types',
+      'effects',
+    };
+    for (final key in raw.keys) {
+      if (!knownKeys.contains(key)) {
+        return Err(
+          ManifestStructureFailure(
+            message: 'Unknown API manifest key: $key',
+            sourcePath: sourcePath,
+          ),
+        );
+      }
+    }
+    final names = <String, String?>{};
+    for (final key in ['getter', 'setter', 'operator']) {
+      final result = _readOptionalString(raw, key, sourcePath);
+      if (result case Err(error: final failure)) return Err(failure);
+      names[key] = result.valueOrNull;
+    }
+    final effects = <ManifestExceptionEffect>[];
+    if (raw.containsKey('effects')) {
+      final rawEffects = raw['effects'];
+      if (rawEffects is! YamlList || rawEffects.isEmpty) {
+        return Err(
+          ManifestStructureFailure(
+            message: 'effects must be a nonempty list',
+            sourcePath: sourcePath,
+          ),
+        );
+      }
+      if (raw.containsKey('confidence') ||
+          raw.containsKey('async') ||
+          raw.containsKey('exception_types')) {
+        return Err(
+          ManifestStructureFailure(
+            message: 'effects conflicts with legacy effect fields',
+            sourcePath: sourcePath,
+          ),
+        );
+      }
+      for (final entry in rawEffects) {
+        final result = ManifestExceptionEffect.parse(entry, sourcePath);
+        if (result case Err(error: final failure)) return Err(failure);
+        effects.add(result.valueOrNull!);
+      }
     }
 
     final packageNameResult = _readRequiredString(raw, 'package', sourcePath);
@@ -296,13 +400,18 @@ class ThrowingApiSpecification {
     }
     final exceptionTypes = exceptionTypesResult.valueOrNull!;
 
-    final callableFields = [?methodName, ?constructorName, ?functionName];
+    final callableFields = [
+      ?methodName,
+      ?constructorName,
+      ?functionName,
+      ...names.values.whereType<String>(),
+    ];
     if (callableFields.length != 1) {
       return Err(
         ManifestStructureFailure(
           message:
               'Each manifest entry in $sourcePath must declare exactly one of '
-              '"function", "method", or "constructor".',
+              'function, method, constructor, getter, setter, or operator.',
           sourcePath: sourcePath,
         ),
       );
@@ -335,6 +444,10 @@ class ThrowingApiSpecification {
         methodName: methodName,
         constructorName: constructorName,
         functionName: functionName,
+        getterName: names['getter'],
+        setterName: names['setter'],
+        operatorName: names['operator'],
+        effects: List.unmodifiable(effects),
         isStatic: isStatic,
         appliesToSubtypes: appliesToSubtypes,
         confidence:
@@ -358,11 +471,73 @@ class ThrowingApiSpecification {
       return '$packageName/$className.$methodName';
     }
 
+    final member = getterName ?? setterName ?? operatorName;
+    if (member != null) return '$packageName/$className.$member';
     final constructorName = this.constructorName;
     if (constructorName == null || constructorName.isEmpty) {
       return '$packageName/$className()';
     }
     return '$packageName/$className.$constructorName';
+  }
+
+  Iterable<ThrowSource> get sources sync* {
+    if (effects.isEmpty) {
+      yield ThrowSource(
+        kind: ThrowSourceKind.manifestOverride,
+        confidence: confidence,
+        displayName: displayName,
+        isAsync: isAsync,
+        exceptionTypes: exceptionTypes,
+      );
+    } else {
+      for (final effect in effects) {
+        yield effect.toSource(displayName);
+      }
+    }
+  }
+
+  int matchScore(ResolvedCallable callable) {
+    if (packageName != callable.packageName) return -1;
+    if (functionName != null) {
+      return libraryUri == callable.libraryUri &&
+              callable.kind == CallableKind.topLevelFunction &&
+              callable.callableName == functionName
+          ? 10
+          : -1;
+    }
+    final sameOwner =
+        libraryUri == callable.libraryUri &&
+        className == callable.enclosingClassName;
+    final subtypeOwner =
+        appliesToSubtypes &&
+        callable.supertypeKeys.contains('$libraryUri::$className');
+    if (!sameOwner && !subtypeOwner) return -1;
+    if (isStatic != null && isStatic != callable.isStatic) return -1;
+    if (constructorName != null) {
+      return callable.kind == CallableKind.constructor &&
+              callable.constructorName == constructorName &&
+              libraryUri == callable.libraryUri
+          ? 30
+          : -1;
+    }
+    if (getterName != null) {
+      return callable.kind == CallableKind.getter &&
+              callable.callableName == getterName
+          ? 40
+          : -1;
+    }
+    if (setterName != null) {
+      return callable.kind == CallableKind.setter &&
+              callable.callableName.replaceAll('=', '') == setterName
+          ? 40
+          : -1;
+    }
+    final name = methodName ?? operatorName;
+    return (callable.kind == CallableKind.instanceMethod ||
+                callable.kind == CallableKind.staticMethod) &&
+            callable.callableName == name
+        ? 40
+        : -1;
   }
 
   static Result<bool?, ManifestFailure> _readOptionalBool(
@@ -486,5 +661,66 @@ class ThrowingApiSpecification {
       );
     }
     return Ok(value);
+  }
+}
+
+final class ManifestExceptionEffect {
+  const ManifestExceptionEffect(
+    this.channel,
+    this.certainty,
+    this.exceptionTypes,
+  );
+  final ExceptionChannel channel;
+  final ExceptionCertainty certainty;
+  final List<String> exceptionTypes;
+  String get cacheKey =>
+      '${channel.name}|${certainty.name}|${exceptionTypes.join(',')}';
+
+  ThrowSource toSource(String displayName) => ThrowSource(
+    kind: ThrowSourceKind.manifestOverride,
+    confidence: switch (certainty) {
+      ExceptionCertainty.definite => ThrowConfidence.definiteThrow,
+      ExceptionCertainty.possible => ThrowConfidence.possibleThrow,
+      ExceptionCertainty.unknown => ThrowConfidence.unknown,
+    },
+    certainty: certainty,
+    channel: channel,
+    displayName: displayName,
+    isAsync:
+        channel == ExceptionChannel.future ||
+        channel == ExceptionChannel.stream ||
+        channel == ExceptionChannel.scheduled,
+    timing: channel == ExceptionChannel.deferred ? ThrowTiming.deferred : null,
+    exceptionTypes: exceptionTypes,
+  );
+
+  static Result<ManifestExceptionEffect, ManifestFailure> parse(
+    Object? raw,
+    String path,
+  ) {
+    ManifestFailure failure(String message) =>
+        ManifestStructureFailure(message: message, sourcePath: path);
+    if (raw is! YamlMap) return Err(failure('Each effect must be a map'));
+    if (raw.keys.any(
+      (key) => !const {'channel', 'certainty', 'exception_types'}.contains(key),
+    )) {
+      return Err(failure('Unknown exception effect key'));
+    }
+    final channel = ExceptionChannel.values
+        .where((channel) => channel.name == raw['channel'])
+        .firstOrNull;
+    final certainty = ExceptionCertainty.values
+        .where((certainty) => certainty.name == raw['certainty'])
+        .firstOrNull;
+    if (channel == null || certainty == null) {
+      return Err(failure('Invalid effect channel or certainty'));
+    }
+    final types = ThrowingApiSpecification._readOptionalStringList(
+      raw,
+      'exception_types',
+      path,
+    );
+    if (types case Err(error: final failure)) return Err(failure);
+    return Ok(ManifestExceptionEffect(channel, certainty, types.valueOrNull!));
   }
 }

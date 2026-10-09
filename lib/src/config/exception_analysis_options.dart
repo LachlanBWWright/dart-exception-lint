@@ -28,11 +28,11 @@ final class ExceptionAnalysisOptions {
     this.treatArithmeticAsThrowing = true,
     this.treatIoOperationsAsThrowing = true,
     this.requireAsyncErrorHandling = true,
-    this.analyzeTestFiles = false,
-    this.analyzeGeneratedFiles = false,
+    this.analyzeTestFiles = true,
+    this.analyzeGeneratedFiles = true,
     this.ruleTestFileOverrides = const {},
-    this.internalStrictness = ThrowIntent.possible,
-    this.thirdPartyStrictness = ThrowIntent.deliberate,
+    this.internalStrictness = ThrowIntent.unknown,
+    this.thirdPartyStrictness = ThrowIntent.unknown,
   });
 
   final bool reportDefiniteThrow;
@@ -59,6 +59,35 @@ final class ExceptionAnalysisOptions {
   final Map<String, bool> ruleTestFileOverrides;
   final ThrowIntent internalStrictness;
   final ThrowIntent thirdPartyStrictness;
+
+  String get cacheKey => [
+    reportDefiniteThrow,
+    reportPossibleThrow,
+    reportAsyncError,
+    reportUnknown,
+    maxCallDepth,
+    maxSourcesPerSummary,
+    maxDispatchCandidates,
+    analyzeThirdPartySource,
+    analyzeSdkSource,
+    treatDynamicInvocationAsThrowing,
+    treatExternalCallsAsThrowing,
+    treatIndexAccessAsThrowing,
+    treatCollectionStateAsThrowing,
+    treatParseMethodsAsThrowing,
+    treatAsCastsAsThrowing,
+    treatLateInitializationAsThrowing,
+    treatArithmeticAsThrowing,
+    treatIoOperationsAsThrowing,
+    requireAsyncErrorHandling,
+    analyzeTestFiles,
+    analyzeGeneratedFiles,
+    internalStrictness,
+    thirdPartyStrictness,
+    (ruleTestFileOverrides.keys.toList()..sort())
+        .map((key) => '$key:${ruleTestFileOverrides[key]}')
+        .join(','),
+  ].join('|');
 
   /// Configuration owned by this plugin. Keeping it outside
   /// `analysis_options.yaml` avoids unknown-option warnings from the analyzer,
@@ -109,9 +138,7 @@ final class ExceptionAnalysisOptions {
   }) {
     if (packageRoot != null) {
       final candidate = p.join(packageRoot, defaultRelativePath);
-      if (File(candidate).existsSync()) {
-        return candidate;
-      }
+      return File(candidate).existsSync() ? candidate : null;
     }
 
     if (currentFilePath == null) {
@@ -151,8 +178,27 @@ final class ExceptionAnalysisOptions {
       );
     }
 
-    if (document is! YamlMap) {
+    if (document == null && input.trim().isEmpty) {
       return const Ok(ExceptionAnalysisOptions());
+    }
+    if (document is! YamlMap) {
+      return Err(
+        ExceptionAnalysisOptionsValueFailure(
+          key: 'document',
+          expected: 'a map',
+          sourcePath: sourcePath ?? defaultRelativePath,
+        ),
+      );
+    }
+    for (final key in document.keys) {
+      if (key != 'plugins' && key != 'exception_analysis') {
+        return Err(
+          ExceptionAnalysisOptionsUnknownKeyFailure(
+            key: '$key',
+            sourcePath: sourcePath ?? defaultRelativePath,
+          ),
+        );
+      }
     }
 
     final plugins = document['plugins'];
@@ -162,8 +208,58 @@ final class ExceptionAnalysisOptions {
     final analysisConfig = pluginConfig is YamlMap
         ? pluginConfig['exception_analysis']
         : document['exception_analysis'];
+    if ((document.containsKey('plugins') && plugins == null) ||
+        (plugins is YamlMap &&
+            plugins.containsKey('dart_exception_lint') &&
+            pluginConfig == null) ||
+        (document.containsKey('exception_analysis') &&
+            document['exception_analysis'] == null) ||
+        (pluginConfig is YamlMap &&
+            pluginConfig.containsKey('exception_analysis') &&
+            pluginConfig['exception_analysis'] == null)) {
+      return Err(
+        ExceptionAnalysisOptionsValueFailure(
+          key: 'configuration',
+          expected: 'a map instead of null',
+          sourcePath: sourcePath ?? defaultRelativePath,
+        ),
+      );
+    }
+    for (final entry in <String, Object?>{
+      'plugins': plugins,
+      'plugins.dart_exception_lint': pluginConfig,
+      'exception_analysis': analysisConfig,
+    }.entries) {
+      if (entry.value != null && entry.value is! YamlMap) {
+        return Err(
+          ExceptionAnalysisOptionsValueFailure(
+            key: entry.key,
+            expected: 'a map',
+            sourcePath: sourcePath ?? defaultRelativePath,
+          ),
+        );
+      }
+    }
+    if (document.containsKey('exception_analysis') &&
+        pluginConfig is YamlMap &&
+        pluginConfig.containsKey('exception_analysis')) {
+      return Err(
+        ExceptionAnalysisOptionsValueFailure(
+          key: 'exception_analysis',
+          expected: 'a single configuration location',
+          sourcePath: sourcePath ?? defaultRelativePath,
+        ),
+      );
+    }
+    if (analysisConfig == null) return const Ok(ExceptionAnalysisOptions());
     if (analysisConfig is! YamlMap) {
-      return const Ok(ExceptionAnalysisOptions());
+      return Err(
+        ExceptionAnalysisOptionsValueFailure(
+          key: 'exception_analysis',
+          expected: 'a map',
+          sourcePath: sourcePath ?? defaultRelativePath,
+        ),
+      );
     }
 
     final report = analysisConfig['report'];
@@ -193,10 +289,19 @@ final class ExceptionAnalysisOptions {
       'analyze_generated_files',
     };
     for (final key in analysisConfig.keys) {
-      if (key is String && !knownKeys.contains(key)) {
+      if (analysisConfig[key] == null) {
+        return Err(
+          ExceptionAnalysisOptionsValueFailure(
+            key: '$key',
+            expected: 'a supported non-null value',
+            sourcePath: sourcePath ?? defaultRelativePath,
+          ),
+        );
+      }
+      if (key is! String || !knownKeys.contains(key)) {
         return Err(
           ExceptionAnalysisOptionsUnknownKeyFailure(
-            key: key,
+            key: '$key',
             sourcePath: sourcePath ?? defaultRelativePath,
           ),
         );
@@ -284,14 +389,14 @@ final class ExceptionAnalysisOptions {
         requireAsyncErrorHandling:
             _readBool(analysisConfig, 'require_async_error_handling') ?? true,
         analyzeTestFiles:
-            _readBool(analysisConfig, 'analyze_test_files') ?? false,
+            _readBool(analysisConfig, 'analyze_test_files') ?? true,
         analyzeGeneratedFiles:
-            _readBool(analysisConfig, 'analyze_generated_files') ?? false,
+            _readBool(analysisConfig, 'analyze_generated_files') ?? true,
         ruleTestFileOverrides: _readRuleTestFileOverrides(rules),
         internalStrictness:
-            internalStrictnessResult.valueOrNull ?? ThrowIntent.possible,
+            internalStrictnessResult.valueOrNull ?? ThrowIntent.unknown,
         thirdPartyStrictness:
-            thirdPartyStrictnessResult.valueOrNull ?? ThrowIntent.deliberate,
+            thirdPartyStrictnessResult.valueOrNull ?? ThrowIntent.unknown,
       ),
     );
   }
@@ -478,7 +583,16 @@ final class ExceptionAnalysisOptions {
             sourcePath: sourcePath,
           );
         }
-        for (final key in (entry.value as YamlMap).keys) {
+        final rule = entry.value as YamlMap;
+        if (rule.containsKey('analyze_test_files') &&
+            rule['analyze_test_files'] is! bool) {
+          return ExceptionAnalysisOptionsValueFailure(
+            key: 'rules.${entry.key}.analyze_test_files',
+            expected: 'a boolean',
+            sourcePath: sourcePath,
+          );
+        }
+        for (final key in rule.keys) {
           if (key != 'analyze_test_files') {
             return ExceptionAnalysisOptionsUnknownKeyFailure(
               key: 'rules.${entry.key}.$key',
@@ -522,8 +636,15 @@ final class ExceptionAnalysisOptions {
       return const Ok(null);
     }
     final value = map[key];
+    if (!map.containsKey(key)) return const Ok(null);
     if (value is! String) {
-      return const Ok(null);
+      return Err(
+        ExceptionAnalysisOptionsValueFailure(
+          key: 'strictness.$key',
+          expected: 'a string',
+          sourcePath: sourcePath,
+        ),
+      );
     }
 
     final parsed = ThrowIntentExtension.tryParse(value);

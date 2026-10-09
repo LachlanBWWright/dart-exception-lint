@@ -30,14 +30,10 @@ class ValidateExceptionAnalysisConfigRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    if (context.currentUnit?.file.path != context.definingUnit.file.path) {
-      return;
-    }
-
     final failures = <String>[];
     final options = ExceptionAnalysisOptions.loadResult(
       packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
+      currentFilePath: context.definingUnit.file.path,
     );
     if (options case Err(error: final failure)) {
       failures.add(failure.message);
@@ -45,26 +41,31 @@ class ValidateExceptionAnalysisConfigRule extends AnalysisRule {
 
     final manifest = ThrowingApiManifest.loadResult(
       packageRoot: context.package?.root.path,
-      currentFilePath: context.currentUnit?.file.path,
+      currentFilePath: context.definingUnit.file.path,
     );
     if (manifest case Err(error: final failure)) {
       failures.add(failure.message);
     }
 
     if (failures.isNotEmpty) {
-      registry.addCompilationUnit(this, _Visitor(this, failures));
+      registry.addCompilationUnit(
+        this,
+        _Visitor(this, failures, context.definingUnit.unit),
+      );
     }
   }
 }
 
 final class _Visitor extends SimpleAstVisitor<void> {
-  _Visitor(this.rule, this.failures);
+  _Visitor(this.rule, this.failures, this.definingUnit);
 
   final AnalysisRule rule;
   final List<String> failures;
+  final CompilationUnit definingUnit;
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
+    if (!identical(node, definingUnit)) return;
     rule.reportAtOffset(node.offset, 1, arguments: [failures.join(' ')]);
   }
 }
