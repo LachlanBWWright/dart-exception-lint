@@ -14,7 +14,7 @@ import '../engine/invocation_targets.dart';
 import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
-import '../analysis/throw_protection.dart';
+import '../engine/effect_containment.dart';
 import '../diagnostics.dart';
 import '../result.dart';
 import '../utils/source_utils.dart';
@@ -219,12 +219,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
       (source) =>
           source.confidence != ThrowConfidence.noObviousThrow &&
           options.shouldReport(source.confidence) &&
-          !isProtectedByCatch(
-            node,
-            exceptionTypes: source.exceptionTypes,
-            requireAsyncProtection: source.isAsync,
-            channel: source.channel,
-          ),
+          !isEffectContained(node, source),
     );
     if (!hasResidual) return;
 

@@ -4,7 +4,8 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 manifest="$repo_root/tool/corpus/projects.tsv"
 corpus_root="${CORPUS_ROOT:-${TMPDIR:-/tmp}/dart-exception-lint-corpus}"
-limit="${CORPUS_LIMIT:-50}"
+limit="${CORPUS_LIMIT:-52}"
+project_filter="${CORPUS_FILTER:-.*}"
 timeout_seconds="${CORPUS_TIMEOUT:-300}"
 refresh="${CORPUS_REFRESH:-0}"
 packages_per_repo="${CORPUS_PACKAGES_PER_REPO:-1}"
@@ -49,6 +50,7 @@ printf 'id\turl\tstatus\tpackages\tdiagnostics\tdependency_failures\tplugin_fail
 count=0
 while IFS=$'\t' read -r id url manager commit; do
   [[ -z "$id" || "$id" == \#* ]] && continue
+  [[ "$id" =~ $project_filter ]] || continue
   ((count += 1))
   ((count > limit)) && break
 
@@ -59,9 +61,9 @@ while IFS=$'\t' read -r id url manager commit; do
   newly_cloned=0
   if [[ ! -d "$checkout/.git" ]]; then
     newly_cloned=1
-    git clone --depth 1 --no-checkout --filter=blob:none --quiet "$url" "$checkout" \
+    timeout "$timeout_seconds" git clone --depth 1 --no-checkout --filter=blob:none --quiet "$url" "$checkout" \
       2>"$corpus_root/$id.clone.log" || {
-      printf '%s\t%s\tclone_failed\t0\t0\t0\t0\t%s\n' "$id" "$url" "git clone" >> "$results"
+      printf '%s\t%s\tclone_failed\t0\t0\t0\t0\t\t%s\n' "$id" "$url" "git clone" >> "$results"
       continue
     }
   fi
@@ -74,7 +76,7 @@ while IFS=$'\t' read -r id url manager commit; do
     printf '%s\t%s\tdirty_checkout\t0\t0\t0\t0\t\tcheckout preserved\n' "$id" "$url" >> "$results"
     continue
   fi
-  if ! git -C "$checkout" fetch --depth 1 --quiet origin "$commit" ||
+  if ! timeout "$timeout_seconds" git -C "$checkout" fetch --depth 1 --quiet origin "$commit" ||
       ! git -C "$checkout" checkout --detach --quiet "$commit"; then
     printf '%s\t%s\tcheckout_failed\t0\t0\t0\t0\t\tgit fetch pinned commit\n' "$id" "$url" >> "$results"
     continue
@@ -128,7 +130,7 @@ EOF
     else
       resolver=(dart pub get)
     fi
-    if "${resolver[@]}" --directory "$package_dir" >"$corpus_root/$id.$package_count.pubget.log" 2>&1; then
+    if timeout "$timeout_seconds" "${resolver[@]}" --directory "$package_dir" >"$corpus_root/$id.$package_count.pubget.log" 2>&1; then
       resolver_status=0
     else
       resolver_status=$?
@@ -151,9 +153,9 @@ EOF
     elif [[ "$resolver_status" != 0 && "$package_status" == ok ]]; then
       package_status=dependency_failed
     fi
-    found="$(rg -c 'catch_(runtime|async|inferred|unknown)_|no_null_assertion|no_manual_throw' "$output_file" 2>/dev/null || true)"
+    found="$(rg -c 'catch_(runtime|async|inferred|unknown|throwing_third_party)_|no_null_assertion|no_manual_throw' "$output_file" 2>/dev/null || true)"
     [[ "$found" =~ ^[0-9]+$ ]] && ((diagnostic_count += found)) || true
-    package_rule_counts="$(rg -o 'catch_runtime_throw_sources|catch_async_error_sources|catch_inferred_throwing_calls|catch_unknown_dynamic_calls|no_null_assertion|no_manual_throw' "$output_file" 2>/dev/null | sort | uniq -c | awk '{print $2 ":" $1}' | paste -sd, - || true)"
+    package_rule_counts="$(rg -o 'catch_runtime_throw_sources|catch_async_error_sources|catch_inferred_throwing_calls|catch_unknown_dynamic_calls|catch_throwing_third_party_calls|no_null_assertion|no_manual_throw' "$output_file" 2>/dev/null | sort | uniq -c | awk '{print $2 ":" $1}' | paste -sd, - || true)"
     if [[ -n "$package_rule_counts" ]]; then
       rule_counts="${rule_counts:+$rule_counts;}${package_count}:$package_rule_counts"
     fi

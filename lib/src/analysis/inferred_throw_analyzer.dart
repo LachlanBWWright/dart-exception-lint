@@ -21,6 +21,7 @@ import '../engine/invocation_targets.dart';
 import '../engine/runtime_checks.dart';
 import '../engine/numeric_checks.dart';
 import '../engine/exception_effect.dart';
+import '../engine/effect_containment.dart';
 import '../engine/statement_completion.dart';
 import '../engine/syntax_coverage.dart';
 import '../engine/callback_models.dart';
@@ -65,19 +66,7 @@ final class InferredCallAnalysis {
         exceptionSupertypes: exceptionSupertypes,
       );
     }
-    return sources.every((source) {
-      final effect = ExceptionEffect.fromSource(source);
-      return isProtectedByCatch(
-        node,
-        requireAsyncProtection:
-            effect.channel == ExceptionChannel.future ||
-            effect.channel == ExceptionChannel.stream,
-        channel: effect.channel,
-        exceptionTypes: source.exceptionTypes,
-        resolvedExceptionTypes: source.resolvedExceptionTypes,
-        exceptionSupertypes: source.exceptionSupertypes,
-      );
-    });
+    return residualEffects(node, sources).isEmpty;
   }
 }
 
@@ -1328,9 +1317,14 @@ final class InferredThrowAnalyzer {
             ? ThrowSourceCatalog.matchUnresolvedInvocation(node, options)
             : null);
     if (directSource != null) {
+      final discardedFuture =
+          ExceptionEffect.fromSource(directSource).channel ==
+              ExceptionChannel.future &&
+          asyncValueConsumer(node) is ExpressionStatement;
       final shouldKeep =
           !directSource.isAsync ||
           isAsyncObserved ||
+          discardedFuture ||
           directSource.channel == ExceptionChannel.scheduled;
       if (shouldKeep) {
         return ThrowSummary.merge(
@@ -1417,11 +1411,12 @@ final class InferredThrowAnalyzer {
     for (final effect in dispatchSummary.effects) {
       final source = effect.source;
       final discardedCallbackFuture =
-          boundCallback &&
           effect.channel == ExceptionChannel.future &&
-          (!isAsyncObserved ||
-              (currentExecutable.returnType is VoidType &&
-                  asyncValueConsumer(node) is! AwaitExpression));
+          ((boundCallback && !isAsyncObserved) ||
+              asyncValueConsumer(node) is ExpressionStatement ||
+              (boundCallback &&
+                  (currentExecutable.returnType is VoidType &&
+                      asyncValueConsumer(node) is! AwaitExpression)));
       if ((effect.channel == ExceptionChannel.future ||
               effect.channel == ExceptionChannel.stream) &&
           !isAsyncObserved &&
@@ -2901,15 +2896,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   }
 
   bool _isProtected(AstNode node, ThrowSource source) {
-    return isProtectedByCatch(
-      node,
-      requireAsyncProtection: source.isAsync,
-      channel: source.channel,
-      exceptionTypes: source.exceptionTypes,
-      resolvedExceptionTypes: source.resolvedExceptionTypes,
-      exceptionSupertypes: source.exceptionSupertypes,
-      respectExceptionBoundary: false,
-    );
+    return isEffectContained(node, source, respectExceptionBoundary: false);
   }
 
   ThrowSource _normalize(ThrowSource source, [AstNode? node]) {
@@ -2929,9 +2916,10 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     // its zone, regardless of the enclosing body's return type.
     final unverifiedUnobservedFuture =
         sourceChannel == ExceptionChannel.future &&
-        source.confidence == ThrowConfidence.unknown &&
         node != null &&
-        !_isAsyncObserved(node, channel: sourceChannel);
+        ((source.confidence == ThrowConfidence.unknown &&
+                !_isAsyncObserved(node, channel: sourceChannel)) ||
+            asyncValueConsumer(node) is ExpressionStatement);
     final consumer = node == null ? null : asyncValueConsumer(node);
     final consumesIterator =
         (sourceChannel == ExceptionChannel.stream ||

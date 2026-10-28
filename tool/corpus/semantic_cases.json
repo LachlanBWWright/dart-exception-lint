@@ -1,0 +1,132 @@
+[
+  {
+    "name": "safeLiteral",
+    "source": "int safeLiteral() => 42;",
+    "effects": []
+  },
+  {
+    "name": "explicitSync",
+    "source": "void explicitSync() { throw 'failure'; }",
+    "effects": [
+      "synchronous:known"
+    ]
+  },
+  {
+    "name": "containedSync",
+    "source": "void containedSync() { try { throw 'failure'; } on String {} }",
+    "effects": []
+  },
+  {
+    "name": "mismatchedCatch",
+    "source": "void mismatchedCatch() { try { throw 'failure'; } on int {} }",
+    "effects": [
+      "synchronous:known"
+    ]
+  },
+  {
+    "name": "finallyReturn",
+    "source": "int finallyReturn() { try { throw 'failure'; } finally { return 1; } }",
+    "effects": []
+  },
+  {
+    "name": "finallyReplacement",
+    "source": "void finallyReplacement() { try { throw 'failure'; } finally { throw 1; } }",
+    "effects": [
+      "synchronous:known"
+    ]
+  },
+  {
+    "name": "shortCircuit",
+    "source": "bool shortCircuit() => false && (throw 'failure');",
+    "effects": []
+  },
+  {
+    "name": "deadConditional",
+    "source": "int deadConditional() => true ? 1 : throw 'failure';",
+    "effects": []
+  },
+  {
+    "name": "asyncBody",
+    "source": "Future<void> asyncBody() async { throw 'failure'; }",
+    "effects": [
+      "future:known"
+    ]
+  },
+  {
+    "name": "asyncVoid",
+    "source": "void asyncVoid() async { throw 'failure'; }",
+    "effects": [
+      "scheduled:known"
+    ]
+  },
+  {
+    "name": "syncGenerator",
+    "source": "Iterable<int> syncGenerator() sync* { throw 'failure'; }",
+    "effects": [
+      "deferred:known"
+    ]
+  },
+  {
+    "name": "asyncGenerator",
+    "source": "Stream<int> asyncGenerator() async* { throw 'failure'; }",
+    "effects": [
+      "stream:known"
+    ]
+  },
+  {
+    "name": "containedAwait",
+    "source": "Future<void> containedAwait() async { try { await asyncBody(); } on String {} }",
+    "effects": []
+  },
+  {
+    "name": "unobservedFuture",
+    "source": "void unobservedFuture() { try { asyncBody(); } on String {} }",
+    "effects": [
+      "scheduled:known"
+    ]
+  },
+  {
+    "name": "dynamicBoundary",
+    "source": "void dynamicBoundary(dynamic value) { value.run(); }",
+    "effects": [
+      "synchronous:unknown",
+      "scheduled:unknown"
+    ]
+  },
+  {
+    "name": "mixedBoundary",
+    "source": "void mixedBoundary(dynamic value, bool choose) { if (choose) throw 'failure'; value.run(); }",
+    "effects": [
+      "synchronous:known",
+      "synchronous:unknown",
+      "scheduled:unknown"
+    ]
+  },
+  {
+    "name": "containedDynamic",
+    "source": "void containedDynamic(dynamic value) { try { value.run(); } catch (_) {} }",
+    "effects": [
+      "scheduled:unknown"
+    ]
+  },
+  {
+    "name": "lazyConsumer",
+    "source": "void lazyConsumer() { syncGenerator().toList(); }",
+    "effects": [
+      "synchronous:known",
+      "synchronous:unknown"
+    ]
+  },
+  {
+    "name": "containedLazyConsumer",
+    "source": "void containedLazyConsumer() { try { syncGenerator().toList(); } on Object {} }",
+    "effects": []
+  },
+  {
+    "name": "scheduledTimer",
+    "source": "void scheduledTimer() { Timer.run(() { throw 'failure'; }); }",
+    "effects": [
+      "scheduled:known"
+    ]
+  }
+]

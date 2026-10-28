@@ -14,6 +14,155 @@ void main() {
 
 @reflectiveTest
 class CatchAsyncErrorSourcesRuleTest extends AnalysisRuleTest {
+  Future<void> test_existingFutures_nestedAggregateAliasesAreHandled() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  final first = Future<void>.error('first');
+  final second = Future<void>.error(2);
+  final pending = ([first], other: {'key': second});
+  try { await pending.$1[0]; } on String {}
+  try { await pending.other['key']!; } on int {}
+}
+''');
+  }
+
+  Future<void> test_duplicateMapKey_doesNotConsumeReplacedFuture() async {
+    const code = r'''
+// ignore_for_file: equal_keys_in_map
+Future<void> f() async {
+  final pending = {'key': Future<void>.error('old'), 'key': Future<void>.error(2)};
+  try { await pending['key']!; } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf("Future<void>.error('old')"),
+        "Future<void>.error('old')".length,
+      ),
+    ]);
+  }
+
+  Future<void> test_spreadList_doesNotInventSlotIdentity() async {
+    const code = r'''
+Future<void> f(List<Future<void>> prefix) async {
+  final pending = [...prefix, Future<void>.error('unknown slot')];
+  try { await pending[1]; } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf("Future<void>.error('unknown slot')"),
+        "Future<void>.error('unknown slot')".length,
+      ),
+    ]);
+  }
+
+  Future<void> test_recordSlots_haveIndependentOwners() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  final pending = (Future<void>.error('first'), other: Future<void>.error(2));
+  try { await pending.$1; } on String {}
+  try { await pending.other; } on int {}
+}
+''');
+  }
+
+  Future<void> test_recordSlots_consumingOneDoesNotConsumeSibling() async {
+    const code = r'''
+Future<void> f() async {
+  final pending = (Future<void>.error('first'), Future<void>.error(2));
+  try { await pending.$1; } on String {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future<void>.error(2)'),
+        'Future<void>.error(2)'.length,
+      ),
+    ]);
+  }
+
+  Future<void> test_recordAlias_preservesSlotIdentity() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  final pending = (Future<void>.error('first'), other: Future<void>.error(2));
+  final alias = pending;
+  try { await alias.$1; } on String {}
+  try { await alias.other; } on int {}
+}
+''');
+  }
+
+  Future<void> test_listSlots_haveIndependentOwners() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  final pending = [Future<void>.error('first'), Future<void>.error(2)];
+  try { await pending[0]; } on String {}
+  try { await pending[1]; } on int {}
+}
+''');
+  }
+
+  Future<void> test_mapSlots_haveIndependentOwners() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  final pending = {'a': Future<void>.error('first'), 'b': Future<void>.error(2)};
+  try { await pending['a']!; } on String {}
+  try { await pending['b']!; } on int {}
+}
+''');
+  }
+
+  Future<void> test_joinedFuture_checksEveryAlternative() async {
+    const code = r'''
+Future<void> f(bool choose) async {
+  late Future<void> pending;
+  if (choose) { pending = Future<void>.error('first'); }
+  else { pending = Future<void>.error(2); }
+  try { await pending; } on String {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await pending'), 'await pending'.length),
+    ]);
+  }
+
+  Future<void> test_mutatedList_doesNotDischargeReplacedFuture() async {
+    const code = r'''
+Future<void> f() async {
+  final pending = [Future<void>.error('old')];
+  final alias = pending;
+  pending[0] = Future<void>.value();
+  try { await alias[0]; } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf("Future<void>.error('old')"),
+        "Future<void>.error('old')".length,
+      ),
+    ]);
+  }
+
+  Future<void> test_unknownIndex_doesNotConsumeArbitrarySlot() async {
+    const code = r'''
+Future<void> f(int index) async {
+  final pending = [Future<void>.error('first'), Future<void>.error(2)];
+  try { await pending[index]; } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf("Future<void>.error('first')"),
+        "Future<void>.error('first')".length,
+      ),
+      lint(
+        code.indexOf('Future<void>.error(2)'),
+        'Future<void>.error(2)'.length,
+      ),
+    ]);
+  }
+
   Future<void> test_asyncStreamConsumer_failureReachesWrapperFuture() async {
     const code = r'''
 Stream<int> values() async* { throw 'failure'; }

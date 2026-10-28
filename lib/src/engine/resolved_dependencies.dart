@@ -11,6 +11,8 @@ import 'package:analyzer/src/dart/element/element.dart';
 import 'package:analyzer/src/dart/resolver/flow_analysis_visitor.dart';
 import 'package:analyzer/src/util/performance/operation_performance.dart';
 
+import 'effect_invalidation.dart';
+
 /// Resolves dependency bodies synchronously within the caller's session.
 ///
 /// Rule callbacks cannot await the public resolution API. This adapter uses
@@ -19,8 +21,9 @@ import 'package:analyzer/src/util/performance/operation_performance.dart';
 /// language versions, parts and the driver's editor-overlay contents.
 /// Failed or inconsistent resolution returns null and must retain uncertainty.
 final class ResolvedDependencies {
-  ResolvedDependencies(LibraryElement library) : _session = library.session;
+  ResolvedDependencies(this._caller) : _session = _caller.session;
 
+  final LibraryElement _caller;
   final Object _session;
   final Map<LibraryElement, Map<String, CompilationUnit>?> _libraries = {};
   static const maxLibraries = 128;
@@ -37,6 +40,7 @@ final class ResolvedDependencies {
   }
 
   Map<String, CompilationUnit>? resolve(LibraryElement library) {
+    EffectInvalidation.dependsOn(_caller, library);
     if (library.isInSdk ||
         !identical(library.session, _session) ||
         !isCurrent) {

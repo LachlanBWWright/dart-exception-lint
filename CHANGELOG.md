@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Share residual-effect containment across inference, runtime and manifest
+  reporting; preserve discarded failing Futures as scheduled caller effects.
+- Track argument/record evaluation order, short-circuit branches and
+  noncompleting expressions in structural reachability.
+- Distinguish async obligations in record fields and literal collection slots,
+  preserve aggregate aliases, check all branch alternatives at await sites,
+  and invalidate collection proofs on mutation or escape.
+- Add SDK declaration/source drift inventories for Dart 3.11–3.13, a labeled
+  semantic corpus, a Dart 3.12 CI job and a concrete release contract.
+- Invalidate caller diagnostics after body-only dependency edits; exercise
+  unsaved safe/throwing/safe overlays through a real Analysis Server LSP session.
+- Make external corpus subsets selectable, include all 52 repositories by
+  default, bound dependency resolution time, and count manifest diagnostics.
+
 - Model native numeric and BigInt division, modulo, shifts, compounds,
   modular and width constraints, clamp/format/radix ranges, and conversions
   with VM/JavaScript exception types; preserve operand and arity failures and

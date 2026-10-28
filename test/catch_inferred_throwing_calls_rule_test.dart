@@ -14,6 +14,34 @@ void main() {
 
 @reflectiveTest
 class CatchInferredThrowingCallsRuleTest extends AnalysisRuleTest {
+  Future<void> test_shortCircuitAndArgumentOrder_doNotLeakDeadSources() async {
+    await assertNoDiagnostics(r'''
+// ignore_for_file: dead_code
+bool fails() { throw 'failure'; }
+bool consume(Object first, bool second) => second;
+void helper() {
+  false && fails();
+  true || fails();
+  true ? 1 : fails();
+  try { consume(throw 1, fails()); } on int {}
+}
+void caller() { helper(); }
+''');
+  }
+
+  Future<void> test_argumentFailure_doesNotHideEarlierEffects() async {
+    const code = r'''
+bool fails() { throw 'failure'; }
+bool consume(bool first, Object second) => first;
+void helper() { try { consume(fails(), throw 1); } on int {} }
+void caller() { helper(); }
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('fails(),'), 5),
+      lint(code.lastIndexOf('helper();'), 6),
+    ]);
+  }
+
   Future<void> test_lazyIterable_creationCatchDoesNotContainIteration() async {
     const code = '''
 Iterable<int> values() sync* { throw 'failure'; }

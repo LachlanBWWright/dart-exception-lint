@@ -214,6 +214,8 @@ explicit propagation endpoints declared by `@ExceptionBoundary()`.
 The production checklist is **still in progress**. See
 [`doc/production-implementation.md`](doc/production-implementation.md) for
 implemented foundations, remaining acceptance criteria, and verification.
+The [release contract](doc/release-contract.md) defines scope and automated
+release gates, including SDK evolution checks and labeled semantic fixtures.
 Strict defaults surface uncertainty; they do not make an unfinished semantic
 model exhaustive.
 

@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        sdk: ['3.11.0', stable]
+        sdk: ['3.11.0', '3.12.0', stable]
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
@@ -26,10 +26,14 @@ jobs:
         run: dart analyze
       - name: Verify analyzer syntax inventory
         run: dart run tool/verification/check_syntax_inventory.dart
+      - name: Verify SDK declaration inventory
+        run: dart run tool/verification/sdk_inventory.dart
       - name: Validate external corpus manifest
         run: dart run tool/corpus/validate_manifest.dart
       - name: Run tests
         run: dart test --timeout 4x
+      - name: Verify labeled semantic corpus
+        run: dart run tool/verification/semantic_corpus.dart
       - name: Check inference performance budgets
         run: dart run tool/verification/benchmark.dart
       - name: Check callback inference performance budgets
@@ -55,3 +59,5 @@ jobs:
         run: dart pub publish --dry-run
       - name: Verify clean release snapshot and enable-only consumer
         run: dart run tool/verification/release_smoke.dart
+      - name: Verify Analysis Server editor overlays
+        run: dart run tool/verification/ide_smoke.dart

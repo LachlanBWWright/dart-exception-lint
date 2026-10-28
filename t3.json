@@ -1,0 +1,31 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "defaultThreadEnvMode": "local",
+  "scripts": [
+    {
+      "name": "Get Dependencies",
+      "command": "dart pub get",
+      "icon": "configure"
+    },
+    {
+      "name": "Format Dart",
+      "command": "dart format .",
+      "icon": "code"
+    },
+    {
+      "name": "Analyze Package",
+      "command": "dart analyze",
+      "icon": "search"
+    },
+    {
+      "name": "Run Tests",
+      "command": "dart test",
+      "icon": "test"
+    },
+    {
+      "name": "Analyze Example",
+      "command": "cd example && dart pub get && dart analyze",
+      "icon": "play"
+    }
+  ]
+}

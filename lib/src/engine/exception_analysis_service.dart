@@ -5,6 +5,7 @@ import '../analysis/inferred_throw_analyzer.dart';
 import '../config/exception_analysis_options.dart';
 import '../config/throwing_api_manifest.dart';
 import 'resolved_dependencies.dart';
+import 'effect_invalidation.dart';
 
 /// Shares summaries across diagnostic adapters for the same resolved unit.
 /// Weak keys release old analysis results when an editor replaces the AST.
@@ -61,6 +62,7 @@ final class ExceptionAnalysisService {
   static final _units = Expando<ExceptionAnalysisService>();
 
   static ExceptionAnalysisService forContext(RuleContext context) {
+    EffectInvalidation.observe(context);
     final options = ExceptionAnalysisOptions.load(
       packageRoot: context.package?.root.path,
       currentFilePath: context.definingUnit.file.path,

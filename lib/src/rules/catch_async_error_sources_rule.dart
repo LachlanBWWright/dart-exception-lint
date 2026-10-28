@@ -16,6 +16,8 @@ import '../analysis/throw_summary.dart';
 import '../config/exception_analysis_options.dart';
 import '../engine/exception_analysis_service.dart';
 import '../engine/exception_effect.dart';
+import '../engine/value_location.dart';
+import '../engine/effect_containment.dart';
 import '../engine/statement_completion.dart';
 import '../engine/invocation_targets.dart';
 import '../diagnostics.dart';
@@ -349,15 +351,20 @@ final class _Visitor extends RecursiveAstVisitor<void> {
         _safeFutureVariables.add(variable);
       }
     }
-    if (initializer is SimpleIdentifier && variable != null) {
-      final source = _storageElement(initializer.element);
-      final effects = _deferredEffects[source] ?? _escapedEffects[source];
-      if (effects != null) _deferredEffects[variable] = [...effects];
+    if (initializer != null && variable != null) {
+      _copyStoredValue(initializer, ValueLocation(variable));
     }
   }
 
   @override
   void visitAssignmentExpression(AssignmentExpression node) {
+    if (node.leftHandSide case IndexExpression(:final realTarget)) {
+      _invalidateStoredValue(realTarget);
+    }
+    final assigned = _valueLocation(node.leftHandSide);
+    if (assigned != null && _valueLocation(node.rightHandSide) != assigned) {
+      _forgetDestination(assigned);
+    }
     node.visitChildren(this);
     for (final target in invocationTargets(node, library)) {
       _reportDirectAsyncSource(node, target, node);
@@ -368,12 +375,8 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     }
     final source = node.rightHandSide;
     final destination = _storageElement(node.writeElement);
-    if (source is SimpleIdentifier && destination is LocalVariableElement) {
-      final effects = _deferredEffects[_storageElement(source.element)];
-      if (effects != null) {
-        _orphanedEffects.addAll(_deferredEffects[destination] ?? const []);
-        _deferredEffects[destination] = [...effects];
-      }
+    if (destination is LocalVariableElement) {
+      _copyStoredValue(source, ValueLocation(destination), overwrite: true);
     }
   }
 
@@ -404,6 +407,32 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   void visitAwaitExpression(AwaitExpression node) {
     node.visitChildren(this);
     final expression = node.expression;
+    final stored = _effectsForExpression(expression);
+    if (stored.isNotEmpty) {
+      final residual = stored
+          .where((effect) => !effect.isProtectedAt(node))
+          .toList();
+      for (final effect in stored) {
+        _consumeStoredEffect(effect);
+      }
+      if (residual.isNotEmpty && _emissions.claim(node)) {
+        rule.reportAtNode(
+          node,
+          arguments: [
+            residual.map((effect) => effect.displayName).toSet().join(', '),
+            exceptionTypeLabel(
+              residual.any((effect) => effect.exceptionTypes.isEmpty)
+                  ? const []
+                  : residual
+                        .expand((effect) => effect.exceptionTypes)
+                        .toSet()
+                        .toList(),
+            ),
+          ],
+        );
+      }
+      return;
+    }
     final analysis = analyzer.analyzeResolvedCall(
       expression,
       element: _elementForInvocation(expression),
@@ -528,6 +557,10 @@ final class _Visitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
+    final target = node.realTarget;
+    if (target != null && _isMutableCollection(target.staticType)) {
+      _invalidateStoredValue(target);
+    }
     node.visitChildren(this);
     if (node.parent is AwaitExpression) {
       return;
@@ -537,8 +570,9 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     }
     final handledTarget = node.realTarget;
     if (handledTarget != null && hasUnconditionalAsyncErrorHandler(node)) {
-      final effect = _effectForExpression(handledTarget);
-      if (effect != null) _consumeStoredEffect(effect);
+      for (final effect in _effectsForExpression(handledTarget)) {
+        _consumeStoredEffect(effect);
+      }
     }
     // Let the outer async chain report the effect once. For example,
     // Future.error(...).then(...) should report `then`, not both nodes.
@@ -594,17 +628,17 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       node.methodName.element,
       options,
     );
-    final target = node.target;
-    final chainedSource = switch (target) {
+    final chainTarget = node.target;
+    final chainedSource = switch (chainTarget) {
       MethodInvocation() => ThrowSourceCatalog.matchResolvedInvocation(
-        target,
-        target.methodName.element,
+        chainTarget,
+        chainTarget.methodName.element,
         options,
       ),
       InstanceCreationExpression() =>
         ThrowSourceCatalog.matchResolvedInvocation(
-          target,
-          target.constructorName.element,
+          chainTarget,
+          chainTarget.constructorName.element,
           options,
         ),
       _ => null,
@@ -629,14 +663,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       return;
     }
 
-    if (isProtectedByCatch(
-      node,
-      requireAsyncProtection: true,
-      channel: source.channel,
-      exceptionTypes: source.exceptionTypes,
-      resolvedExceptionTypes: source.resolvedExceptionTypes,
-      exceptionSupertypes: source.exceptionSupertypes,
-    )) {
+    if (isEffectContained(node, source)) {
       return;
     }
 
@@ -660,6 +687,41 @@ final class _Visitor extends RecursiveAstVisitor<void> {
         ],
       );
     }
+  }
+
+  @override
+  void visitArgumentList(ArgumentList node) {
+    for (final argument in node.arguments) {
+      final value = argument.argumentExpression;
+      if (_isMutableCollection(value.staticType)) _invalidateStoredValue(value);
+    }
+    node.visitChildren(this);
+  }
+
+  bool _isMutableCollection(DartType? type) =>
+      type is RecordType ||
+      type is InterfaceType &&
+          (type.isDartCoreList || type.isDartCoreMap || type.isDartCoreSet);
+
+  void _invalidateStoredValue(Expression expression) {
+    final location = _valueLocation(expression);
+    if (location == null) return;
+    final invalid = <_DeferredAsyncEffect>{};
+    for (final effects in [_deferredEffects, _escapedEffects]) {
+      for (final entry in effects.entries) {
+        if (entry.key case ValueLocation(
+          :final root,
+        ) when root == location.root) {
+          invalid.addAll(entry.value);
+        }
+      }
+    }
+    for (final effect in invalid) {
+      _consumeStoredEffect(effect);
+    }
+    // A mutation or escape invalidates all aliases of the old slot identity.
+    // Its earlier Future can still fail even if the slot now holds a safe one.
+    _orphanedEffects.addAll(invalid);
   }
 
   void _reportDirectAsyncSource(
@@ -711,14 +773,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       options,
     );
     if (source == null || !source.isAsync) return;
-    if (isProtectedByCatch(
-      node,
-      requireAsyncProtection: true,
-      channel: source.channel,
-      exceptionTypes: source.exceptionTypes,
-      resolvedExceptionTypes: source.resolvedExceptionTypes,
-      exceptionSupertypes: source.exceptionSupertypes,
-    )) {
+    if (isEffectContained(node, source)) {
       return;
     }
     if (_rememberStoredEffect(
@@ -805,9 +860,10 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   }) {
     final element = _storageElement(_storedElementFor(node));
     if (element == null) return false;
-    final key = element is FieldElement
+    final root = element is FieldElement
         ? _fieldStorageKey(node, element)
         : element;
+    final key = ValueLocation(root, _producerSelectors(node));
     final effect = _DeferredAsyncEffect(
       node: node,
       displayName: displayName,
@@ -876,40 +932,212 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     return _fieldKey(field, null);
   }
 
-  _DeferredAsyncEffect? _effectForElement(
-    Element? element, [
-    Expression? receiver,
-  ]) {
-    final variable = _storageElement(element);
-    final key = variable is FieldElement
-        ? _fieldKey(variable, receiver)
-        : variable;
-    final effects = _deferredEffects[key] ?? _escapedEffects[key];
-    return effects == null || effects.isEmpty ? null : effects.first;
+  _DeferredAsyncEffect? _effectForExpression(Expression expression) =>
+      _effectsForExpression(expression).firstOrNull;
+
+  List<_DeferredAsyncEffect> _effectsForExpression(Expression expression) {
+    final location = _valueLocation(expression);
+    if (location == null) return const [];
+    return [...?_deferredEffects[location], ...?_escapedEffects[location]];
   }
 
-  _DeferredAsyncEffect? _effectForExpression(Expression expression) {
+  ValueLocation? _valueLocation(Expression expression) {
     switch (expression) {
       case SimpleIdentifier(:final element):
-        return _effectForElement(element);
-      case ParenthesizedExpression(:final expression):
-        return _effectForExpression(expression);
-      case PropertyAccess(:final target, :final propertyName):
-        return _effectForElement(propertyName.element, target) ??
-            (target == null ? null : _effectForExpression(target));
-      case PrefixedIdentifier(:final prefix, :final identifier):
-        return _effectForElement(identifier.element, prefix) ??
-            _effectForExpression(prefix);
-      case IndexExpression(:final realTarget):
-        return _effectForExpression(realTarget);
+        final variable = _storageElement(element);
+        if (variable == null) return null;
+        return ValueLocation(
+          variable is FieldElement ? _fieldKey(variable, null) : variable,
+        );
+      case ParenthesizedExpression(:final expression) ||
+          AsExpression(:final expression):
+        return _valueLocation(expression);
       case PostfixExpression(:final operator, :final operand)
           when operator.lexeme == '!':
-        return _effectForExpression(operand);
-      case ConditionalExpression(:final thenExpression, :final elseExpression):
-        return _effectForExpression(thenExpression) ??
-            _effectForExpression(elseExpression);
+        return _valueLocation(operand);
+      case PropertyAccess(:final realTarget, :final propertyName):
+        if (realTarget.staticType is RecordType) {
+          return _valueLocation(realTarget)?.select(propertyName.name);
+        }
+        if (_isFirstGetter(propertyName.element)) {
+          return _valueLocation(realTarget)?.select(0);
+        }
+        final variable = _storageElement(propertyName.element);
+        return variable is FieldElement
+            ? ValueLocation(_fieldKey(variable, realTarget))
+            : null;
+      case PrefixedIdentifier(:final prefix, :final identifier):
+        if (prefix.staticType is RecordType) {
+          return _valueLocation(prefix)?.select(identifier.name);
+        }
+        if (_isFirstGetter(identifier.element)) {
+          return _valueLocation(prefix)?.select(0);
+        }
+        final variable = _storageElement(identifier.element);
+        return variable is FieldElement
+            ? ValueLocation(_fieldKey(variable, prefix))
+            : null;
+      case IndexExpression(:final realTarget, :final index):
+        final key = _literalKey(index);
+        // An arbitrary operator[] may return another value entirely.
+        if (key == null ||
+            expression.element?.library.uri.toString() != 'dart:core') {
+          return null;
+        }
+        return _valueLocation(realTarget)?.select(key);
       default:
         return null;
+    }
+  }
+
+  bool _isFirstGetter(Element? element) =>
+      element is GetterElement &&
+      element.library.uri.toString() == 'dart:core' &&
+      const {'Iterable', 'List'}.contains(element.enclosingElement.name) &&
+      element.name == 'first';
+
+  Object? _literalKey(Expression expression) => switch (expression) {
+    IntegerLiteral(:final value) => value,
+    SimpleStringLiteral(:final value) => value,
+    BooleanLiteral(:final value) => value,
+    ParenthesizedExpression(:final expression) => _literalKey(expression),
+    _ => null,
+  };
+
+  List<Object> _producerSelectors(AstNode node) {
+    final selectors = <Object>[];
+    AstNode? current = node;
+    while (current != null &&
+        current is! Statement &&
+        current is! FunctionBody) {
+      final parent = current.parent;
+      if (parent is RecordLiteralNamedField) {
+        selectors.insert(0, parent.name.lexeme);
+      } else if (parent is RecordLiteral &&
+          current is RecordLiteralField &&
+          current is! RecordLiteralNamedField) {
+        final positional = parent.fields
+            .where((field) => field is! RecordLiteralNamedField)
+            .toList();
+        selectors.insert(0, '\$${positional.indexOf(current) + 1}');
+      } else if (parent is ListLiteral) {
+        selectors.insert(
+          0,
+          parent.elements.every((element) => element is Expression)
+              ? parent.elements.indexOf(current as CollectionElement)
+              : Object(),
+        );
+      } else if (parent is MapLiteralEntry &&
+          identical(parent.value, current)) {
+        final key = _literalKey(parent.key);
+        final aggregate = parent.parent;
+        final definiteSlot =
+            aggregate is SetOrMapLiteral &&
+            aggregate.elements.every((element) => element is MapLiteralEntry) &&
+            !aggregate.elements
+                .skipWhile((entry) => !identical(entry, parent))
+                .skip(1)
+                .whereType<MapLiteralEntry>()
+                .any((entry) => _literalKey(entry.key) == key);
+        selectors.insert(0, definiteSlot && key != null ? key : Object());
+      }
+      current = parent;
+    }
+    return selectors;
+  }
+
+  void _copyStoredValue(
+    Expression source,
+    ValueLocation destination, {
+    bool overwrite = false,
+  }) {
+    if (source is RecordLiteral) {
+      var position = 0;
+      for (final field in source.fields) {
+        final selector = field is RecordLiteralNamedField
+            ? field.name.lexeme
+            : '\$${++position}';
+        _copyStoredValue(field.fieldExpression, destination.select(selector));
+      }
+      return;
+    }
+    if (source is ListLiteral &&
+        source.elements.every((element) => element is Expression)) {
+      for (var index = 0; index < source.elements.length; index++) {
+        _copyStoredValue(
+          source.elements[index] as Expression,
+          destination.select(index),
+        );
+      }
+      return;
+    }
+    if (source is ParenthesizedExpression) {
+      _copyStoredValue(source.expression, destination, overwrite: overwrite);
+      return;
+    }
+    if (source is SetOrMapLiteral &&
+        source.elements.every((element) => element is MapLiteralEntry)) {
+      final entries = source.elements.whereType<MapLiteralEntry>().toList();
+      for (var index = 0; index < entries.length; index++) {
+        final entry = entries[index];
+        final key = _literalKey(entry.key);
+        if (key == null ||
+            entries
+                .skip(index + 1)
+                .any((later) => _literalKey(later.key) == key)) {
+          continue;
+        }
+        _copyStoredValue(entry.value, destination.select(key));
+      }
+      return;
+    }
+    final sourceLocation = _valueLocation(source);
+    if (sourceLocation == null) return;
+    // Snapshot before changing the destination, including self assignments.
+    final copies = <ValueLocation, List<_DeferredAsyncEffect>>{};
+    for (final effects in [_deferredEffects, _escapedEffects]) {
+      for (final entry in effects.entries) {
+        final key = entry.key;
+        if (key is! ValueLocation ||
+            key.root != sourceLocation.root ||
+            key.selectors.length < sourceLocation.selectors.length) {
+          continue;
+        }
+        if (!List.generate(
+          sourceLocation.selectors.length,
+          (index) => key.selectors[index] == sourceLocation.selectors[index],
+        ).every((equal) => equal)) {
+          continue;
+        }
+        copies[ValueLocation(destination.root, [
+          ...destination.selectors,
+          ...key.selectors.skip(sourceLocation.selectors.length),
+        ])] = [
+          ...entry.value,
+        ];
+      }
+    }
+    if (overwrite) {
+      for (final key
+          in _deferredEffects.keys
+              .whereType<ValueLocation>()
+              .where((key) => key.root == destination.root)
+              .toList()) {
+        _orphanedEffects.addAll(_deferredEffects.remove(key)!);
+      }
+    }
+    _deferredEffects.addAll(copies);
+  }
+
+  void _forgetDestination(ValueLocation destination) {
+    for (final effects in [_deferredEffects, _escapedEffects]) {
+      for (final key
+          in effects.keys
+              .whereType<ValueLocation>()
+              .where((key) => key.root == destination.root)
+              .toList()) {
+        _orphanedEffects.addAll(effects.remove(key)!);
+      }
     }
   }
 

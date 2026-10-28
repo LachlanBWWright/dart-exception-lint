@@ -17,6 +17,7 @@ Useful options:
 ```bash
 CORPUS_LIMIT=10 CORPUS_REFRESH=1 tool/corpus/run_corpus.sh
 CORPUS_ROOT=/tmp/dart-exception-corpus CORPUS_TIMEOUT=180 tool/corpus/run_corpus.sh
+CORPUS_FILTER='^(dart_path|dart_yaml|dart_http)$' tool/corpus/run_corpus.sh
 ```
 
 The runner checks out the exact commit recorded in each row, injects a temporary local plugin configuration
@@ -37,3 +38,18 @@ For a report suitable for a review artifact:
 ```bash
 dart run tool/corpus/summarize_results.dart
 ```
+
+The default limit includes all 52 manifest entries. `CORPUS_FILTER` selects
+project IDs with a Bash regular expression before applying `CORPUS_LIMIT`.
+Dependency resolution and analysis both use `CORPUS_TIMEOUT`.
+
+`semantic_cases.json` is a separate, reviewed local corpus with expected known
+and unknown effect-channel labels. Run it with:
+
+```bash
+dart run tool/verification/semantic_corpus.dart
+```
+
+Unexpected and missing labels fail the gate. Its reported counts describe only
+these fixtures; the external repository inventory still has no reviewed
+diagnostic labels and does not measure external precision or recall.

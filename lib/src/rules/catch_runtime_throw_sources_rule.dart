@@ -12,9 +12,10 @@ import '../analysis/diagnostic_emission_guard.dart';
 import '../analysis/throw_source_catalog.dart';
 import '../analysis/throw_summary.dart';
 import '../engine/runtime_checks.dart';
+import '../engine/effect_containment.dart';
 import '../config/exception_analysis_options.dart';
 import '../diagnostics.dart';
-import '../result.dart';
+import '../engine/exception_analysis_service.dart';
 import '../utils/source_utils.dart';
 
 class CatchRuntimeThrowSourcesRule extends AnalysisRule {
@@ -34,13 +35,7 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     RuleVisitorRegistry registry,
     RuleContext context,
   ) {
-    final options = switch (ExceptionAnalysisOptions.loadResult(
-      packageRoot: context.package?.root.path,
-      currentFilePath: context.definingUnit.file.path,
-    )) {
-      Ok(value: final options) => options,
-      Err() => const ExceptionAnalysisOptions(),
-    };
+    final options = ExceptionAnalysisService.forContext(context).options;
     if (shouldSkipLintRuleForFile(
       ruleName: name,
       options: options,
@@ -376,14 +371,15 @@ final class _Visitor extends SimpleAstVisitor<void> {
     List<String> exceptionTypes, {
     ThrowSource? source,
   }) {
-    if (isProtectedByCatch(
-      node,
-      exceptionTypes: exceptionTypes,
-      resolvedExceptionTypes: source?.resolvedExceptionTypes ?? const [],
-      exceptionSupertypes: source?.exceptionSupertypes ?? const {},
-    )) {
-      return;
-    }
+    final effect =
+        source ??
+        ThrowSource(
+          kind: ThrowSourceKind.inferredCall,
+          confidence: ThrowConfidence.possibleThrow,
+          displayName: displayName,
+          exceptionTypes: exceptionTypes,
+        );
+    if (isEffectContained(node, effect)) return;
 
     if (_emissions.claim(diagnosticTarget)) {
       rule.reportAtNode(
