@@ -7,6 +7,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 import '../analysis/exception_annotations.dart';
 import '../analysis/inferred_throw_analyzer.dart';
@@ -129,7 +130,14 @@ Future<Map<String, dynamic>> analyzeProject(
       configuration['context:${relative(contextRoot.root.path)}'] = fingerprint(
         [
           excluded,
-          contextRoot.optionsFile?.readAsStringSync(),
+          switch (contextRoot.optionsFile) {
+            final optionsFile? => _analysisOptionsContents(
+              optionsFile.path,
+              context.currentSession,
+              root,
+            ),
+            null => null,
+          },
           for (final name in ['pubspec.yaml', 'pubspec.lock'])
             if (File(p.join(packageRoot, name)).existsSync())
               File(p.join(packageRoot, name)).readAsStringSync(),
@@ -383,6 +391,48 @@ String _packageRoot(String file, String root) {
     directory = p.dirname(directory);
   }
   return root;
+}
+
+Map<String, String?> _analysisOptionsContents(
+  String entryPath,
+  AnalysisSession session,
+  String root,
+) {
+  final visited = <String>{};
+  final pending = [entryPath];
+  final contents = <String, String?>{};
+  while (pending.isNotEmpty) {
+    final path = pending.removeLast();
+    if (!visited.add(path)) continue;
+    final file = session.resourceProvider.getFile(path);
+    final text = file.exists ? file.readAsStringSync() : null;
+    contents[reportPath(path, root: root)] = text;
+    if (text == null) continue;
+
+    final Object? yaml;
+    try {
+      yaml = loadYaml(text);
+    } on YamlException {
+      // The analyzer ignores invalid YAML. Its contents still affect identity.
+      continue;
+    }
+    if (yaml is! YamlMap) continue;
+    final includes = switch (yaml['include']) {
+      final String include => [include],
+      final YamlList list => list.whereType<String>(),
+      _ => const <String>[],
+    };
+    final baseUri = Uri.file(path);
+    for (final include in includes) {
+      final uri = Uri.tryParse(include);
+      if (uri == null) continue;
+      if (session.uriConverter.uriToPath(baseUri.resolveUri(uri))
+          case final includedPath?) {
+        pending.add(includedPath);
+      }
+    }
+  }
+  return contents;
 }
 
 String _symbol(ExecutableElement element) {

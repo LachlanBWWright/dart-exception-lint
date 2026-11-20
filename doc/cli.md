@@ -153,9 +153,9 @@ dart run bin/dart_exception_lint.dart --root /path/to/project lib --baseline bas
 fail policy while still being saved as a baseline. Execution/budget failures
 never overwrite it. A malformed or incompatible baseline fails execution.
 SDK version, schema, scope and recorded configuration must match; re-establish
-the baseline deliberately when those change. Referenced analyzer option
-includes are not recursively fingerprinted; keep their versions/configuration
-fixed when comparing runs.
+the baseline deliberately when those change. The fingerprint includes
+transitive local and package includes resolved from each context's root
+analyzer options file.
 
 Fingerprints use relative paths, callable symbols, source identity, types,
 certainty and channels, excluding offsets. Inserting blank lines preserves

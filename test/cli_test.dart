@@ -361,6 +361,38 @@ void main() {
     expect((await run(['lib', '--baseline', baseline])).code, 2);
   });
 
+  test('transitive analyzer option changes invalidate baselines', () async {
+    await write('lib/main.dart', "void fail() { throw 'failure'; }");
+    await write('.dart_tool/package_config.json', '''
+{
+  "configVersion": 2,
+  "packages": [
+    {"name": "cli_fixture", "rootUri": "../", "packageUri": "lib/", "languageVersion": "3.11"}
+  ]
+}
+''');
+    await write(
+      'analysis_options.yaml',
+      'include: package:cli_fixture/policies/shared.yaml\n',
+    );
+    await write('lib/policies/shared.yaml', 'include:\n  - strict.yaml\n');
+    await write(
+      'lib/policies/strict.yaml',
+      'analyzer:\n  language:\n    strict-casts: false\n',
+    );
+    final baseline = p.join(fixture.path, 'baseline.json');
+    expect((await run(['lib', '--write-baseline', baseline])).code, 1);
+    expect((await run(['lib', '--baseline', baseline])).code, 0);
+
+    await write(
+      'lib/policies/strict.yaml',
+      'analyzer:\n  language:\n    strict-casts: true\n',
+    );
+    final changed = await run(['lib', '--baseline', baseline]);
+    expect(changed.code, 2);
+    expect(changed.report['errors'][0]['message'], contains('configuration'));
+  });
+
   test(
     'equivalent failures in different originating callables keep distinct identities',
     () async {
