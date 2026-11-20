@@ -242,6 +242,30 @@ void finallyReturns() {
     );
   });
 
+  test(
+    'null assertion effects carry TypeError and honor typed catches',
+    () async {
+      await _verify(
+        '''
+String escaping(String? value) => value!;
+String handled(String? value) {
+  try { return value!; } on TypeError { return ''; }
+}
+String wrongCatch(String? value) {
+  try { return value!; } on Exception { return ''; }
+}
+String redundant(String value) => value!;
+''',
+        (summaries, _) {
+          expect(summaries['escaping']!.exceptionTypes, ['TypeError']);
+          expect(summaries['wrongCatch']!.exceptionTypes, ['TypeError']);
+          expect(summaries['handled']!.hasAnyThrowSource, isFalse);
+          expect(summaries['redundant']!.hasAnyThrowSource, isFalse);
+        },
+      );
+    },
+  );
+
   test('invocation effects follow receiver and argument evaluation', () async {
     await _verify(
       '''

@@ -2747,11 +2747,12 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     for (final target in invocationTargets(node, executable.library)) {
       _recordCall(node, element: target);
     }
-    if (node.operator.lexeme == '!') {
+    if (node.operator.lexeme == '!' && !isDefinitelyNonNull(node.operand)) {
       const source = ThrowSource(
         kind: ThrowSourceKind.nullAssertion,
         confidence: ThrowConfidence.possibleThrow,
         displayName: 'null assertion',
+        exceptionTypes: ['TypeError'],
       );
       if (!_isProtected(node, source)) {
         sources.add(_normalize(source, node));

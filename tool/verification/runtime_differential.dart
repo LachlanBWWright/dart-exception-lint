@@ -148,6 +148,8 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
+  'postfixAssertion': ('synchronous', 'TypeError'),
   'stoppedCascade': ('synchronous', 'int'),
   'stoppedCollection': ('synchronous', 'int'),
   'stoppedCollectionLoop': ('synchronous', 'int'),
@@ -187,6 +189,7 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'caughtPostfixAssertion': 'TypeError',
   'skippedSelector': 'String',
   'stoppedCascade': 'String',
   'skippedCascade': 'String',
@@ -212,6 +215,8 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'postfix_assertion': 'TypeError',
+  'caught_postfix_assertion': 'none',
   'skipped_selector': 'none',
   'parenthesized_null_assertion': 'TypeError',
   'stopped_cascade': '42',
@@ -293,6 +298,10 @@ final class SelectorTarget {
 const SelectorTarget? absentSelectorTarget = null;
 void skippedSelector() { absentSelectorTarget?.next.fail(); }
 void parenthesizedNullAssertion() { (absentSelectorTarget?.next)!; }
+void postfixAssertion(String? value) { value!; }
+void caughtPostfixAssertion(String? value) {
+  try { value!; } on TypeError {}
+}
 void stoppedCollection() { <int>[stopEvaluation(), throwString()]; }
 void stoppedCollectionLoop() {
   <int>[for (int i = stopEvaluation(); false;) throwString()];
@@ -447,6 +456,8 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'postfix_assertion': capture(() => postfixAssertion(null)),
+    'caught_postfix_assertion': capture(() => caughtPostfixAssertion(null)),
     'skipped_selector': capture(skippedSelector),
     'parenthesized_null_assertion': capture(parenthesizedNullAssertion),
     'stopped_cascade': capture(stoppedCascade),
