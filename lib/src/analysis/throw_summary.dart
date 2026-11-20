@@ -376,13 +376,26 @@ final class ThrowSummary {
       );
     }
     final sourceLimit = maxSources < 0 ? 0 : maxSources;
-    final boundedSources = uniqueSources.values.take(sourceLimit).toList();
-    final wasTruncated = uniqueSources.length > boundedSources.length;
+    final wasTruncated = uniqueSources.length > sourceLimit;
+    final boundedSources = <ThrowSource>[];
     if (wasTruncated) {
-      final omittedChannels = uniqueSources.values
-          .skip(sourceLimit)
-          .map((source) => ExceptionEffect.fromSource(source).channel)
-          .toSet();
+      final known = <ExceptionEffect>[];
+      final unknown = <ExceptionEffect>[];
+      for (final source in uniqueSources.values) {
+        final effect = ExceptionEffect.fromSource(source);
+        (effect.certainty == ExceptionCertainty.unknown ? unknown : known).add(
+          effect,
+        );
+      }
+      // Keep known effects before spending the budget on individual unknowns.
+      final omittedChannels = <ExceptionChannel>{};
+      for (final effect in known.followedBy(unknown)) {
+        if (boundedSources.length < sourceLimit) {
+          boundedSources.add(effect.source);
+        } else {
+          omittedChannels.add(effect.channel);
+        }
+      }
       // Delivery channels are independent: a synchronous catch must not hide a
       // scheduled failure merely because its concrete source exceeded a budget.
       // At most one unknown sentinel per channel survives outside the budget.
@@ -405,6 +418,8 @@ final class ThrowSummary {
           ),
         );
       }
+    } else {
+      boundedSources.addAll(uniqueSources.values);
     }
     final collectedSources = boundedSources;
     final canThrowSynchronously = collectedSources.any(

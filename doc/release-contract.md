@@ -23,7 +23,9 @@ Every supported semantic family needs an escaping example, compatible typed
 containment, incompatible containment, and an unresolved or budget-limited
 example. A known source must survive beside unresolved alternatives. Each
 source retains its types, origin, certainty and synchronous, Future, Stream,
-deferred or scheduled channel independently.
+deferred or scheduled channel independently. When a summary exceeds its source
+budget, known effects get priority and omitted effects retain uncertainty in
+their original channels.
 
 Containment uses a shared residual-effect projection. Inference ignores
 `ExceptionBoundary` exemptions when computing outward effects; diagnostic
@@ -34,8 +36,8 @@ Expression reachability includes short-circuit and conditional selection,
 argument and record-field evaluation order, null-aware call arguments, and
 noncompleting expressions. Invocation effects require the receiver and arguments
 to finish evaluating. Loop initialization, conditions, and updates respect
-evaluation order, including labeled `continue`. This is a structural proof; opaque expressions keep
-possible normal completion. It is not a general symbolic value interpreter.
+evaluation order, including labeled `continue`. Opaque expressions retain
+possible normal completion in these structural proofs.
 
 Resolved constant booleans use the same branch facts in completion, inference
 and async ownership. Ordinary final/mutable initializers do not establish these

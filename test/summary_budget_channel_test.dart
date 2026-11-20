@@ -3,6 +3,37 @@ import 'package:dart_exception_lint/src/engine/exception_effect.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('known effects retain budget priority over earlier unknowns', () {
+    final summary = _merge([
+      for (var index = 0; index < 80; index++)
+        ThrowSource(
+          kind: ThrowSourceKind.unresolvedCall,
+          confidence: ThrowConfidence.unknown,
+          displayName: 'opaque call $index',
+          channel: ExceptionChannel.scheduled,
+        ),
+      const ThrowSource(
+        kind: ThrowSourceKind.inferredCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'modeled failure',
+        exceptionTypes: ['String'],
+      ),
+    ], maxSources: 1);
+    expect(
+      summary
+          .effectsFor(ExceptionChannel.synchronous)
+          .single
+          .source
+          .exceptionTypes,
+      ['String'],
+    );
+    expect(
+      summary.effectsFor(ExceptionChannel.scheduled).single.certainty,
+      ExceptionCertainty.unknown,
+    );
+    expect(summary.complete, isFalse);
+  });
+
   test(
     'Source budget preserves omitted scheduled and other delivery channels',
     () {
