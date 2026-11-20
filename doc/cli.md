@@ -160,7 +160,10 @@ fixed when comparing runs.
 Fingerprints use relative paths, callable symbols, source identity, types,
 certainty and channels, excluding offsets. Inserting blank lines preserves
 identity. Moving/renaming a callable or changing its effect creates new and
-resolved identities. Equivalent sources within the same originating callable
+resolved identities. Callables with the same qualified name in a file receive
+declaration-order suffixes (`#1`, `#2`, and so on). Adding, removing, or
+reordering declarations with that name can change their identities. Equivalent
+sources within the same originating callable
 are grouped rather than assigned unstable occurrence numbers.
 
 Comparison adds `baselineState: new|existing` to findings and a `baseline`

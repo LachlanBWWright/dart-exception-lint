@@ -414,6 +414,35 @@ void main() {
   );
 
   test(
+    'shadowed local names keep distinct findings across line shifts',
+    () async {
+      const source = '''
+void caller() {
+  { void fail() => throw 'first'; fail(); }
+  { void fail() => throw 'second'; fail(); }
+}
+''';
+      await write('lib/main.dart', source);
+      final baseline = p.join(fixture.path, 'shadowed-baseline.json');
+      final initial = await run(['lib', '--write-baseline', baseline]);
+      final findings = initial.report['findings'] as List;
+      expect(
+        findings
+            .where((f) => f['symbol'] == 'function:caller')
+            .map((f) => f['origin']['symbol']),
+        unorderedEquals(['function:caller.fail#1', 'function:caller.fail#2']),
+      );
+      expect(findings, hasLength(4));
+
+      await write('lib/main.dart', '\n\n$source');
+      final comparison = await run(['lib', '--baseline', baseline]);
+      expect(comparison.code, 0);
+      expect(comparison.report['baseline']['existing'], 4);
+      expect(comparison.report['baseline']['resolved'], isEmpty);
+    },
+  );
+
+  test(
     'wall-clock watchdog interrupts expensive synchronous analysis',
     () async {
       await write(

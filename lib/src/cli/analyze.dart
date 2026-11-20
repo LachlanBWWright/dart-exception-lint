@@ -38,6 +38,7 @@ Future<Map<String, dynamic>> analyzeProject(
       declarationsByPath.putIfAbsent(path, () {
         final declarations = _Declarations();
         unit.accept(declarations);
+        declarations.assignSymbols();
         return declarations;
       });
   final collection = AnalysisContextCollection(includedPaths: [root]);
@@ -216,7 +217,7 @@ Future<Map<String, dynamic>> analyzeProject(
       final declarations = declarationsFor(file, unit.unit);
       for (final (node, element) in declarations.items) {
         final summary = entry.$2.summarizeExecutable(element);
-        final symbol = _symbol(element);
+        final symbol = declarations.symbols[element]!;
         final location = unit.lineInfo.getLocation(node.offset);
         final boundary = hasExceptionBoundaryAnnotation(element);
         callables.add({
@@ -242,8 +243,9 @@ Future<Map<String, dynamic>> analyzeProject(
           final originFile = origin?.filePath == null
               ? null
               : relative(origin!.filePath!);
+          final originUnit = declarationsByPath[origin?.filePath];
           final originDeclarations =
-              declarationsByPath[origin?.filePath]?.items
+              originUnit?.items
                   .where(
                     (item) =>
                         origin?.offset != null &&
@@ -255,7 +257,7 @@ Future<Map<String, dynamic>> analyzeProject(
           final originSymbol =
               originDeclarations == null || originDeclarations.isEmpty
               ? null
-              : _symbol(originDeclarations.first.$2);
+              : originUnit!.symbols[originDeclarations.first.$2];
           final code = effect.certainty.name == 'unknown'
               ? 'unknown_exception_effect'
               : 'escaping_exception_effect';
@@ -385,10 +387,19 @@ String _packageRoot(String file, String root) {
 
 String _symbol(ExecutableElement element) {
   final names = <String>[];
-  Element? current = element;
-  while (current != null && current is! LibraryElement) {
-    names.add(current.name ?? '<unnamed>');
-    current = current.enclosingElement;
+  if (element is LocalFunctionElement) {
+    // Local functions expose their lexical ancestry through fragments.
+    Fragment? current = element.firstFragment;
+    while (current != null && current is! LibraryFragment) {
+      names.add(current.name ?? '<unnamed>');
+      current = current.enclosingFragment;
+    }
+  } else {
+    Element? current = element;
+    while (current != null && current is! LibraryElement) {
+      names.add(current.name ?? '<unnamed>');
+      current = current.enclosingElement;
+    }
   }
   final kind = switch (element) {
     ConstructorElement() => 'constructor',
@@ -401,6 +412,26 @@ String _symbol(ExecutableElement element) {
 
 final class _Declarations extends RecursiveAstVisitor<void> {
   final items = <(AstNode, ExecutableElement)>[];
+  final symbols = <ExecutableElement, String>{};
+
+  void assignSymbols() {
+    final declarationsByName = <String, List<ExecutableElement>>{};
+    for (final (_, element) in items) {
+      (declarationsByName[_symbol(element)] ??= []).add(element);
+    }
+    for (final MapEntry(key: name, value: elements)
+        in declarationsByName.entries) {
+      if (elements.length == 1) {
+        symbols[elements.single] = name;
+      } else {
+        // Declaration order distinguishes shadowed local names without tying
+        // finding identity to source offsets.
+        for (var index = 0; index < elements.length; index++) {
+          symbols[elements[index]] = '$name#${index + 1}';
+        }
+      }
+    }
+  }
 
   @override
   void visitVariableDeclaration(VariableDeclaration node) {
