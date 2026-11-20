@@ -169,13 +169,14 @@ Set<CompletionTransfer> _statement(
       return result;
     case TryStatement(:final body, :final catchClauses, :final finallyBlock):
       final result = _statement(body);
-      // Catch bodies can execute after implicit failures as well as explicit
-      // throws. Keep all of them unless a later interpreter proves unreachable.
-      if (catchClauses.any((clause) => clause.exceptionType == null)) {
-        result.remove(_thrown);
-      }
-      for (final clause in catchClauses) {
-        result.addAll(_statement(clause.body));
+      // The thrown transfer already includes possible implicit failures.
+      if (result.contains(_thrown)) {
+        if (catchClauses.any((clause) => clause.exceptionType == null)) {
+          result.remove(_thrown);
+        }
+        for (final clause in catchClauses) {
+          result.addAll(_statement(clause.body));
+        }
       }
       if (finallyBlock == null || result.isEmpty) return result;
       final finalTransfers = _statement(finallyBlock);
@@ -461,6 +462,9 @@ bool _childCanExecute(AstNode parent, AstNode child) {
   }
   if (parent is SwitchStatement && child is SwitchMember) {
     return expressionCanCompleteNormally(parent.expression);
+  }
+  if (parent is TryStatement && child is CatchClause) {
+    return statementCompletion(parent.body).transfers.contains(_thrown);
   }
   if (parent is RecordLiteral && child is RecordLiteralField) {
     for (final field in parent.fields) {

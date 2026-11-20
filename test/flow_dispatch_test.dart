@@ -103,6 +103,34 @@ void lazyInitializer() { late final int value = stop(); probe(); }
     );
   });
 
+  test('catch bodies require a possible throwing transfer', () async {
+    await _verify(
+      '''
+void unreachableHandler() { try { return; } catch (_) { throw 'unreachable'; } }
+void unreachableAfterTry() { try { return; } catch (_) {} throw 'unreachable'; }
+void reachableHandler(dynamic input) {
+  try { final String value = input; } catch (_) { throw 'replacement'; }
+}
+void finallyReturns() {
+  try { throw 'contained'; } finally { try { return; } catch (_) {} }
+}
+''',
+      (summaries, _) {
+        for (final name in [
+          'unreachableHandler',
+          'unreachableAfterTry',
+          'finallyReturns',
+        ]) {
+          expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
+        }
+        expect(
+          summaries['reachableHandler']!.exceptionTypes,
+          contains('String'),
+        );
+      },
+    );
+  });
+
   test('invocation effects follow receiver and argument evaluation', () async {
     await _verify(
       '''

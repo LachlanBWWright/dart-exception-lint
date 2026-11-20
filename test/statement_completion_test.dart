@@ -53,6 +53,9 @@ void main() {
     '{ try { work(); } finally { if (flag) return; } }': true,
     '{ try { throw "failure"; } catch (_) {} }': true,
     '{ try { return; } catch (_) { return; } }': false,
+    '{ try { return; } catch (_) {} }': false,
+    '{ try { while (true) {} } catch (_) {} }': false,
+    '{ try { work(); return; } catch (_) {} }': true,
     '{ while (true) { try { while (true) { work(); } } finally { break; } } }':
         true,
   };
