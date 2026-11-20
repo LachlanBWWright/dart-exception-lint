@@ -80,6 +80,28 @@ still required; conservative unknown fallbacks do not complete semantic models.
 
 ## Verification evidence
 
+### Dart 3.14 release verification
+
+All 42 test suites passed with analyzer 14.3.0 on Linux x64. Dart 3.11.0,
+3.12.0 and 3.13.5 each passed 505 tests. Dart 3.14.1 passed 506 tests,
+including the typed-data and JavaScript promise regression. Static analysis,
+formatting and the 219-node syntax inventory passed on all four SDKs.
+
+The SDK inventory records 3,360, 3,379, 3,397 and 3,444 callable declarations
+for the four versions respectively. The review separated the identity of
+unary minus from subtraction. The 20-case semantic corpus passed with zero
+missing or unexpected labels. All 252 differential observations on Dart
+3.14.1 matched on the VM and JavaScript under Node 22. The
+[external smoke evaluation](corpus-evaluation.md) records the ten pinned
+package runs.
+
+The VM and JavaScript differential gates and all three performance gates
+passed on every SDK. Each clean package snapshot passed the publish dry run
+with zero warnings, standalone CLI baseline comparison, and enable-only
+consumer enforcement. The Analysis Server LSP check passed on each SDK.
+Unsaved dependency edits caused the caller diagnostic to appear and clear
+while the source files on disk stayed unchanged.
+
 ### Control-flow, dispatch and Future forwarding refinements
 
 The Dart 3.13.7 suite passes 486 tests. Shared resolved-constant branch facts
