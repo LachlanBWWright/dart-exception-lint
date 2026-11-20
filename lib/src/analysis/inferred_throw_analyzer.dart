@@ -2851,11 +2851,32 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
       return;
     }
 
-    final residualSources = summary.sources
-        .where((source) => !_isProtected(node, source))
-        .toList();
+    final residualSources = <ThrowSource>[];
+    for (final source in summary.sources) {
+      if (_isProtected(node, source)) continue;
+      final local =
+          ExceptionEffect.fromSource(source).channel ==
+              ExceptionChannel.deferred
+          ? deferredLocalUses(node)
+          : null;
+      if (local == null || local.escapes) {
+        residualSources.add(_normalize(source, node));
+      }
+      if (local == null) continue;
+      final observed = InferredThrowAnalyzer._sourceWithChannel(
+        source,
+        ExceptionChannel.synchronous,
+      );
+      for (final consumer in local.consumers) {
+        if (!_isProtected(consumer, observed)) {
+          residualSources.add(
+            _normalize(observed, consumer, conditional: true),
+          );
+        }
+      }
+    }
     if (residualSources.isEmpty) return;
-    sources.addAll(residualSources.map((source) => _normalize(source, node)));
+    sources.addAll(residualSources);
     dependencies.addAll(summary.dependencyElementKeys);
     complete = complete && summary.complete;
     truncationReason ??= summary.truncationReason;
@@ -2887,7 +2908,11 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     return isEffectContained(node, source, respectExceptionBoundary: false);
   }
 
-  ThrowSource _normalize(ThrowSource source, [AstNode? node]) {
+  ThrowSource _normalize(
+    ThrowSource source,
+    AstNode node, {
+    bool conditional = false,
+  }) {
     final sourceChannel = ExceptionEffect.fromSource(source).channel;
     final bodyChannel = _isAsyncContext
         ? (executable.returnType is VoidType
@@ -2904,14 +2929,12 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     // its zone, regardless of the enclosing body's return type.
     final unverifiedUnobservedFuture =
         sourceChannel == ExceptionChannel.future &&
-        node != null &&
         ((source.confidence == ThrowConfidence.unknown &&
                 !_isAsyncObserved(node, channel: sourceChannel)) ||
             asyncValueConsumer(node) is ExpressionStatement);
-    final consumer = node == null ? null : asyncValueConsumer(node);
+    final consumer = asyncValueConsumer(node);
     final consumesIterator =
         sourceChannel == ExceptionChannel.deferred &&
-            node != null &&
             deferredExecutionSite(node) != null ||
         sourceChannel == ExceptionChannel.stream &&
             (consumer is ForEachParts ||
@@ -2931,9 +2954,9 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
             ThrowConfidence.possibleThrow => ThrowConfidence.asyncError,
             _ => source.confidence,
           };
+    final mayNotExecute = conditional || _conditionalDepth > 0;
     final confidence =
-        _conditionalDepth > 0 &&
-            contextualConfidence == ThrowConfidence.definiteThrow
+        mayNotExecute && contextualConfidence == ThrowConfidence.definiteThrow
         ? ThrowConfidence.possibleThrow
         : contextualConfidence;
     return ThrowSource(
@@ -2947,7 +2970,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
           _isAsyncContext ||
           confidence == ThrowConfidence.asyncError,
       certainty:
-          _conditionalDepth > 0 &&
+          mayNotExecute &&
               ExceptionEffect.fromSource(source).certainty ==
                   ExceptionCertainty.definite
           ? ExceptionCertainty.possible
@@ -2963,15 +2986,12 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
       exceptionSupertypes: source.exceptionSupertypes,
       origin:
           source.origin ??
-          (node == null
-              ? null
-              : ThrowOrigin(
-                  displayName: source.displayName,
-                  filePath:
-                      executable.firstFragment.libraryFragment.source.fullName,
-                  offset: node.offset,
-                  length: node.length,
-                )),
+          ThrowOrigin(
+            displayName: source.displayName,
+            filePath: executable.firstFragment.libraryFragment.source.fullName,
+            offset: node.offset,
+            length: node.length,
+          ),
     );
   }
 

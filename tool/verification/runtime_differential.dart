@@ -148,6 +148,7 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'storedLazyIterator': ('synchronous', 'String'),
   'blockedLazyConsumer': ('synchronous', 'int'),
   'stoppedGuardCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
@@ -191,6 +192,8 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'storedLazyIteratorCaught': 'String',
+  'unusedLazyIterator': 'String',
   'blockedLazyConsumer': 'String',
   'stoppedGuardCase': 'String',
   'skippedGuard': 'String',
@@ -220,6 +223,9 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'stored_lazy_iterator': 'String',
+  'stored_lazy_iterator_caught': 'none',
+  'unused_lazy_iterator': 'none',
   'blocked_lazy_consumer': '42',
   'stopped_guard_case': '42',
   'skipped_guard': 'none',
@@ -403,6 +409,20 @@ void getterFailure(Data data) { if (data case Data(value: var item)) { item; } }
 Future<void> futureFailure() async { throw 'future'; }
 Stream<int> streamFailure() async* { throw 'stream'; }
 Iterable<int> lazyFailure() sync* { throw 'lazy'; }
+void storedLazyIterator() {
+  final iterator = lazyFailure().iterator;
+  final alias = iterator;
+  alias.moveNext();
+}
+void storedLazyIteratorCaught() {
+  final iterator = lazyFailure().iterator;
+  final alias = iterator;
+  try { alias.moveNext(); } on String {}
+}
+void unusedLazyIterator() {
+  final iterator = lazyFailure().iterator;
+  if (false) iterator.moveNext();
+}
 void blockedLazyConsumer() {
   List<int>.of(lazyFailure(), growable: stopEvaluation());
 }
@@ -479,6 +499,9 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'stored_lazy_iterator': capture(storedLazyIterator),
+    'stored_lazy_iterator_caught': capture(storedLazyIteratorCaught),
+    'unused_lazy_iterator': capture(unusedLazyIterator),
     'blocked_lazy_consumer': capture(blockedLazyConsumer),
     'stopped_guard_case': capture(stoppedGuardCase),
     'skipped_guard': capture(skippedGuard),

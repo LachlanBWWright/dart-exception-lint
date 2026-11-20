@@ -74,7 +74,11 @@ summary. A synchronous catch around its creation cannot discharge that effect.
 
 Sync generator effects remain deferred when code obtains the SDK iterator.
 Direct calls to `Iterator.moveNext()` execute those effects synchronously, so a
-compatible catch around iteration can contain them.
+compatible catch around iteration can contain them. Initialized final locals
+and final aliases can carry the same effect to a reachable consumer in the
+declaring body. Returning or capturing the value, passing it to an unmodeled
+operation, or reaching the local read limit retains a possible deferred
+escape alongside proven consumption.
 
 ## Required release evidence
 

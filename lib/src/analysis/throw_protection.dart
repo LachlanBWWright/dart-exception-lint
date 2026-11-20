@@ -1,5 +1,7 @@
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 
 import 'exception_annotations.dart';
 import 'exception_type_hierarchy.dart';
@@ -26,7 +28,21 @@ bool isProtectedByCatch(
     final consumer = deferredExecutionSite(node);
     // Creating a lazy value does not execute its iterator. Containment must
     // apply at the operation that advances it, after that operation's inputs.
-    if (consumer == null) return false;
+    if (consumer == null) {
+      final local = deferredLocalUses(node);
+      return local != null &&
+          !local.escapes &&
+          local.consumers.every(
+            (site) => isProtectedByCatch(
+              site,
+              channel: ExceptionChannel.synchronous,
+              exceptionTypes: exceptionTypes,
+              resolvedExceptionTypes: resolvedExceptionTypes,
+              exceptionSupertypes: exceptionSupertypes,
+              respectExceptionBoundary: respectExceptionBoundary,
+            ),
+          );
+    }
     if (!isReachable(consumer)) return true;
     node = consumer;
   }
@@ -238,15 +254,24 @@ AstNode? asyncValueConsumer(AstNode node) {
 }
 
 /// The operation that executes a lazy value when its inputs finish evaluating.
-AstNode? deferredExecutionSite(AstNode node) {
+AstNode? deferredExecutionSite(AstNode node) =>
+    _deferredConsumerAfter(_forwardedLazyValue(node));
+
+AstNode _forwardedLazyValue(AstNode node, {bool followAssignments = true}) {
   var forwarded = node;
   while (true) {
     final parent =
         _forwardingFutureParent(forwarded) ??
         _iterableIteratorAccess(forwarded);
-    if (parent == null) break;
+    if (parent == null ||
+        !followAssignments && parent is AssignmentExpression) {
+      return forwarded;
+    }
     forwarded = parent;
   }
+}
+
+AstNode? _deferredConsumerAfter(AstNode forwarded) {
   final consumer = forwarded.parent;
   if (consumer is ForEachParts || consumer is SpreadElement) return consumer;
   if (consumer is YieldStatement && consumer.star != null) return consumer;
@@ -314,6 +339,90 @@ AstNode? deferredExecutionSite(AstNode node) {
     _ => false,
   };
   return consumes ? consumer : null;
+}
+
+typedef DeferredLocalUses = ({List<AstNode> consumers, bool escapes});
+
+final _deferredLocalUseCache = Expando<DeferredLocalUses>();
+final _localReadIndex = Expando<_DeferredLocalReads>();
+
+/// Tracks a deferred value through initialized final locals in its own body.
+/// An unrecognized use or capture leaves a possible escaping value.
+DeferredLocalUses? deferredLocalUses(AstNode node) {
+  final value = _forwardedLazyValue(node, followAssignments: false);
+  final declaration = _finalLocalReceiving(value);
+  final body = declaration?.thisOrAncestorOfType<FunctionBody>();
+  if (declaration == null || body == null) return null;
+  return _deferredLocalUseCache[declaration] ??= _traceLocalDeferredUses(
+    declaration,
+    body,
+    _localReadIndex[body] ??= _DeferredLocalReads(body),
+  );
+}
+
+VariableDeclaration? _finalLocalReceiving(AstNode value) {
+  final declaration = value.parent;
+  if (declaration is! VariableDeclaration ||
+      !identical(declaration.initializer, value)) {
+    return null;
+  }
+  final element = declaration.declaredFragment?.element;
+  return element is LocalVariableElement && element.isFinal && !element.isLate
+      ? declaration
+      : null;
+}
+
+DeferredLocalUses _traceLocalDeferredUses(
+  VariableDeclaration declaration,
+  FunctionBody body,
+  _DeferredLocalReads index,
+) {
+  final pending = [declaration];
+  final visited = <VariableDeclaration>{};
+  final consumers = <AstNode>{};
+  var escapes = index.truncated;
+  while (pending.isNotEmpty) {
+    final binding = pending.removeLast();
+    if (!visited.add(binding)) continue;
+    final element = binding.declaredFragment!.element as LocalVariableElement;
+    for (final read in index.reads[element.baseElement] ?? const []) {
+      if (!isReachable(read)) continue;
+      if (!identical(read.thisOrAncestorOfType<FunctionBody>(), body)) {
+        escapes = true;
+        continue;
+      }
+      final value = _forwardedLazyValue(read, followAssignments: false);
+      if (_finalLocalReceiving(value) case final alias?) {
+        pending.add(alias);
+      } else if (_deferredConsumerAfter(value) case final site?) {
+        if (isReachable(site)) consumers.add(site);
+      } else {
+        escapes = true;
+      }
+    }
+  }
+  return (consumers: consumers.toList(), escapes: escapes);
+}
+
+final class _DeferredLocalReads extends RecursiveAstVisitor<void> {
+  _DeferredLocalReads(FunctionBody body) {
+    body.accept(this);
+  }
+
+  static const _maxReads = 1024;
+  final reads = <LocalVariableElement, List<SimpleIdentifier>>{};
+  var _count = 0;
+  bool get truncated => _count > _maxReads;
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    final element = node.element?.baseElement;
+    if (element is LocalVariableElement &&
+        element.isFinal &&
+        ++_count <= _maxReads) {
+      (reads[element] ??= []).add(node);
+    }
+  }
 }
 
 PropertyAccess? _iterableIteratorAccess(AstNode target) {

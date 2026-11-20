@@ -44,6 +44,51 @@ void containedMapped() { try { values().map((value) => value).toList(); } on Str
 void containedCopied() { try { List<int>.of(values()); } on String {} }
 void containedIterator() { try { values().iterator.moveNext(); } on String {} }
 void wrongIteratorCatch() { try { values().iterator.moveNext(); } on int {} }
+void storedIterator() {
+  final iterator = values().iterator;
+  final alias = iterator;
+  alias.moveNext();
+}
+void storedCaught() {
+  final iterator = values().iterator;
+  final alias = iterator;
+  try { alias.moveNext(); } on String {}
+}
+void storedBranch(bool flag) {
+  final iterator = values().iterator;
+  if (flag) {
+    try { iterator.moveNext(); } on String {}
+  } else {
+    iterator.moveNext();
+  }
+}
+void storedIterable() {
+  final items = values();
+  final alias = items;
+  for (final item in alias) {}
+}
+void unusedIterator() {
+  final iterator = values().iterator;
+  if (false) iterator.moveNext();
+}
+Iterator<int> escapingIterator() {
+  final iterator = values().iterator;
+  return iterator;
+}
+Iterator<int> consumedOrEscaping(bool consume) {
+  final iterator = values().iterator;
+  if (consume) iterator.moveNext();
+  return iterator;
+}
+bool Function() capturedIterator() {
+  final iterator = values().iterator;
+  return () => iterator.moveNext();
+}
+void mutableIterator() {
+  var iterator = values().iterator;
+  iterator = <int>[].iterator;
+  iterator.moveNext();
+}
 Iterable<int> relay() sync* { try { yield* values(); } on String {} }
 ''');
         collection = AnalysisContextCollection(includedPaths: [directory.path]);
@@ -108,6 +153,38 @@ Iterable<int> relay() sync* { try { yield* values(); } on String {} }
           isNot(contains(ExceptionChannel.synchronous)),
         );
         expect(stringChannels('relay'), isEmpty);
+        for (final name in [
+          'storedIterator',
+          'storedIterable',
+          'storedBranch',
+        ]) {
+          expect(stringChannels(name), [
+            ExceptionChannel.synchronous,
+          ], reason: name);
+          final effect = summaries[name]!.effects.singleWhere(
+            (effect) => effect.source.exceptionTypes.contains('String'),
+          );
+          expect(effect.certainty, ExceptionCertainty.possible, reason: name);
+        }
+        for (final name in ['storedCaught', 'unusedIterator']) {
+          expect(stringChannels(name), isEmpty, reason: name);
+        }
+        for (final name in [
+          'escapingIterator',
+          'capturedIterator',
+          'mutableIterator',
+        ]) {
+          expect(stringChannels(name), [
+            ExceptionChannel.deferred,
+          ], reason: name);
+        }
+        expect(
+          stringChannels('consumedOrEscaping'),
+          unorderedEquals([
+            ExceptionChannel.synchronous,
+            ExceptionChannel.deferred,
+          ]),
+        );
         for (final name in [
           'skippedConstructorConsumer',
           'skippedMethodConsumer',
