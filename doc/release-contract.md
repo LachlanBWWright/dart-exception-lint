@@ -7,7 +7,7 @@ type or annotation scheme is required of consuming applications.
 
 ## Supported environment
 
-The current analysis interface is pinned to analyzer 14.1.0 and Dart 3.11–3.14.
+The current analysis interface is pinned to analyzer 14.3.0 and Dart 3.11–3.14.
 CI exercises 3.11.0, 3.12.0, 3.13.5 and stable. Declaration inventories record
 SDK 3.11.0, 3.12.0, 3.13.5 and 3.14.1. Each inventory covers public callable
 identities, signatures, native declarations and explicit error-producer

@@ -1,11 +1,11 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
-/// Explicit inventory for analyzer 14.1.0. Analyzed means a model exists,
+/// Explicit inventory for analyzer 14.3.0. Analyzed means a model exists,
 /// not that the entire construct has been proven free of failure.
 enum SyntaxCoverage { structural, analyzed, conservative }
 
 final class SyntaxCoverageInventory {
-  static const analyzerVersion = '14.1.0';
+  static const analyzerVersion = '14.3.0';
   static const nodes = <String, SyntaxCoverage>{
     'AdjacentStrings': SyntaxCoverage.structural,
     'Annotation': SyntaxCoverage.structural,
@@ -190,6 +190,44 @@ final class SyntaxCoverageInventory {
     'RecordTypeAnnotationNamedFields': SyntaxCoverage.structural,
     'RecordTypeAnnotationPositionalField': SyntaxCoverage.structural,
     'RedirectingConstructorInvocation': SyntaxCoverage.conservative,
+
+    // Experimental analyzer AST representations with separate evaluation nodes.
+    'BinaryOperatorInvocation': SyntaxCoverage.conservative,
+    'CascadeIndexAssignmentTarget': SyntaxCoverage.conservative,
+    'CascadeIndexExpression': SyntaxCoverage.conservative,
+    'CascadePropertyAssignmentTarget': SyntaxCoverage.conservative,
+    'CascadePropertyExtraction': SyntaxCoverage.conservative,
+    'CascadeSection': SyntaxCoverage.conservative,
+    'CombinatorName': SyntaxCoverage.structural,
+    'CompoundAssignment': SyntaxCoverage.conservative,
+    'ConstructorInvocation': SyntaxCoverage.conservative,
+    'ConstructorReference2': SyntaxCoverage.structural,
+    'ConstructorTearOff': SyntaxCoverage.conservative,
+    'ConstructorTypeReference': SyntaxCoverage.structural,
+    'DelimitedFormalParameters': SyntaxCoverage.structural,
+    'DirectAssignment': SyntaxCoverage.conservative,
+    'GetterDeclaration': SyntaxCoverage.conservative,
+    'IfNull': SyntaxCoverage.conservative,
+    'IfNullAssignment': SyntaxCoverage.conservative,
+    'IndexAssignmentTarget': SyntaxCoverage.conservative,
+    'IndexExpression2': SyntaxCoverage.conservative,
+    'InvalidExpressionAssignmentTarget': SyntaxCoverage.conservative,
+    'LogicalAnd': SyntaxCoverage.conservative,
+    'LogicalNot': SyntaxCoverage.conservative,
+    'LogicalOr': SyntaxCoverage.conservative,
+    'MethodDeclaration2': SyntaxCoverage.conservative,
+    'NullAssertionExpression': SyntaxCoverage.conservative,
+    'OperatorDeclaration': SyntaxCoverage.conservative,
+    'PostfixDecrement': SyntaxCoverage.conservative,
+    'PostfixIncrement': SyntaxCoverage.conservative,
+    'PrefixDecrement': SyntaxCoverage.conservative,
+    'PrefixIncrement': SyntaxCoverage.conservative,
+    'ReceiverPropertyAssignmentTarget': SyntaxCoverage.conservative,
+    'ReceiverPropertyExtraction': SyntaxCoverage.conservative,
+    'SetterDeclaration': SyntaxCoverage.conservative,
+    'TopLevelGetterDeclaration': SyntaxCoverage.conservative,
+    'UnaryOperatorInvocation': SyntaxCoverage.conservative,
+    'UnqualifiedNameAssignmentTarget': SyntaxCoverage.conservative,
   };
 
   static String kind(AstNode node) =>

@@ -5,6 +5,8 @@
 - Audit Dart 3.14.1 alongside the previous SDKs. Model typed-data
   `rangeEquals` bounds errors and `JSPromise.resolve` argument errors, and
   recognise `JSPromise.reject` as an explicit SDK error producer.
+- Update to analyzer 14.3.0 and its matching plugin dependencies for the
+  Dart 3.14 Analysis Server protocol. Inventory the new experimental AST nodes.
 - Trace loop and invocation effects in evaluation order. Keep known effects
   ahead of unknown ones when the source budget fills, and project deferred
   generator failures when `Iterator.moveNext()` executes them.

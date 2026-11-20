@@ -31,7 +31,7 @@ class ValidateExceptionEnvironmentRuleTest extends AnalysisRuleTest {
   }
 
   Future<void> test_unreviewedEnvironment_warns() async {
-    AnalysisCompatibility.warning = 'Analyzer 14.1.1 has not been audited.';
+    AnalysisCompatibility.warning = 'Analyzer 14.3.1 has not been audited.';
     await assertDiagnostics('void f() {}', [lint(0, 1)]);
   }
 
