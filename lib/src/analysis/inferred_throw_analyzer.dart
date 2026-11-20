@@ -702,6 +702,10 @@ final class InferredThrowAnalyzer {
             when element?.baseElement == node.element?.baseElement =>
           NumericChecks.modelsAssignment(node) &&
               NumericChecks.assignment(node) == null,
+        PrefixExpression()
+            when element?.baseElement == node.element?.baseElement =>
+          NumericChecks.isSafePrefix(node),
+        InterpolationExpression() => NumericChecks.isNativeToString(element),
         _ =>
           NumericChecks.modelsInvocation(node, element) &&
               NumericChecks.invocation(node, element) == null,

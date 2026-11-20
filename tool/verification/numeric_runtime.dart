@@ -154,6 +154,8 @@ const numericExpectedTypes = <String, List<String>>{
   'unsignedAssign': ['ArgumentError'],
   'customOperators': ['String'],
   'customConversion': ['String'],
+  'customUnary': ['String'],
+  'customStringConversion': ['String'],
   'bigDivide': ['IntegerDivisionByZeroException'],
   'bigModulo': ['IntegerDivisionByZeroException'],
   'bigRemainder': ['IntegerDivisionByZeroException'],
@@ -202,6 +204,8 @@ const numericExpectedTypes = <String, List<String>>{
 };
 
 const numericSafeFunctions = [
+  'safeUnary',
+  'safeStringConversion',
   'safeIntLiterals',
   'safeDoubleLiterals',
   'nonfiniteFloatingConversions',
@@ -230,6 +234,10 @@ const numericSafeFunctions = [
 ];
 
 const _vmObservations = <String, String>{
+  'safe_unary': 'none',
+  'safe_string_conversion': 'none',
+  'custom_unary': 'String',
+  'custom_string_conversion': 'String',
   'random_secure_factory': 'none',
   'random_next_int_zero': 'RangeError',
   'random_next_int_too_large': 'RangeError',
@@ -374,6 +382,17 @@ final _javascriptObservations = {
 const numericFixture = r'''
 import 'dart:convert';
 import 'dart:math';
+void safeUnary(int value, double floating, BigInt big) {
+  -value; ~value; -floating; -big; ~big;
+}
+String safeStringConversion(int value, double floating, BigInt big) =>
+    '${value.toString()} $floating ${big.toString()}';
+final class CustomUnary {
+  CustomUnary operator -() => throw 'custom unary';
+  @override String toString() => throw 'custom string conversion';
+}
+void customUnary(CustomUnary value) { -value; }
+String customStringConversion(CustomUnary value) => '$value';
 int randomNextIntZero() => Random().nextInt(0);
 int randomNextIntTooLarge() => Random().nextInt(4294967297);
 void randomSecureFactory() { Random.secure(); }
@@ -587,6 +606,10 @@ String capture(void Function() operation) {
 }
 void main() {
   print(jsonEncode({
+    'safe_unary': capture(() => safeUnary(-1, double.infinity, BigInt.two)),
+    'safe_string_conversion': capture(() => safeStringConversion(1, double.nan, BigInt.two)),
+    'custom_unary': capture(() => customUnary(CustomUnary())),
+    'custom_string_conversion': capture(() => customStringConversion(CustomUnary())),
     'random_secure_factory': capture(() { Random.secure(); }),
     'random_next_int_zero': capture(randomNextIntZero),
     'random_next_int_too_large': capture(randomNextIntTooLarge),

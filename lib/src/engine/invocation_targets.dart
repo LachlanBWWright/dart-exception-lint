@@ -33,6 +33,9 @@ Iterable<Element?> invocationTargets(
       if (node.writeElement is ExecutableElement) yield node.writeElement;
     case InterpolationExpression():
       final type = node.expression.staticType;
+      if (type?.isDartCoreString == true || type?.isDartCoreNull == true) {
+        return;
+      }
       if (type is InterfaceType) {
         yield type.lookUpMethod('toString', library);
       } else if (type is DynamicType) {

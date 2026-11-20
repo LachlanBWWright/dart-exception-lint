@@ -63,6 +63,20 @@ final class NumericChecks {
   static bool modelsBinary(BinaryExpression node) =>
       _modelsOperator(node.operator.lexeme, node.element);
 
+  static bool isSafePrefix(PrefixExpression node) {
+    final target = _nativeNumeric(node.element);
+    return target is MethodElement &&
+        switch ((node.operator.lexeme, target.lookupName)) {
+          ('-', 'unary-') || ('~', '~') => true,
+          _ => false,
+        };
+  }
+
+  static bool isNativeToString(Element? element) {
+    final target = _nativeNumeric(element);
+    return target is MethodElement && target.name == 'toString';
+  }
+
   static bool modelsAssignment(AssignmentExpression node) {
     final operator = node.operator.lexeme;
     return operator.endsWith('=') &&
@@ -81,6 +95,9 @@ final class NumericChecks {
     }
     final target = _nativeNumeric(element);
     if (target == null) return false;
+    if (isNativeToString(target)) {
+      return node is MethodInvocation || node is FunctionExpressionInvocation;
+    }
     if (target.enclosingElement?.name == 'BigInt') {
       return target is ConstructorElement &&
               target.name == 'from' &&
@@ -158,6 +175,7 @@ final class NumericChecks {
         'NoSuchMethodError',
       ]);
     }
+    if (isNativeToString(target)) return null;
     if (target.enclosingElement?.name == 'BigInt') {
       return _bigIntInvocation(
         target,
