@@ -21,6 +21,10 @@ CORPUS_ROOT=/tmp/dart-exception-corpus CORPUS_TIMEOUT=180 tool/corpus/run_corpus
 CORPUS_FILTER='^(dart_path|dart_yaml|dart_http)$' tool/corpus/run_corpus.sh
 ```
 
+The runner first verifies that a disposable consumer emits a plugin diagnostic.
+If startup fails, it leaves the previous results in place and records the
+startup output in `plugin-probe.log` under the corpus root.
+
 The runner checks out the exact commit recorded in each row, injects a temporary local plugin configuration
 into each package, runs dependency resolution, runs the analyzer, restores the
 package files, and writes machine-readable results to

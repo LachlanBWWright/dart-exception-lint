@@ -12,6 +12,7 @@ packages_per_repo="${CORPUS_PACKAGES_PER_REPO:-1}"
 results="$repo_root/tool/corpus/results.tsv"
 mkdir -p "$corpus_root"
 plugin_root="$(mktemp -d "$corpus_root/plugin.XXXXXX")" || exit 1
+probe_root=''
 active_options=''
 active_backup=''
 active_had_options=0
@@ -40,11 +41,41 @@ restore_options() {
 cleanup() {
   restore_options
   rm -rf -- "$plugin_root"
+  if [[ -n "$probe_root" ]]; then
+    rm -rf -- "$probe_root"
+  fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-cp -R "$repo_root"/. "$plugin_root"/
+cp -R "$repo_root"/. "$plugin_root"/ || exit 1
+
+# Dart can finish analysis without ever loading an incompatible plugin.
+probe_root="$(mktemp -d "$corpus_root/probe.XXXXXX")" || exit 1
+probe_log="$corpus_root/plugin-probe.log"
+mkdir -p "$probe_root/lib" || exit 1
+cat > "$probe_root/pubspec.yaml" <<'EOF'
+name: corpus_plugin_probe
+environment:
+  sdk: ^3.11.0
+EOF
+cat > "$probe_root/analysis_options.yaml" <<EOF
+plugins:
+  dart_exception_lint:
+    path: $plugin_root
+EOF
+printf '%s\n' "void pluginProbe() { throw 'probe'; }" > "$probe_root/lib/probe.dart"
+if ! timeout "$timeout_seconds" dart pub get --offline --directory "$probe_root" >"$probe_log" 2>&1; then
+  printf 'Could not resolve the corpus startup probe. See %s\n' "$probe_log" >&2
+  exit 1
+fi
+timeout "$timeout_seconds" dart analyze --format machine "$probe_root" >>"$probe_log" 2>&1
+probe_status=$?
+if [[ "$probe_status" == 124 ]] || ! rg -qi '\|NO_MANUAL_THROW\|' "$probe_log"; then
+  printf 'The corpus startup probe did not receive a plugin diagnostic. See %s\n' "$probe_log" >&2
+  exit 1
+fi
+
 printf 'id\turl\tstatus\tpackages\tdiagnostics\tdependency_failures\tplugin_failures\trule_counts\tcommand\n' > "$results"
 
 count=0
