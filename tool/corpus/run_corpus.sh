@@ -48,7 +48,7 @@ cp -R "$repo_root"/. "$plugin_root"/
 printf 'id\turl\tstatus\tpackages\tdiagnostics\tdependency_failures\tplugin_failures\trule_counts\tcommand\n' > "$results"
 
 count=0
-while IFS=$'\t' read -r id url manager commit; do
+while IFS=$'\t' read -r id url manager commit package_path; do
   [[ -z "$id" || "$id" == \#* ]] && continue
   [[ "$id" =~ $project_filter ]] || continue
   ((count += 1))
@@ -79,6 +79,10 @@ while IFS=$'\t' read -r id url manager commit; do
   if ! timeout "$timeout_seconds" git -C "$checkout" fetch --depth 1 --quiet origin "$commit" ||
       ! git -C "$checkout" checkout --detach --quiet "$commit"; then
     printf '%s\t%s\tcheckout_failed\t0\t0\t0\t0\t\tgit fetch pinned commit\n' "$id" "$url" >> "$results"
+    continue
+  fi
+  if [[ -n "$package_path" && ! -f "$checkout/$package_path/pubspec.yaml" ]]; then
+    printf '%s\t%s\tmissing_package\t0\t0\t0\t0\t\t%s\n' "$id" "$url" "$package_path/pubspec.yaml" >> "$results"
     continue
   fi
 
@@ -161,7 +165,9 @@ EOF
     fi
     restore_options
   done < <(
-    if [[ -f "$checkout/pubspec.yaml" ]]; then
+    if [[ -n "$package_path" ]]; then
+      printf '%s\n' "$checkout/$package_path/pubspec.yaml"
+    elif [[ -f "$checkout/pubspec.yaml" ]]; then
       printf '%s\n' "$checkout/pubspec.yaml"
     else
       find "$checkout" -name pubspec.yaml -not -path '*/.dart_tool/*' -print \

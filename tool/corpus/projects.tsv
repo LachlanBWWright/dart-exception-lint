@@ -1,8 +1,8 @@
-# id	url	manager	commit (HEAD observed 2026-10-04; fixed thereafter)
+# id	url	manager	commit (HEAD observed 2026-10-04; fixed thereafter)	package path (optional)
 dart_sdk	https://github.com/dart-lang/sdk.git	dart	7ca61c210632aa1c96d85aa17e916fabfb955243
 dart_linter	https://github.com/dart-lang/linter.git	dart	4b53999c3af99229fa7b47ca52cf40a2a8d62b3a
 dart_test	https://github.com/dart-lang/test.git	dart	3be2f547208fc569964973d6f13ec1985c4a9fdd
-dart_http	https://github.com/dart-lang/http.git	dart	47c57df399bf38927d2c9f047a1a5e3c049c0271
+dart_http	https://github.com/dart-lang/http.git	dart	47c57df399bf38927d2c9f047a1a5e3c049c0271	pkgs/http
 dart_path	https://github.com/dart-lang/path.git	dart	7e3d5d87220133ad9cc99f82e85a826011a62859
 dart_args	https://github.com/dart-lang/args.git	dart	7a2dfb528768f0a2e5680f711dbfb948f1d6c255
 dart_collection	https://github.com/dart-lang/collection.git	dart	96afcc2fce622ea7e75053af5b73f8db07491bc4

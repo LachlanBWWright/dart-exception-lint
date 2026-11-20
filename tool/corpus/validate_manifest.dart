@@ -11,7 +11,8 @@ void main() {
     final line = lines[lineNumber - 1];
     if (line.trim().isEmpty || line.startsWith('#')) continue;
     final fields = line.split('\t');
-    if (fields.length != 4 || fields.any((field) => field.trim().isEmpty)) {
+    if ((fields.length != 4 && fields.length != 5) ||
+        fields.any((field) => field.trim().isEmpty)) {
       stderr.writeln('Invalid corpus row at line $lineNumber: $line');
       valid = false;
       continue;
@@ -39,6 +40,12 @@ void main() {
     }
     if (fields[2] != 'dart' && fields[2] != 'flutter') {
       stderr.writeln('Unsupported package manager at line $lineNumber');
+      valid = false;
+    }
+    if (fields.length == 5 &&
+        (!RegExp(r'^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$').hasMatch(fields[4]) ||
+            fields[4].split('/').any((part) => part == '.' || part == '..'))) {
+      stderr.writeln('Invalid relative package path at line $lineNumber');
       valid = false;
     }
   }

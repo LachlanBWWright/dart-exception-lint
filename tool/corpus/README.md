@@ -3,8 +3,9 @@
 `projects.tsv` is a revision-pinned inventory of 52 widely used Dart and
 Flutter repositories. The list is intentionally a mixture of SDK/tooling
 packages, foundational packages, application infrastructure, and Flutter
-plugins. Some rows point at a monorepo; the runner discovers analyzable package
-roots rather than assuming that the repository root is a package.
+plugins. A manifest row can pin a package path within a monorepo. For other
+rows, the runner uses the repository root package when available and discovers
+package roots when needed.
 
 Run the evaluator from the repository root:
 
