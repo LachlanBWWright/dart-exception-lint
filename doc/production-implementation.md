@@ -80,6 +80,14 @@ still required; conservative unknown fallbacks do not complete semantic models.
 
 ## Verification evidence
 
+### Installed Flutter and Chromium consumer
+
+Flutter 3.50.1 with its bundled Dart 3.14.0 loaded the plugin on Linux.
+`flutter analyze` reported the unhandled call and explicit throw at their
+source locations. A compatible catch contained the parser failure. The
+widget test ran on headless Chromium 154 and rendered both successful
+input and the handled failure. CI runs this check in a separate Flutter job.
+
 ### Dart 3.14 release verification
 
 All 42 test suites passed with analyzer 14.3.0 on Linux x64. Dart 3.11.0,

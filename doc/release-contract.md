@@ -93,10 +93,12 @@ compatible catch around iteration can contain them.
   after unsaved body-only dependency edits through a source wrapper. Reverse
   effect dependencies schedule fresh caller analysis after the active lint
   pass, independently of unchanged analyzer type signatures.
+- A Flutter 3.50.1 consumer installs the plugin through its analysis options.
+  Flutter analysis verifies a typed catch, and a headless Chromium widget test
+  exercises valid input and the handled failure.
 - External corpus results separate dependency/plugin failures from diagnostics;
-  reviewed external labels, real Dart/Flutter workloads, IDE latency, browser
-  behavior and platform installation evidence are still release blockers for a
-  production-comprehensive claim.
+  reviewed external labels, real Dart and Flutter workloads, IDE latency and
+  broader browser and platform coverage remain part of the production checklist.
 
 The detailed outstanding acceptance criteria remain authoritative in
 [production-implementation.md](production-implementation.md). Passing these

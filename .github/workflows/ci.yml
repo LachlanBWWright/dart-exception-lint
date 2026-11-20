@@ -63,3 +63,19 @@ jobs:
         run: dart run tool/verification/release_smoke.dart
       - name: Verify Analysis Server editor overlays
         run: dart run tool/verification/ide_smoke.dart
+
+  flutter-browser:
+    runs-on: ubuntu-latest
+    env:
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Flutter 3.50.1
+        run: |
+          git clone --depth 1 --branch 3.50.1 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
+      - name: Install dependencies
+        run: dart pub get
+      - name: Verify installed Flutter diagnostics and the Chromium consumer
+        run: dart run tool/verification/flutter_smoke.dart
