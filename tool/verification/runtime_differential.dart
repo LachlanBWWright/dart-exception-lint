@@ -148,6 +148,7 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'stoppedCascade': ('synchronous', 'int'),
   'stoppedCollection': ('synchronous', 'int'),
   'stoppedCollectionLoop': ('synchronous', 'int'),
   'stoppedInvocation': ('synchronous', 'int'),
@@ -186,6 +187,8 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'stoppedCascade': 'String',
+  'skippedCascade': 'String',
   'stoppedCollection': 'String',
   'stoppedCollectionLoop': 'String',
   'skippedMapValue': 'String',
@@ -208,6 +211,8 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'stopped_cascade': '42',
+  'skipped_cascade': 'none',
   'stopped_collection': '42',
   'stopped_collection_loop': '42',
   'skipped_map_value': 'none',
@@ -272,6 +277,13 @@ import 'dart:convert';
 const disabledBranch = false;
 Never stopEvaluation() => throw 42;
 Never throwString() => throw 'effect';
+final class CascadeTarget {
+  Never stop() => stopEvaluation();
+  Never fail() => throwString();
+}
+const CascadeTarget? absentCascadeTarget = null;
+void stoppedCascade() { CascadeTarget()..stop()..fail(); }
+void skippedCascade() { absentCascadeTarget?..fail(); }
 void stoppedCollection() { <int>[stopEvaluation(), throwString()]; }
 void stoppedCollectionLoop() {
   <int>[for (int i = stopEvaluation(); false;) throwString()];
@@ -426,6 +438,8 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'stopped_cascade': capture(stoppedCascade),
+    'skipped_cascade': capture(skippedCascade),
     'stopped_collection': capture(stoppedCollection),
     'stopped_collection_loop': capture(stoppedCollectionLoop),
     'skipped_map_value': capture(skippedMapValue),

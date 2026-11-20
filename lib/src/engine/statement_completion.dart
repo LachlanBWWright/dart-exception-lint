@@ -375,6 +375,14 @@ bool expressionCanCompleteNormally(Expression expression) {
     RecordLiteral(:final fields) => fields.every(
       (field) => expressionCanCompleteNormally(field.fieldExpression),
     ),
+    CascadeExpression(
+      :final target,
+      :final isNullAware,
+      :final cascadeSections,
+    ) =>
+      expressionCanCompleteNormally(target) &&
+          (isNullAware && !_isNonNull(target) ||
+              cascadeSections.every(expressionCanCompleteNormally)),
     ListLiteral(:final elements) || SetOrMapLiteral(:final elements) =>
       elements.every(_collectionElementCanCompleteNormally),
     _ => true,
@@ -518,6 +526,16 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     for (final field in parent.fields) {
       if (identical(child, field)) break;
       if (!expressionCanCompleteNormally(field.fieldExpression)) return false;
+    }
+  }
+  if (parent is CascadeExpression && !identical(child, parent.target)) {
+    if (!expressionCanCompleteNormally(parent.target) ||
+        parent.isNullAware && _isNull(parent.target)) {
+      return false;
+    }
+    for (final section in parent.cascadeSections) {
+      if (identical(section, child)) break;
+      if (!expressionCanCompleteNormally(section)) return false;
     }
   }
   if (parent is MapLiteralEntry && identical(child, parent.value)) {

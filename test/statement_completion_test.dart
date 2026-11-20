@@ -44,6 +44,9 @@ void main() {
     '{ final value = [for (final item in items) throw "maybe"]; }': true,
     '{ final value = [for (final item in throw "failure") item]; }': false,
     '{ final value = [...throw "failure"]; }': false,
+    '{ (throw "failure")..call(); next(); }': false,
+    '{ 1..call(throw "failure"); next(); }': false,
+    '{ null?..call(throw "unreachable"); next(); }': true,
     '{ for (;;) { continue; } }': false,
     '{ for (;;) { break; } }': true,
     '{ for (var i = throw "failure"; false;) {} }': false,
@@ -119,6 +122,10 @@ void main() {
     '<int, int>{?null: probe()}': false,
     '<int, int>{?maybe: probe()}': true,
     '<int, int>{?null: throw "skipped", 0: probe()}': true,
+    '(throw "stop")..probe()': false,
+    'null?..nothing()..probe()': false,
+    'value..consume(throw "stop")..probe()': false,
+    'value?..nothing()..probe()': true,
     '() { probe(); }': true,
   };
   for (final entry in reachability.entries) {

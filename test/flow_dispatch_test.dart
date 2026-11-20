@@ -143,6 +143,32 @@ void maybeKey(int? key) { <int, int>{?key: probe()}; }
     );
   });
 
+  test('cascade sections follow their receiver and earlier sections', () async {
+    await _verify(
+      '''
+final class Target {
+  Never stop() => throw 3;
+  void fail() => throw 'section';
+}
+const Target? absent = null;
+void after() => throw true;
+void unreachableSection() { Target()..stop()..fail(); after(); }
+void skippedCascade() { absent?..stop()..fail(); }
+void possibleCascade(Target? target) { target?..stop()..fail(); after(); }
+''',
+      (summaries, _) {
+        expect(summaries['unreachableSection']!.exceptionTypes.toSet(), {
+          'int',
+        });
+        expect(summaries['skippedCascade']!.hasAnyThrowSource, isFalse);
+        expect(summaries['possibleCascade']!.exceptionTypes.toSet(), {
+          'int',
+          'bool',
+        });
+      },
+    );
+  });
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''
