@@ -187,6 +187,7 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'skippedSelector': 'String',
   'stoppedCascade': 'String',
   'skippedCascade': 'String',
   'stoppedCollection': 'String',
@@ -211,6 +212,8 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'skipped_selector': 'none',
+  'parenthesized_null_assertion': 'TypeError',
   'stopped_cascade': '42',
   'skipped_cascade': 'none',
   'stopped_collection': '42',
@@ -284,6 +287,12 @@ final class CascadeTarget {
 const CascadeTarget? absentCascadeTarget = null;
 void stoppedCascade() { CascadeTarget()..stop()..fail(); }
 void skippedCascade() { absentCascadeTarget?..fail(); }
+final class SelectorTarget {
+  CascadeTarget get next => throwString();
+}
+const SelectorTarget? absentSelectorTarget = null;
+void skippedSelector() { absentSelectorTarget?.next.fail(); }
+void parenthesizedNullAssertion() { (absentSelectorTarget?.next)!; }
 void stoppedCollection() { <int>[stopEvaluation(), throwString()]; }
 void stoppedCollectionLoop() {
   <int>[for (int i = stopEvaluation(); false;) throwString()];
@@ -438,6 +447,8 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'skipped_selector': capture(skippedSelector),
+    'parenthesized_null_assertion': capture(parenthesizedNullAssertion),
     'stopped_cascade': capture(stoppedCascade),
     'skipped_cascade': capture(skippedCascade),
     'stopped_collection': capture(stoppedCollection),

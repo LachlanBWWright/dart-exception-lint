@@ -169,6 +169,51 @@ void possibleCascade(Target? target) { target?..stop()..fail(); after(); }
     );
   });
 
+  test('null-aware selector chains reach their shared end', () async {
+    await _verify(
+      '''
+final class Link {
+  Link get next => throw 'getter';
+  Link operator [](int i) => throw 'index';
+  Never fail(int value) => throw 3;
+  Link? get nullable => throw 'nullable getter';
+}
+const Link? absent = null;
+Never input() => throw true;
+void trailing() => throw 1.5;
+void skippedMethod() { absent?.next.fail(input()); trailing(); }
+void skippedIndex() { absent?[input()].fail(0); trailing(); }
+void skippedAssertion() { absent?.nullable!; trailing(); }
+void parenthesizedAssertion() { (absent?.nullable)!; }
+void possibleChain(Link? value) { value?.next.fail(input()); trailing(); }
+void genericFallback<T>(T value) { value ?? input(); }
+''',
+      (summaries, _) {
+        for (final name in [
+          'skippedMethod',
+          'skippedIndex',
+          'skippedAssertion',
+        ]) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'double',
+          }, reason: name);
+        }
+        expect(
+          summaries['parenthesizedAssertion']!.sources.map(
+            (source) => source.displayName,
+          ),
+          contains('null assertion'),
+        );
+        expect(summaries['possibleChain']!.exceptionTypes.toSet(), {
+          'String',
+          'bool',
+          'double',
+        });
+        expect(summaries['genericFallback']!.exceptionTypes, contains('bool'));
+      },
+    );
+  });
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''

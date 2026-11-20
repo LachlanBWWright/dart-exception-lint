@@ -290,14 +290,8 @@ bool isReachable(AstNode node) {
 // This check deliberately applies only to the starting node, so a failure in
 // an input is still reachable when the containing operation cannot execute.
 bool _operationCanExecute(AstNode node) => switch (node) {
-  MethodInvocation(:final target, :final isNullAware, :final argumentList) =>
-    (target == null ||
-            expressionCanCompleteNormally(target) &&
-                !(isNullAware && _isNull(target))) &&
-        _argumentsCanCompleteNormally(argumentList),
-  FunctionExpressionInvocation(:final function, :final argumentList) =>
-    expressionCanCompleteNormally(function) &&
-        _argumentsCanCompleteNormally(argumentList),
+  Expression() when _selectorReceiver(node) != null =>
+    _selectorInputsCanComplete(node, allowSkipping: false),
   InstanceCreationExpression(:final argumentList) =>
     _argumentsCanCompleteNormally(argumentList),
   ThrowExpression(:final expression) => expressionCanCompleteNormally(
@@ -310,6 +304,69 @@ bool _argumentsCanCompleteNormally(ArgumentList arguments) =>
     arguments.arguments.every(
       (argument) => expressionCanCompleteNormally(argument.argumentExpression),
     );
+
+enum _NullShorting { none, possible, definite }
+
+({Expression? target, bool nullAware})? _selectorReceiver(
+  Expression selector,
+) => switch (selector) {
+  MethodInvocation(:final target, :final isNullAware) ||
+  PropertyAccess(:final target, :final isNullAware) ||
+  IndexExpression(
+    :final target,
+    :final isNullAware,
+  ) => (target: target, nullAware: isNullAware),
+  FunctionExpressionInvocation(:final function) => (
+    target: function,
+    nullAware: false,
+  ),
+  PostfixExpression(:final operand, :final operator)
+      when operator.lexeme == '!' =>
+    (target: operand, nullAware: false),
+  _ => null,
+};
+
+final _selectorShortingCache = Expando<_NullShorting>();
+
+_NullShorting _selectorShorting(Expression selector) {
+  if (_selectorShortingCache[selector] case final cached?) return cached;
+  // Parentheses and other non-selector expressions end the chain.
+  final receiver = _selectorReceiver(selector);
+  final target = receiver?.target;
+  if (target == null) return _NullShorting.none;
+  final inherited = _selectorShorting(target);
+  if (!receiver!.nullAware || inherited == _NullShorting.definite) {
+    return _selectorShortingCache[selector] = inherited;
+  }
+  return _selectorShortingCache[selector] = _isNull(target)
+      ? _NullShorting.definite
+      : isDefinitelyNonNull(target)
+      ? inherited
+      : _NullShorting.possible;
+}
+
+bool _selectorReceiverCanComplete(Expression selector) {
+  final target = _selectorReceiver(selector)?.target;
+  return target == null || expressionCanCompleteNormally(target);
+}
+
+bool _selectorInputsCanComplete(
+  Expression selector, {
+  required bool allowSkipping,
+}) {
+  if (!_selectorReceiverCanComplete(selector)) return false;
+  final shorting = _selectorShorting(selector);
+  if (allowSkipping && shorting != _NullShorting.none) return true;
+  if (shorting == _NullShorting.definite) return false;
+  return switch (selector) {
+    MethodInvocation(:final argumentList) ||
+    FunctionExpressionInvocation(
+      :final argumentList,
+    ) => _argumentsCanCompleteNormally(argumentList),
+    IndexExpression(:final index) => expressionCanCompleteNormally(index),
+    _ => true,
+  };
+}
 
 /// Whether an expression has any structurally possible normal result. This is
 /// deliberately independent of exception inference: an opaque call may return,
@@ -360,13 +417,13 @@ bool expressionCanCompleteNormally(Expression expression) {
               expressionCanCompleteNormally(thenExpression) ||
                   expressionCanCompleteNormally(elseExpression),
           },
-    MethodInvocation(:final target, :final argumentList) =>
-      (target == null || expressionCanCompleteNormally(target)) &&
-          (expression.isNullAware && target != null && !_isNonNull(target) ||
-              _argumentsCanCompleteNormally(argumentList)),
-    FunctionExpressionInvocation(:final function, :final argumentList) =>
-      expressionCanCompleteNormally(function) &&
-          _argumentsCanCompleteNormally(argumentList),
+    MethodInvocation() ||
+    FunctionExpressionInvocation() ||
+    PropertyAccess() ||
+    IndexExpression() => _selectorInputsCanComplete(
+      expression,
+      allowSkipping: true,
+    ),
     InstanceCreationExpression(:final argumentList) =>
       _argumentsCanCompleteNormally(argumentList),
     AwaitExpression(:final expression) => expressionCanCompleteNormally(
@@ -381,7 +438,7 @@ bool expressionCanCompleteNormally(Expression expression) {
       :final cascadeSections,
     ) =>
       expressionCanCompleteNormally(target) &&
-          (isNullAware && !_isNonNull(target) ||
+          (isNullAware && !isDefinitelyNonNull(target) ||
               cascadeSections.every(expressionCanCompleteNormally)),
     ListLiteral(:final elements) || SetOrMapLiteral(:final elements) =>
       elements.every(_collectionElementCanCompleteNormally),
@@ -398,7 +455,7 @@ bool _collectionElementCanCompleteNormally(CollectionElement? element) =>
       ) => expressionCanCompleteNormally(expression),
       MapLiteralEntry(:final key, :final keyQuestion, :final value) =>
         expressionCanCompleteNormally(key) &&
-            (keyQuestion != null && !_isNonNull(key) ||
+            (keyQuestion != null && !isDefinitelyNonNull(key) ||
                 expressionCanCompleteNormally(value)),
       IfElement(:final expression, :final thenElement, :final elseElement) =>
         expressionCanCompleteNormally(expression) &&
@@ -450,7 +507,7 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     return switch (parent.operator.lexeme) {
       '&&' => constantBooleanValue(parent.leftOperand) != false,
       '||' => constantBooleanValue(parent.leftOperand) != true,
-      '??' => !_isNonNull(parent.leftOperand),
+      '??' => !isDefinitelyNonNull(parent.leftOperand),
       _ => true,
     };
   }
@@ -460,14 +517,12 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     if (identical(child, parent.thenExpression)) return value != false;
     if (identical(child, parent.elseExpression)) return value != true;
   }
-  if (parent is MethodInvocation && identical(child, parent.argumentList)) {
-    final target = parent.target;
-    if (target != null && !expressionCanCompleteNormally(target)) return false;
-    if (parent.isNullAware && target != null && _isNull(target)) return false;
-  }
-  if (parent is FunctionExpressionInvocation &&
-      identical(child, parent.argumentList)) {
-    return expressionCanCompleteNormally(parent.function);
+  if (parent is Expression) {
+    final receiver = _selectorReceiver(parent);
+    if (receiver != null && !identical(child, receiver.target)) {
+      return _selectorReceiverCanComplete(parent) &&
+          _selectorShorting(parent) != _NullShorting.definite;
+    }
   }
   if (parent is IfStatement && !identical(child, parent.expression)) {
     return expressionCanCompleteNormally(parent.expression);
@@ -557,15 +612,22 @@ bool _childCanExecute(AstNode parent, AstNode child) {
 }
 
 bool _isNull(Expression expression) =>
+    expression.staticType?.isDartCoreNull == true ||
     _constantVariable(expression)?.computeConstantValue()?.isNull == true ||
     expression is NullLiteral ||
     expression is ParenthesizedExpression && _isNull(expression.expression);
 
-bool _isNonNull(Expression expression) =>
-    _constantVariable(expression)?.computeConstantValue()?.isNull == false ||
-    expression is Literal && expression is! NullLiteral ||
-    expression is FunctionExpression ||
-    expression is ParenthesizedExpression && _isNonNull(expression.expression);
+bool isDefinitelyNonNull(Expression expression) {
+  final type = expression.staticType;
+  return (type is InterfaceType || type is FunctionType) &&
+          type!.nullabilitySuffix == NullabilitySuffix.none &&
+          !type.isDartCoreNull ||
+      _constantVariable(expression)?.computeConstantValue()?.isNull == false ||
+      expression is Literal && expression is! NullLiteral ||
+      expression is FunctionExpression ||
+      expression is ParenthesizedExpression &&
+          isDefinitelyNonNull(expression.expression);
+}
 
 bool? constantBooleanValue(Expression expression) => switch (expression) {
   BooleanLiteral(:final value) => value,

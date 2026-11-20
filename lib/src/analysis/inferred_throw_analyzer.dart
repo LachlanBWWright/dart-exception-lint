@@ -2584,10 +2584,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
         (operator == '||' && leftBoolean == true)) {
       return;
     }
-    if (operator == '??' &&
-        node.leftOperand.staticType != null &&
-        node.leftOperand.staticType is! DynamicType &&
-        node.leftOperand.staticType!.nullabilitySuffix.name == 'none') {
+    if (operator == '??' && isDefinitelyNonNull(node.leftOperand)) {
       return;
     }
     final conditional =

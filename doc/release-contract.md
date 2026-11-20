@@ -32,12 +32,13 @@ Containment uses a shared residual-effect projection. Inference ignores
 adapters honor them locally. Explicit throws, error production and null
 assertions remain independently prohibited by their syntax policies.
 
-Expression reachability includes short-circuit and conditional selection,
-argument and record-field evaluation order, null-aware call arguments, and
-noncompleting expressions. Invocation effects require the receiver and arguments
-to finish evaluating. Loop initialization, conditions, and updates respect
-evaluation order, including labeled `continue`. Opaque expressions retain
-possible normal completion in these structural proofs.
+Expression reachability covers short circuits, conditional selection, and
+evaluation order within arguments, records, collections, and cascades.
+Invocation effects require the receiver and arguments to finish evaluating.
+Null-aware selectors can skip the rest of a chain up to its expression
+boundary. Loop initialization, conditions, and updates respect evaluation
+order, including labeled `continue`. Opaque expressions retain possible
+normal completion in these structural proofs.
 
 Resolved constant booleans use the same branch facts in completion, inference
 and async ownership. Ordinary final/mutable initializers do not establish these
