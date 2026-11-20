@@ -1,8 +1,12 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
 
 const reportSchemaVersion = 2;
+
+String reportPath(String file, {required String root}) =>
+    p.split(p.relative(file, from: root)).join('/');
 
 String fingerprint(Object value) =>
     sha256.convert(utf8.encode(jsonEncode(value))).toString();

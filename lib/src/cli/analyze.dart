@@ -24,6 +24,7 @@ Future<Map<String, dynamic>> analyzeProject(
 ) async {
   final root = request['root'] as String;
   final paths = (request['paths'] as List).cast<String>();
+  final explicitFiles = (request['explicitFiles'] as List).cast<String>();
   final changed = (request['changedFiles'] as List?)?.cast<String>().toSet();
   final errors = <Map<String, dynamic>>[];
   final findings = <String, Map<String, dynamic>>{};
@@ -40,8 +41,7 @@ Future<Map<String, dynamic>> analyzeProject(
         return declarations;
       });
   final collection = AnalysisContextCollection(includedPaths: [root]);
-  String relative(String file) =>
-      p.relative(file, from: root).replaceAll(r'\', '/');
+  String relative(String file) => reportPath(file, root: root);
   try {
     await AnalysisCompatibility.initialize();
     if (AnalysisCompatibility.warning case final warning?) {
@@ -62,13 +62,13 @@ Future<Map<String, dynamic>> analyzeProject(
                 (changed == null || changed.contains(rel));
           }).toList()
           ..sort();
-    for (final scope in paths) {
-      if (changed == null &&
-          scope.endsWith('.dart') &&
-          !candidates.any((file) => relative(file) == scope)) {
+    if (changed == null) {
+      final candidatePaths = candidates.map(relative).toSet();
+      for (final file in explicitFiles) {
+        if (candidatePaths.contains(file)) continue;
         errors.add({
           'code': 'unavailable_input',
-          'file': scope,
+          'file': file,
           'message':
               'Requested file is missing or excluded by analyzer configuration.',
         });

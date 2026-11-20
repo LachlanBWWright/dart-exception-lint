@@ -33,13 +33,14 @@ Future<int> runCommand(
   IOSink output,
   IOSink errorOutput,
 ) async {
-  if (arguments.contains('--help') || arguments.contains('-h')) {
-    output.write(_usage);
-    return 0;
-  }
   _Options options;
   try {
-    options = _Options.parse(arguments);
+    final parsed = _Options.parse(arguments);
+    if (parsed == null) {
+      output.write(_usage);
+      return 0;
+    }
+    options = parsed;
   } on FormatException catch (error) {
     output.writeln(
       jsonEncode(
@@ -61,6 +62,7 @@ Future<int> runCommand(
     final request = <String, dynamic>{
       'root': options.root,
       'paths': options.paths,
+      'explicitFiles': options.explicitFiles,
       'changedSince': options.changedSince,
       'changedFiles': changes?.files,
       'changedRevision': changes?.revision,
@@ -153,7 +155,10 @@ Future<({List<String> files, String revision})> _changedFiles(
     }
   }
 
-  final top = (await git(['rev-parse', '--show-toplevel'])).trim();
+  final top = (await git([
+    'rev-parse',
+    '--show-toplevel',
+  ])).replaceFirst(RegExp(r'\r?\n$'), '');
   final revision = (await git([
     'rev-parse',
     '--verify',
@@ -183,11 +188,7 @@ Future<({List<String> files, String revision})> _changedFiles(
   final files =
       names
           .where((name) => name.isNotEmpty)
-          .map(
-            (name) => p
-                .relative(p.join(top, name), from: options.root)
-                .replaceAll(r'\', '/'),
-          )
+          .map((name) => reportPath(p.join(top, name), root: options.root))
           .toSet()
           .toList()
         ..sort();
@@ -270,6 +271,7 @@ final class _Options {
   _Options(
     this.root,
     this.paths,
+    this.explicitFiles,
     this.format,
     this.failOn,
     this.baseline,
@@ -280,6 +282,7 @@ final class _Options {
   );
   final String root;
   final List<String> paths;
+  final List<String> explicitFiles;
   final String format;
   final String failOn;
   final String? baseline;
@@ -288,7 +291,7 @@ final class _Options {
   final int timeout;
   final int maxRssMb;
 
-  factory _Options.parse(List<String> args) {
+  static _Options? parse(List<String> args) {
     const accepted = {
       'root',
       'format',
@@ -312,12 +315,11 @@ final class _Options {
         inputs.add(arg);
         continue;
       }
+      if (arg == '--help' || arg == '-h') return null;
       if (!arg.startsWith('--')) throw FormatException('Unknown option: $arg');
       final equals = arg.indexOf('=');
       final name = arg.substring(2, equals < 0 ? null : equals);
-      if (!arg.startsWith('--') ||
-          !accepted.contains(name) ||
-          values.containsKey(name)) {
+      if (!accepted.contains(name) || values.containsKey(name)) {
         throw FormatException('Unknown or duplicate option: $arg');
       }
       final String value;
@@ -335,30 +337,28 @@ final class _Options {
     if (!Directory(root).existsSync()) {
       throw FormatException('Root directory does not exist: $root');
     }
-    final paths =
-        (inputs.isEmpty ? ['.'] : inputs)
-            .map((input) {
-              final full = p.normalize(p.join(root, input));
-              if (full != root && !p.isWithin(root, full)) {
-                throw FormatException('Input is outside root: $input');
-              }
-              if (FileSystemEntity.typeSync(full, followLinks: false) ==
-                  FileSystemEntityType.link) {
-                throw FormatException(
-                  'Input must not be a symbolic link: $input',
-                );
-              }
-              if (!FileSystemEntity.isDirectorySync(full) &&
-                  !input.endsWith('.dart')) {
-                throw FormatException(
-                  'Input must be a Dart file or directory: $input',
-                );
-              }
-              return p.relative(full, from: root).replaceAll(r'\', '/');
-            })
-            .toSet()
-            .toList()
-          ..sort();
+    final paths = <String>{};
+    final explicitFiles = <String>{};
+    for (final input in inputs.isEmpty ? ['.'] : inputs) {
+      final full = p.normalize(p.join(root, input));
+      if (full != root && !p.isWithin(root, full)) {
+        throw FormatException('Input is outside root: $input');
+      }
+      final type = FileSystemEntity.typeSync(full, followLinks: false);
+      if (type == FileSystemEntityType.link) {
+        throw FormatException('Input must not be a symbolic link: $input');
+      }
+      final relative = reportPath(full, root: root);
+      if (type != FileSystemEntityType.directory) {
+        if (!relative.endsWith('.dart')) {
+          throw FormatException(
+            'Input must be a Dart file or directory: $input',
+          );
+        }
+        explicitFiles.add(relative);
+      }
+      paths.add(relative);
+    }
     final format = values['format'] ?? 'json';
     final failOn = values['fail-on'] ?? 'all';
     if (!const {'json', 'text'}.contains(format)) {
@@ -379,7 +379,8 @@ final class _Options {
 
     return _Options(
       root,
-      paths,
+      paths.toList()..sort(),
+      explicitFiles.toList()..sort(),
       format,
       failOn,
       values['baseline'],

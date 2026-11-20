@@ -197,6 +197,29 @@ void main() {
     },
   );
 
+  test('positional paths may look like flags or end in .dart', () async {
+    await write('--help/entry.dart', "void fail() { throw 'failure'; }");
+    await Directory(p.join(fixture.path, 'empty.dart')).create();
+    expect((await run(['--', '--help'])).report['files'], [
+      '--help/entry.dart',
+    ]);
+    final empty = await run(['empty.dart']);
+    expect(empty.code, 0);
+    expect(empty.report['files'], isEmpty);
+  });
+
+  test(
+    'literal POSIX backslashes remain part of file names',
+    () async {
+      await write(r'lib/a\b.dart', "void first() { throw 'failure'; }");
+      await write('lib/a/b.dart', "void second() { throw 'failure'; }");
+      final result = await run(['lib']);
+      expect(result.report['files'], ['lib/a/b.dart', r'lib/a\b.dart']);
+      expect((await run([r'lib/a\b.dart'])).report['files'], [r'lib/a\b.dart']);
+    },
+    skip: Platform.isWindows,
+  );
+
   test(
     'parts, constructors, getters, setters and methods are included',
     () async {
