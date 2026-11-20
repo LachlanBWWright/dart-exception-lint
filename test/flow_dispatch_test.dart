@@ -103,6 +103,49 @@ void lazyInitializer() { late final int value = stop(); probe(); }
     );
   });
 
+  test('invocation effects follow receiver and argument evaluation', () async {
+    await _verify(
+      '''
+Never argument() => throw 42;
+void callee(int first, [int? second]) => throw 'callee';
+class C {
+  C(int value) { throw 'constructor'; }
+  void invoke(int value) { throw 'method'; }
+}
+const C? absent = null;
+void functionCall() { callee(argument()); }
+void closureCall() { ((int value) => throw 'closure')(argument()); }
+void constructorCall() { C(argument()); }
+void methodCall() { C(0).invoke(argument()); }
+void outerThrow() { throw argument(); }
+void nullAwareCall() { absent?.invoke(argument()); }
+void possibleCall(bool flag) { callee(flag ? argument() : 0); }
+''',
+      (summaries, _) {
+        for (final name in [
+          'functionCall',
+          'closureCall',
+          'constructorCall',
+          'outerThrow',
+        ]) {
+          final summary = summaries[name]!;
+          expect(summary.exceptionTypes.toSet(), {'int'}, reason: name);
+          expect(summary.hasUnknownEffects, isFalse, reason: name);
+        }
+        final origins = summaries['methodCall']!.sources.map(
+          (source) => source.origin?.displayName,
+        );
+        expect(origins, contains("throw 'constructor'"));
+        expect(origins, isNot(contains("throw 'method'")));
+        expect(summaries['nullAwareCall']!.hasAnyThrowSource, isFalse);
+        expect(
+          summaries['possibleCall']!.exceptionTypes,
+          containsAll(['int', 'String']),
+        );
+      },
+    );
+  });
+
   test(
     'exact allocations, super and extension dispatch exclude unrelated overrides',
     () async {

@@ -32,7 +32,9 @@ assertions remain independently prohibited by their syntax policies.
 
 Expression reachability includes short-circuit and conditional selection,
 argument and record-field evaluation order, null-aware call arguments, and
-noncompleting expressions. This is a structural proof; opaque expressions keep
+noncompleting expressions. Invocation effects require the receiver and arguments
+to finish evaluating. Loop initialization, conditions, and updates respect
+evaluation order, including labeled `continue`. This is a structural proof; opaque expressions keep
 possible normal completion. It is not a general symbolic value interpreter.
 
 Resolved constant booleans use the same branch facts in completion, inference

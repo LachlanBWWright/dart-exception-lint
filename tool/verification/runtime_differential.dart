@@ -39,6 +39,7 @@ Future<void> main() async {
       if (const {
             'constantUnreachable',
             'exactDispatch',
+            'skippedDoCondition',
             'forwardCaught',
             'adoptCaught',
           }.contains(declaration.name.lexeme) &&
@@ -147,6 +148,9 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'stoppedInvocation': ('synchronous', 'int'),
+  'stoppedInitializer': ('synchronous', 'int'),
+  'continuedUpdate': ('synchronous', 'String'),
   'superDispatch': ('synchronous', 'String'),
   'adoptFailure': ('future', 'String'),
   'adoptDiscarded': ('scheduled', 'String'),
@@ -178,6 +182,8 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'stoppedInvocation': 'String',
+  'stoppedInitializer': 'String',
   'superDispatch': 'int',
   'callbackAwaitedCaught': 'String',
   'containedCast': 'TypeError',
@@ -194,6 +200,10 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'stopped_invocation': '42',
+  'stopped_initializer': '42',
+  'skipped_do_condition': 'none',
+  'continued_update': 'String',
   'constant_unreachable': 'none',
   'exact_dispatch': 'none',
   'super_dispatch': 'String',
@@ -246,6 +256,15 @@ import 'dart:async';
 import 'dart:convert';
 
 const disabledBranch = false;
+Never stopEvaluation() => throw 42;
+Never throwString() => throw 'effect';
+void throwInCallee(int value) { throwString(); }
+void stoppedInvocation() { throwInCallee(stopEvaluation()); }
+void stoppedInitializer() {
+  for (int i = stopEvaluation(); false;) { throwString(); }
+}
+void skippedDoCondition() { do { break; } while (throwString()); }
+void continuedUpdate() { outer: for (;; throwString()) { continue outer; } }
 void constantUnreachable() { if (disabledBranch) throw 'unreachable'; }
 class ExactBase { void run() {} }
 class ExactDerived extends ExactBase { @override void run() { throw 'override'; } }
@@ -383,6 +402,10 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'stopped_invocation': capture(stoppedInvocation),
+    'stopped_initializer': capture(stoppedInitializer),
+    'skipped_do_condition': capture(skippedDoCondition),
+    'continued_update': capture(continuedUpdate),
     'constant_unreachable': capture(constantUnreachable),
     'exact_dispatch': capture(exactDispatch),
     'super_dispatch': capture(superDispatch),

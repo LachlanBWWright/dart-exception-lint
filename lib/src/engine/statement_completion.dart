@@ -252,6 +252,7 @@ bool _forInputCanCompleteNormally(ForLoopParts parts) => switch (parts) {
 /// Whether lexical control flow permits execution of this node. Callable
 /// bodies are separate entry points, including hoisted local declarations.
 bool isReachable(AstNode node) {
+  if (!_operationCanExecute(node)) return false;
   AstNode? current = node;
   while (current != null) {
     final parent = current.parent;
@@ -283,6 +284,31 @@ bool isReachable(AstNode node) {
   }
   return true;
 }
+
+// Effects of the operation itself occur after its inputs have been evaluated.
+// This check deliberately applies only to the starting node, so a failure in
+// an input is still reachable when the containing operation cannot execute.
+bool _operationCanExecute(AstNode node) => switch (node) {
+  MethodInvocation(:final target, :final isNullAware, :final argumentList) =>
+    (target == null ||
+            expressionCanCompleteNormally(target) &&
+                !(isNullAware && _isNull(target))) &&
+        _argumentsCanCompleteNormally(argumentList),
+  FunctionExpressionInvocation(:final function, :final argumentList) =>
+    expressionCanCompleteNormally(function) &&
+        _argumentsCanCompleteNormally(argumentList),
+  InstanceCreationExpression(:final argumentList) =>
+    _argumentsCanCompleteNormally(argumentList),
+  ThrowExpression(:final expression) => expressionCanCompleteNormally(
+    expression,
+  ),
+  _ => true,
+};
+
+bool _argumentsCanCompleteNormally(ArgumentList arguments) =>
+    arguments.arguments.every(
+      (argument) => expressionCanCompleteNormally(argument.argumentExpression),
+    );
 
 /// Whether an expression has any structurally possible normal result. This is
 /// deliberately independent of exception inference: an opaque call may return,
@@ -336,21 +362,12 @@ bool expressionCanCompleteNormally(Expression expression) {
     MethodInvocation(:final target, :final argumentList) =>
       (target == null || expressionCanCompleteNormally(target)) &&
           (expression.isNullAware && target != null && !_isNonNull(target) ||
-              argumentList.arguments.every(
-                (argument) =>
-                    expressionCanCompleteNormally(argument.argumentExpression),
-              )),
+              _argumentsCanCompleteNormally(argumentList)),
     FunctionExpressionInvocation(:final function, :final argumentList) =>
       expressionCanCompleteNormally(function) &&
-          argumentList.arguments.every(
-            (argument) =>
-                expressionCanCompleteNormally(argument.argumentExpression),
-          ),
+          _argumentsCanCompleteNormally(argumentList),
     InstanceCreationExpression(:final argumentList) =>
-      argumentList.arguments.every(
-        (argument) =>
-            expressionCanCompleteNormally(argument.argumentExpression),
-      ),
+      _argumentsCanCompleteNormally(argumentList),
     AwaitExpression(:final expression) => expressionCanCompleteNormally(
       expression,
     ),
