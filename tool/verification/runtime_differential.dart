@@ -148,6 +148,8 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'stoppedCollection': ('synchronous', 'int'),
+  'stoppedCollectionLoop': ('synchronous', 'int'),
   'stoppedInvocation': ('synchronous', 'int'),
   'stoppedInitializer': ('synchronous', 'int'),
   'continuedUpdate': ('synchronous', 'String'),
@@ -184,6 +186,9 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'stoppedCollection': 'String',
+  'stoppedCollectionLoop': 'String',
+  'skippedMapValue': 'String',
   'stoppedInvocation': 'String',
   'stoppedInitializer': 'String',
   'superDispatch': 'int',
@@ -203,6 +208,9 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'stopped_collection': '42',
+  'stopped_collection_loop': '42',
+  'skipped_map_value': 'none',
   'stopped_invocation': '42',
   'stopped_initializer': '42',
   'skipped_do_condition': 'none',
@@ -264,6 +272,11 @@ import 'dart:convert';
 const disabledBranch = false;
 Never stopEvaluation() => throw 42;
 Never throwString() => throw 'effect';
+void stoppedCollection() { <int>[stopEvaluation(), throwString()]; }
+void stoppedCollectionLoop() {
+  <int>[for (int i = stopEvaluation(); false;) throwString()];
+}
+void skippedMapValue() { <int, int>{?null: throwString()}; }
 void throwInCallee(int value) { throwString(); }
 void stoppedInvocation() { throwInCallee(stopEvaluation()); }
 void stoppedInitializer() {
@@ -413,6 +426,9 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'stopped_collection': capture(stoppedCollection),
+    'stopped_collection_loop': capture(stoppedCollectionLoop),
+    'skipped_map_value': capture(skippedMapValue),
     'stopped_invocation': capture(stoppedInvocation),
     'stopped_initializer': capture(stoppedInitializer),
     'skipped_do_condition': capture(skippedDoCondition),

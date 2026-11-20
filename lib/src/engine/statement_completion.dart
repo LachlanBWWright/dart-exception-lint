@@ -375,9 +375,47 @@ bool expressionCanCompleteNormally(Expression expression) {
     RecordLiteral(:final fields) => fields.every(
       (field) => expressionCanCompleteNormally(field.fieldExpression),
     ),
+    ListLiteral(:final elements) || SetOrMapLiteral(:final elements) =>
+      elements.every(_collectionElementCanCompleteNormally),
     _ => true,
   };
 }
+
+bool _collectionElementCanCompleteNormally(CollectionElement? element) =>
+    switch (element) {
+      Expression() => expressionCanCompleteNormally(element),
+      SpreadElement(:final expression) ||
+      NullAwareElement(
+        value: final expression,
+      ) => expressionCanCompleteNormally(expression),
+      MapLiteralEntry(:final key, :final keyQuestion, :final value) =>
+        expressionCanCompleteNormally(key) &&
+            (keyQuestion != null && !_isNonNull(key) ||
+                expressionCanCompleteNormally(value)),
+      IfElement(:final expression, :final thenElement, :final elseElement) =>
+        expressionCanCompleteNormally(expression) &&
+            switch (_collectionCondition(element)) {
+              true => _collectionElementCanCompleteNormally(thenElement),
+              false => _collectionElementCanCompleteNormally(elseElement),
+              null =>
+                _collectionElementCanCompleteNormally(thenElement) ||
+                    _collectionElementCanCompleteNormally(elseElement),
+            },
+      ForElement(:final forLoopParts) =>
+        _forInputCanCompleteNormally(forLoopParts) &&
+            switch (forLoopParts) {
+              ForParts(:final condition) =>
+                condition != null &&
+                    expressionCanCompleteNormally(condition) &&
+                    constantBooleanValue(condition) != true,
+              ForEachParts() => true,
+            },
+      _ => true,
+    };
+
+bool? _collectionCondition(IfElement element) => element.caseClause == null
+    ? constantBooleanValue(element.expression)
+    : null;
 
 bool _childCanExecute(AstNode parent, AstNode child) {
   if (parent is ArgumentList && child is Argument) {
@@ -426,6 +464,12 @@ bool _childCanExecute(AstNode parent, AstNode child) {
   if (parent is IfStatement && !identical(child, parent.expression)) {
     return expressionCanCompleteNormally(parent.expression);
   }
+  if (parent is IfElement && !identical(child, parent.expression)) {
+    if (!expressionCanCompleteNormally(parent.expression)) return false;
+    final condition = _collectionCondition(parent);
+    if (identical(child, parent.thenElement)) return condition != false;
+    if (identical(child, parent.elseElement)) return condition != true;
+  }
   if (parent is WhileStatement && identical(child, parent.body)) {
     return expressionCanCompleteNormally(parent.condition);
   }
@@ -447,12 +491,16 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     if (loop is ForStatement && !_reachesNextIteration(loop, loop.body)) {
       return false;
     }
+    if (loop is ForElement &&
+        !_collectionElementCanCompleteNormally(loop.body)) {
+      return false;
+    }
     for (final updater in parent.updaters) {
       if (identical(updater, child)) break;
       if (!expressionCanCompleteNormally(updater)) return false;
     }
   }
-  if (parent is ForStatement && identical(child, parent.body)) {
+  if (parent is ForLoop<AstNode> && identical(child, parent.body)) {
     final parts = parent.forLoopParts;
     if (!_forInputCanCompleteNormally(parts)) return false;
     if (parts is ForParts && parts.condition != null) {
@@ -470,6 +518,21 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     for (final field in parent.fields) {
       if (identical(child, field)) break;
       if (!expressionCanCompleteNormally(field.fieldExpression)) return false;
+    }
+  }
+  if (parent is MapLiteralEntry && identical(child, parent.value)) {
+    return expressionCanCompleteNormally(parent.key) &&
+        !(parent.keyQuestion != null && _isNull(parent.key));
+  }
+  final elements = switch (parent) {
+    ListLiteral(:final elements) ||
+    SetOrMapLiteral(:final elements) => elements,
+    _ => null,
+  };
+  if (elements != null && child is CollectionElement) {
+    for (final element in elements) {
+      if (identical(element, child)) break;
+      if (!_collectionElementCanCompleteNormally(element)) return false;
     }
   }
   return true;

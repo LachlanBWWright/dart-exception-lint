@@ -103,6 +103,46 @@ void lazyInitializer() { late final int value = stop(); probe(); }
     );
   });
 
+  test('collection evaluation keeps only reachable effects', () async {
+    await _verify(
+      '''
+const enabled = false;
+int probe() => throw 'probe';
+Never stop() => throw 3;
+void listItems() { [stop(), probe()]; probe(); }
+void mapKey() { <int, int>{stop(): probe()}; probe(); }
+void spread() { <int>[...stop(), probe()]; probe(); }
+void branch() { [if (enabled) probe() else stop()]; }
+void loop() { [for (var i = stop(); enabled;) probe()]; }
+void maybeLoop(List<int> items) { [for (final item in items) stop(), probe()]; }
+void ifCase() { [if (enabled case false) probe()]; }
+void nullKey() { <int, int>{?null: probe()}; }
+void maybeKey(int? key) { <int, int>{?key: probe()}; }
+''',
+      (summaries, _) {
+        for (final name in [
+          'listItems',
+          'mapKey',
+          'spread',
+          'branch',
+          'loop',
+        ]) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'int',
+          }, reason: name);
+        }
+        expect(summaries['nullKey']!.exceptionTypes, isNot(contains('String')));
+        for (final name in ['maybeLoop', 'ifCase', 'maybeKey']) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            contains('String'),
+            reason: name,
+          );
+        }
+      },
+    );
+  });
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''
