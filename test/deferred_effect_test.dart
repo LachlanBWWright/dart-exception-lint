@@ -28,10 +28,19 @@ void consume() { values().toList(); }
 void consumeWrapped() { (values()).toList(); }
 void consumeMapped() { values().where((_) => true).map((value) => value).toList(); }
 void consumeCopied() { List<int>.of(values()); }
+void consumeIterator() { (values().iterator).moveNext(); }
+void consumeMappedIterator() { values().map((value) => value).iterator.moveNext(); }
+Iterator<int> createIterator() {
+  try { return values().iterator; } on String { return <int>[].iterator; }
+}
+void consumeForwardedIterator() { createIterator().moveNext(); }
+void readCurrent() { values().iterator.current; }
 void contained() { try { values().toList(); } on String {} }
 void containedWrapped() { try { (values()).toList(); } on String {} }
 void containedMapped() { try { values().map((value) => value).toList(); } on String {} }
 void containedCopied() { try { List<int>.of(values()); } on String {} }
+void containedIterator() { try { values().iterator.moveNext(); } on String {} }
+void wrongIteratorCatch() { try { values().iterator.moveNext(); } on int {} }
 Iterable<int> relay() sync* { try { yield* values(); } on String {} }
 ''');
         collection = AnalysisContextCollection(includedPaths: [directory.path]);
@@ -70,6 +79,10 @@ Iterable<int> relay() sync* { try { yield* values(); } on String {} }
           'consumeWrapped',
           'consumeMapped',
           'consumeCopied',
+          'consumeIterator',
+          'consumeMappedIterator',
+          'consumeForwardedIterator',
+          'wrongIteratorCatch',
         ]) {
           expect(
             stringChannels(name),
@@ -82,9 +95,15 @@ Iterable<int> relay() sync* { try { yield* values(); } on String {} }
           'containedWrapped',
           'containedMapped',
           'containedCopied',
+          'containedIterator',
         ]) {
           expect(stringChannels(name), isEmpty, reason: name);
         }
+        expect(stringChannels('createIterator'), [ExceptionChannel.deferred]);
+        expect(
+          stringChannels('readCurrent'),
+          isNot(contains(ExceptionChannel.synchronous)),
+        );
         expect(stringChannels('relay'), isEmpty);
       } finally {
         await collection?.dispose();

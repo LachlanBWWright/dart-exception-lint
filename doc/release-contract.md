@@ -71,6 +71,10 @@ arbitrary captures, runtime mutation and scheduling remain conservative.
 Discarding a known failing Future preserves a scheduled effect in the caller's
 summary. A synchronous catch around its creation cannot discharge that effect.
 
+Sync generator effects remain deferred when code obtains the SDK iterator.
+Direct calls to `Iterator.moveNext()` execute those effects synchronously, so a
+compatible catch around iteration can contain them.
+
 ## Required release evidence
 
 - Formatting, static analysis and the entire test suite pass on each CI SDK.

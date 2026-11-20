@@ -179,6 +179,8 @@ const _effects = {
   'consumeWrappedLazy': ('synchronous', 'String'),
   'consumeMappedLazy': ('synchronous', 'String'),
   'consumeCopiedLazy': ('synchronous', 'String'),
+  'consumeLazyIterator': ('synchronous', 'String'),
+  'createLazyIterator': ('deferred', 'String'),
 };
 
 const _suppressedEffects = {
@@ -192,6 +194,7 @@ const _suppressedEffects = {
   'finallySuppressFuture': 'String',
   'consumeStreamCaught': 'String',
   'consumeCopiedLazyCaught': 'String',
+  'consumeLazyIteratorCaught': 'String',
 };
 
 const _unknownEffects = {
@@ -249,6 +252,9 @@ const _observations = {
   'consume_mapped_lazy': 'String',
   'consume_copied_lazy': 'String',
   'consume_copied_lazy_caught': 'none',
+  'consume_lazy_iterator': 'String',
+  'consume_lazy_iterator_caught': 'none',
+  'create_lazy_iterator': 'none',
 };
 
 const _fixture = r'''
@@ -339,6 +345,11 @@ void consumeMappedLazy() { lazyFailure().map((value) => value).toList(); }
 void consumeCopiedLazy() { List<int>.of(lazyFailure()); }
 void consumeCopiedLazyCaught() {
   try { List<int>.of(lazyFailure()); } on String {}
+}
+Iterator<int> createLazyIterator() => lazyFailure().iterator;
+void consumeLazyIterator() { createLazyIterator().moveNext(); }
+void consumeLazyIteratorCaught() {
+  try { lazyFailure().map((value) => value).iterator.moveNext(); } on String {}
 }
 Future<void> consumeStream() async {
   await for (final value in streamFailure()) { value; }
@@ -451,6 +462,9 @@ Future<void> main() async {
     'consume_mapped_lazy': capture(consumeMappedLazy),
     'consume_copied_lazy': capture(consumeCopiedLazy),
     'consume_copied_lazy_caught': capture(consumeCopiedLazyCaught),
+    'consume_lazy_iterator': capture(consumeLazyIterator),
+    'consume_lazy_iterator_caught': capture(consumeLazyIteratorCaught),
+    'create_lazy_iterator': capture(() { createLazyIterator(); }),
   };
   print(jsonEncode(observations));
 }

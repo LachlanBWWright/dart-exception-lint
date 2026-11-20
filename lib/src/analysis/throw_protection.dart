@@ -238,7 +238,9 @@ AstNode? asyncValueConsumer(AstNode node) {
 bool consumesDeferredValue(AstNode node) {
   var forwarded = node;
   while (true) {
-    final parent = _forwardingFutureParent(forwarded);
+    final parent =
+        _forwardingFutureParent(forwarded) ??
+        _iterableIteratorAccess(forwarded);
     if (parent == null) break;
     forwarded = parent;
   }
@@ -266,15 +268,14 @@ bool consumesDeferredValue(AstNode node) {
     PropertyAccess() => consumer.propertyName.element,
     _ => null,
   };
-  if (element?.library?.uri.toString() != 'dart:core' ||
-      !const {
-        'Iterable',
-        'List',
-        'Set',
-        'Iterator',
-      }.contains(element?.enclosingElement?.name)) {
-    return false;
+  if (element?.library?.uri.toString() != 'dart:core') return false;
+  final owner = element?.enclosingElement?.name;
+  if (owner == 'Iterator') {
+    return consumer is MethodInvocation &&
+        identical(consumer.realTarget, forwarded) &&
+        element?.name == 'moveNext';
   }
+  if (!const {'Iterable', 'List', 'Set'}.contains(owner)) return false;
   return switch (consumer) {
     MethodInvocation() =>
       identical(consumer.realTarget, forwarded) &&
@@ -305,6 +306,23 @@ bool consumesDeferredValue(AstNode node) {
           }.contains(element?.name),
     _ => false,
   };
+}
+
+PropertyAccess? _iterableIteratorAccess(AstNode target) {
+  final parent = target.parent;
+  if (parent is! PropertyAccess || !identical(parent.realTarget, target)) {
+    return null;
+  }
+  final getter = parent.propertyName.element;
+  return getter?.library?.uri.toString() == 'dart:core' &&
+          const {
+            'Iterable',
+            'List',
+            'Set',
+          }.contains(getter?.enclosingElement?.name) &&
+          getter?.name == 'iterator'
+      ? parent
+      : null;
 }
 
 bool _containsNode(AstNode ancestor, AstNode node) =>
