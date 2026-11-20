@@ -85,6 +85,18 @@ while IFS=$'\t' read -r id url manager commit package_path; do
   ((count += 1))
   ((count > limit)) && break
 
+  if [[ "$manager" == flutter ]]; then
+    if ! command -v flutter >/dev/null 2>&1; then
+      printf '%s\t%s\tflutter_unavailable\t0\t0\t0\t0\t\t%s\n' "$id" "$url" "flutter analyze" >> "$results"
+      continue
+    fi
+    resolver=(flutter pub get)
+    analyzer=(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings)
+  else
+    resolver=(dart pub get)
+    analyzer=(dart analyze)
+  fi
+
   checkout="$corpus_root/$id"
   if [[ "$refresh" == 1 && -d "$checkout" ]]; then
     rm -rf "$checkout"
@@ -160,11 +172,6 @@ plugins:
       invalid_exception_contract: true
 EOF
 
-    if [[ "$manager" == flutter ]] && command -v flutter >/dev/null 2>&1; then
-      resolver=(flutter pub get)
-    else
-      resolver=(dart pub get)
-    fi
     if timeout "$timeout_seconds" "${resolver[@]}" --directory "$package_dir" >"$corpus_root/$id.$package_count.pubget.log" 2>&1; then
       resolver_status=0
     else
@@ -172,7 +179,7 @@ EOF
       ((dependency_failures += 1))
     fi
     output_file="$corpus_root/$id.$package_count.analyze.log"
-    if timeout "$timeout_seconds" dart analyze "$package_dir" >"$output_file" 2>&1; then
+    if timeout "$timeout_seconds" "${analyzer[@]}" "$package_dir" >"$output_file" 2>&1; then
       status_code=0
     else
       status_code=$?
@@ -207,9 +214,9 @@ EOF
   )
 
   if [[ "$package_count" == 0 ]]; then package_status=no_packages_found; fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tdart analyze\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$id" "$url" "$package_status" "$package_count" "$diagnostic_count" \
-    "$dependency_failures" "$plugin_failures" "$rule_counts" >> "$results"
+    "$dependency_failures" "$plugin_failures" "$rule_counts" "${analyzer[*]}" >> "$results"
 done < "$manifest"
 
 printf 'Wrote %s\n' "$results"

@@ -47,6 +47,8 @@ dart run tool/corpus/summarize_results.dart
 The default limit includes all 52 manifest entries. `CORPUS_FILTER` selects
 project IDs with a Bash regular expression before applying `CORPUS_LIMIT`.
 Dependency resolution and analysis both use `CORPUS_TIMEOUT`.
+Flutter rows use `flutter pub get` and `flutter analyze`. A missing Flutter
+executable appears as `flutter_unavailable` in the results.
 
 `semantic_cases.json` is a separate, reviewed local corpus with expected known
 and unknown effect-channel labels. Run it with:

@@ -45,9 +45,9 @@ serverpod	https://github.com/serverpod/serverpod.git	dart	b693774b77613a21a3ebca
 supabase_flutter	https://github.com/supabase/supabase-flutter.git	flutter	1eefe0ee2b22c883fb26ac21cb5bbe38d7df2493
 permission_handler	https://github.com/Baseflow/flutter-permission-handler.git	flutter	06844691889603bf867ef03e8f3ca24b83f9f1a0
 plus_plugins	https://github.com/fluttercommunity/plus_plugins.git	flutter	53e5ecf38c8775af21c62c2932d07f88bad1a3b2
-flutter_hooks	https://github.com/rrousselGit/flutter_hooks.git	flutter	6f7344fc09f3800c1a9944d06ae56d5324e084e3
-provider	https://github.com/rrousselGit/provider.git	flutter	3ed4c6d6b1700c08256f25a034bb93f943bd7236
+flutter_hooks	https://github.com/rrousselGit/flutter_hooks.git	flutter	6f7344fc09f3800c1a9944d06ae56d5324e084e3	packages/flutter_hooks
+provider	https://github.com/rrousselGit/provider.git	flutter	3ed4c6d6b1700c08256f25a034bb93f943bd7236	packages/provider
 workmanager	https://github.com/fluttercommunity/flutter_workmanager.git	flutter	896c4c1122f5e267ed472b044219c884305246d3
 sqflite	https://github.com/tekartik/sqflite.git	flutter	aaabf90828645125bf7f4bd8e9a6fe4e3935b076
 flutter_quill	https://github.com/singerdmx/flutter-quill.git	flutter	e880534f8750072c879fecd72ada72d0902bc5e8
-window_manager	https://github.com/leanflutter/window_manager.git	flutter	4080b59c0b1084c6085f1613c660382cd164ad76
+window_manager	https://github.com/leanflutter/window_manager.git	flutter	4080b59c0b1084c6085f1613c660382cd164ad76	packages/window_manager
