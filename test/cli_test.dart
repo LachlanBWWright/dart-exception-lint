@@ -208,17 +208,15 @@ void main() {
     expect(empty.report['files'], isEmpty);
   });
 
-  test(
-    'literal POSIX backslashes remain part of file names',
-    () async {
+  if (!Platform.isWindows) {
+    test('literal POSIX backslashes remain part of file names', () async {
       await write(r'lib/a\b.dart', "void first() { throw 'failure'; }");
       await write('lib/a/b.dart', "void second() { throw 'failure'; }");
       final result = await run(['lib']);
       expect(result.report['files'], ['lib/a/b.dart', r'lib/a\b.dart']);
       expect((await run([r'lib/a\b.dart'])).report['files'], [r'lib/a\b.dart']);
-    },
-    skip: Platform.isWindows,
-  );
+    });
+  }
 
   test(
     'parts, constructors, getters, setters and methods are included',
