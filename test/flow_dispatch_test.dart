@@ -248,6 +248,43 @@ void possibleElse(Object value) { if (value case int _ when stop()) probe(); els
     );
   });
 
+  test('assignment effects follow evaluation and short circuits', () async {
+    await _verify(
+      '''
+final class Number {
+  Number operator +(Number other) => throw 1.5;
+}
+final class Holder {
+  Number get item => throw 'get';
+  set item(Number value) { throw true; }
+}
+const Holder? absent = null;
+Never stop() => throw 3;
+void write() { Holder().item = stop(); throw 1.0; }
+void compound() { Holder().item += stop(); throw 1.0; }
+void normalCompound() { Holder().item += Number(); }
+void nullAware() { absent?.item = stop(); }
+void coalescing() { Holder().item ??= stop(); }
+void lateWrite() { late int value; value = 3; }
+''',
+      (summaries, _) {
+        expect(summaries['write']!.exceptionTypes.toSet(), {'int'});
+        expect(summaries['compound']!.exceptionTypes.toSet(), {
+          'String',
+          'int',
+        });
+        expect(summaries['normalCompound']!.exceptionTypes.toSet(), {
+          'String',
+          'bool',
+          'double',
+        });
+        expect(summaries['nullAware']!.hasAnyThrowSource, isFalse);
+        expect(summaries['coalescing']!.exceptionTypes.toSet(), {'String'});
+        expect(summaries['lateWrite']!.hasAnyThrowSource, isFalse);
+      },
+    );
+  });
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''

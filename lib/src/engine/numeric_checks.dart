@@ -4,6 +4,7 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 
 import '../analysis/throw_summary.dart';
+import 'statement_completion.dart';
 
 /// Failure conditions on resolved SDK numeric operations.
 ///
@@ -128,7 +129,11 @@ final class NumericChecks {
 
   static ThrowSource? assignment(AssignmentExpression node) {
     final operator = node.operator.lexeme;
-    if (!operator.endsWith('=') || operator == '=') return null;
+    if (!operator.endsWith('=') ||
+        operator == '=' ||
+        !assignmentWriteCanExecute(node)) {
+      return null;
+    }
     return _operator(
       operator.substring(0, operator.length - 1),
       node.element,

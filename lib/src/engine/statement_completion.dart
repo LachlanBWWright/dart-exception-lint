@@ -413,6 +413,7 @@ bool expressionCanCompleteNormally(Expression expression) {
                   expressionCanCompleteNormally(elseExpression),
           },
     SwitchExpression() => _switchExpressionCanComplete(expression),
+    AssignmentExpression() => _assignmentCanComplete(expression),
     MethodInvocation() ||
     FunctionExpressionInvocation() ||
     PropertyAccess() ||
@@ -530,6 +531,50 @@ bool _switchExpressionCanComplete(SwitchExpression node) {
   return node.cases.isEmpty;
 }
 
+/// Whether the location can be evaluated before reading or writing its value.
+bool assignmentTargetCanExecute(AssignmentExpression node) =>
+    _assignmentTargetCanComplete(node, allowSkipping: false);
+
+/// Whether evaluation can reach the part of an assignment that writes.
+bool assignmentWriteCanExecute(AssignmentExpression node) =>
+    _assignmentRightHandSideCanExecute(node) &&
+    expressionCanCompleteNormally(node.rightHandSide);
+
+bool _assignmentTargetCanComplete(
+  AssignmentExpression node, {
+  required bool allowSkipping,
+}) => switch (node.leftHandSide) {
+  final PropertyAccess access => _selectorInputsCanComplete(
+    access,
+    allowSkipping: allowSkipping,
+  ),
+  final IndexExpression access => _selectorInputsCanComplete(
+    access,
+    allowSkipping: allowSkipping,
+  ),
+  PrefixedIdentifier(:final prefix) => expressionCanCompleteNormally(prefix),
+  _ => true,
+};
+
+bool _assignmentReadStops(AssignmentExpression node) {
+  final type = node.readType;
+  return type is NeverType && type.nullabilitySuffix == NullabilitySuffix.none;
+}
+
+bool _assignmentRightHandSideCanExecute(AssignmentExpression node) =>
+    assignmentTargetCanExecute(node) &&
+    !_assignmentReadStops(node) &&
+    (node.operator.lexeme != '??=' || !_knownNonNullType(node.readType));
+
+bool _assignmentCanComplete(AssignmentExpression node) {
+  if (!_assignmentTargetCanComplete(node, allowSkipping: true)) return false;
+  if (_selectorShorting(node.leftHandSide) != _NullShorting.none) return true;
+  if (_assignmentReadStops(node)) return false;
+  return node.operator.lexeme == '??=' &&
+          node.readType?.isDartCoreNull != true ||
+      expressionCanCompleteNormally(node.rightHandSide);
+}
+
 bool _childCanExecute(AstNode parent, AstNode child) {
   if (parent is ArgumentList && child is Argument) {
     for (final argument in parent.arguments) {
@@ -558,6 +603,10 @@ bool _childCanExecute(AstNode parent, AstNode child) {
       '??' => !isDefinitelyNonNull(parent.leftOperand),
       _ => true,
     };
+  }
+  if (parent is AssignmentExpression &&
+      identical(child, parent.rightHandSide)) {
+    return _assignmentRightHandSideCanExecute(parent);
   }
   if (parent is ConditionalExpression && !identical(child, parent.condition)) {
     if (!expressionCanCompleteNormally(parent.condition)) return false;
@@ -695,17 +744,18 @@ bool _isNull(Expression expression) =>
     expression is NullLiteral ||
     expression is ParenthesizedExpression && _isNull(expression.expression);
 
-bool isDefinitelyNonNull(Expression expression) {
-  final type = expression.staticType;
-  return (type is InterfaceType || type is FunctionType) &&
-          type!.nullabilitySuffix == NullabilitySuffix.none &&
-          !type.isDartCoreNull ||
-      _constantVariable(expression)?.computeConstantValue()?.isNull == false ||
-      expression is Literal && expression is! NullLiteral ||
-      expression is FunctionExpression ||
-      expression is ParenthesizedExpression &&
-          isDefinitelyNonNull(expression.expression);
-}
+bool _knownNonNullType(DartType? type) =>
+    (type is InterfaceType || type is FunctionType) &&
+    type!.nullabilitySuffix == NullabilitySuffix.none &&
+    !type.isDartCoreNull;
+
+bool isDefinitelyNonNull(Expression expression) =>
+    _knownNonNullType(expression.staticType) ||
+    _constantVariable(expression)?.computeConstantValue()?.isNull == false ||
+    expression is Literal && expression is! NullLiteral ||
+    expression is FunctionExpression ||
+    expression is ParenthesizedExpression &&
+        isDefinitelyNonNull(expression.expression);
 
 bool? constantBooleanValue(Expression expression) => switch (expression) {
   BooleanLiteral(:final value) => value,

@@ -138,7 +138,9 @@ final class ThrowSourceCatalog {
       PropertyAccessorElement(:final variable) => variable.isLate,
       _ => false,
     };
-    if (!options.treatLateInitializationAsThrowing || !isLate) {
+    if (!options.treatLateInitializationAsThrowing ||
+        !isLate ||
+        !node.inGetterContext()) {
       return null;
     }
     final variable = element is PropertyAccessorElement

@@ -148,6 +148,8 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'stoppedPropertyWrite': ('synchronous', 'int'),
+  'stoppedCompoundPropertyWrite': ('synchronous', 'String'),
   'storedLazyIterator': ('synchronous', 'String'),
   'blockedLazyConsumer': ('synchronous', 'int'),
   'stoppedGuardCase': ('synchronous', 'int'),
@@ -192,6 +194,8 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'stoppedPropertyWrite': 'bool',
+  'stoppedCompoundPropertyWrite': 'bool',
   'storedLazyIteratorCaught': 'String',
   'unusedLazyIterator': 'String',
   'blockedLazyConsumer': 'String',
@@ -223,6 +227,8 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'stopped_property_write': '42',
+  'stopped_compound_property_write': 'String',
   'stored_lazy_iterator': 'String',
   'stored_lazy_iterator_caught': 'none',
   'unused_lazy_iterator': 'none',
@@ -299,6 +305,16 @@ import 'dart:convert';
 const disabledBranch = false;
 Never stopEvaluation() => throw 42;
 Never throwString() => throw 'effect';
+final class AssignmentTarget {
+  int get value => throwString();
+  set value(int next) { throw true; }
+}
+void stoppedPropertyWrite() {
+  AssignmentTarget().value = stopEvaluation();
+}
+void stoppedCompoundPropertyWrite() {
+  AssignmentTarget().value += stopEvaluation();
+}
 void stoppedGuardCase() {
   final result = switch (false) {
     _ when stopEvaluation() => throwString(),
@@ -499,6 +515,8 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'stopped_property_write': capture(stoppedPropertyWrite),
+    'stopped_compound_property_write': capture(stoppedCompoundPropertyWrite),
     'stored_lazy_iterator': capture(storedLazyIterator),
     'stored_lazy_iterator_caught': capture(storedLazyIteratorCaught),
     'unused_lazy_iterator': capture(unusedLazyIterator),

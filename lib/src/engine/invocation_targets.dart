@@ -2,6 +2,13 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
+import 'statement_completion.dart';
+
+bool isAssignmentTarget(AstNode node) {
+  final parent = node.parent;
+  return parent is AssignmentExpression && identical(parent.leftHandSide, node);
+}
+
 /// Executables called by syntax that does not look like a method invocation.
 /// Compound writes execute a read, an operator, and a write independently.
 Iterable<Element?> invocationTargets(
@@ -10,13 +17,22 @@ Iterable<Element?> invocationTargets(
 ) sync* {
   switch (node) {
     case AssignmentExpression():
-      if (node.readElement is ExecutableElement) yield node.readElement;
+      if (!assignmentTargetCanExecute(node)) return;
+      final dynamicReceiver = switch (node.leftHandSide) {
+        PropertyAccess(:final realTarget) =>
+          realTarget.staticType is DynamicType,
+        PrefixedIdentifier(:final prefix) => prefix.staticType is DynamicType,
+        _ => false,
+      };
+      if (node.readElement is ExecutableElement) {
+        yield node.readElement;
+      } else if (node.operator.lexeme != '=' && dynamicReceiver) {
+        yield null;
+      }
+      if (!assignmentWriteCanExecute(node)) return;
       if (node.element != null) yield node.element;
       if (node.writeElement is ExecutableElement) yield node.writeElement;
-      if (node.writeElement == null &&
-          node.leftHandSide is PropertyAccess &&
-          (node.leftHandSide as PropertyAccess).realTarget.staticType
-              is DynamicType) {
+      if (node.writeElement == null && dynamicReceiver) {
         yield null;
       }
     case PrefixExpression():

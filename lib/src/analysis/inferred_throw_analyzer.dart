@@ -2573,7 +2573,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     final element = node.propertyName.element;
     // Reading a method/function tearoff creates a value; its body executes
     // only when that value is called. Getters still execute on the read.
-    if (element is! ExecutableElement || element is PropertyAccessorElement) {
+    if (!isAssignmentTarget(node) &&
+        (element is! ExecutableElement || element is PropertyAccessorElement)) {
       _recordCall(node);
     }
     super.visitPropertyAccess(node);
@@ -2768,7 +2769,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitPrefixedIdentifier(PrefixedIdentifier node) {
     final element = node.identifier.element;
-    if (element is! ExecutableElement || element is PropertyAccessorElement) {
+    if (!isAssignmentTarget(node) &&
+        (element is! ExecutableElement || element is PropertyAccessorElement)) {
       _recordCall(node);
     }
     super.visitPrefixedIdentifier(node);
@@ -2778,6 +2780,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   void visitSimpleIdentifier(SimpleIdentifier node) {
     if (node.inGetterContext() &&
         node.element is GetterElement &&
+        !isAssignmentTarget(node) &&
         node.parent is! PropertyAccess &&
         node.parent is! PrefixedIdentifier) {
       _recordCall(node);
