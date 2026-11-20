@@ -7,11 +7,11 @@ type or annotation scheme is required of consuming applications.
 
 ## Supported environment
 
-The current analysis interface is pinned to analyzer 14.1.0 and Dart 3.11–3.13.
-CI exercises 3.11.0, 3.12.0 and stable. Declaration inventories record SDK
-3.11.0, 3.12.0 and 3.13.5. Each inventory covers public callable identities,
-signatures, native declarations and explicit error-producer identities in ten
-SDK libraries. SHA-256 source fingerprints include SDK private implementations
+The current analysis interface is pinned to analyzer 14.1.0 and Dart 3.11–3.14.
+CI exercises 3.11.0, 3.12.0, 3.13.5 and stable. Declaration inventories record
+SDK 3.11.0, 3.12.0, 3.13.5 and 3.14.1. Each inventory covers public callable
+identities, signatures, native declarations and explicit error-producer
+identities in ten SDK libraries. SHA-256 source fingerprints include SDK private implementations
 and VM/JavaScript patches, so a body-only SDK change also requires review.
 An inventory is change detection, not an assertion that every declaration has
 a complete exception model. Future stable SDK drift deliberately fails this

@@ -240,6 +240,36 @@ void main() {
     },
   );
 
+  if (Platform.version.startsWith('3.14.')) {
+    test('Dart 3.14 range and promise checks preserve typed catches', () async {
+      await write('lib/main.dart', '''
+import 'dart:typed_data';
+import 'dart:js_interop';
+void range(Uint8List a, Uint8List b) { a.rangeEquals(0, 3, b); }
+void caughtRange(Uint8List a, Uint8List b) {
+  try { a.rangeEquals(0, 3, b); } on RangeError {}
+}
+void promise(JSAny value) { JSPromise.resolve(value); }
+void caughtPromise(JSAny value) {
+  try { JSPromise.resolve(value); } on ArgumentError {}
+}
+''');
+      final result = await run(['lib']);
+      expect(result.code, 1);
+      final findings = result.report['findings'] as List;
+      expect(
+        {
+          for (final finding in findings)
+            finding['symbol']: finding['exceptionTypes'],
+        },
+        {
+          'function:range': ['RangeError'],
+          'function:promise': ['ArgumentError'],
+        },
+      );
+    });
+  }
+
   test(
     'intentional propagation is visible and remains an effect at callers',
     () async {

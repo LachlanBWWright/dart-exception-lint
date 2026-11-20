@@ -52,7 +52,14 @@ Future<void> main(List<String> arguments) async {
           SetterElement() => 'set',
           _ => 'call',
         };
-        final id = '$uri/$owner/$kind/$name';
+        // The analyzer uses a distinct lookup name for unary minus.
+        final member = element is MethodElement
+            ? element.lookupName ?? name
+            : name;
+        final id = '$uri/$owner/$kind/$member';
+        if (declarations.containsKey(id)) {
+          throw StateError('Duplicate SDK declaration identity: $id');
+        }
         declarations[id] = {
           'type': element.type.getDisplayString(),
           'external': element.isExternal,

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Audit Dart 3.14.1 alongside the previous SDKs. Model typed-data
+  `rangeEquals` bounds errors and `JSPromise.resolve` argument errors, and
+  recognise `JSPromise.reject` as an explicit SDK error producer.
+- Trace loop and invocation effects in evaluation order. Keep known effects
+  ahead of unknown ones when the source budget fills, and project deferred
+  generator failures when `Iterator.moveNext()` executes them.
+- Preserve literal CLI paths and distinguish shadowed local functions in
+  reports. Include referenced analyzer options in baseline fingerprints.
+
 - Track stored async adoption as an independent output obligation while retaining
   the observed local input's error types. Preserve typed catches, aliases and
   repeated adoption without merging distinct Future outputs.

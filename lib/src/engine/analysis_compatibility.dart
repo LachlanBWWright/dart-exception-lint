@@ -17,8 +17,8 @@ final class AnalysisCompatibility {
     final version = RegExp(r'^(\d+)\.(\d+)\.(\d+)').firstMatch(sdk);
     if (version == null ||
         version.group(1) != '3' ||
-        !const {'11', '12', '13'}.contains(version.group(2))) {
-      return 'Dart $sdk has not been audited; supported SDK series are 3.11–3.13.';
+        !const {'11', '12', '13', '14'}.contains(version.group(2))) {
+      return 'Dart $sdk has not been audited; supported SDK series are 3.11–3.14.';
     }
     return null;
   }

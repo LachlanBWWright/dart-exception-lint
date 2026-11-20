@@ -13,7 +13,7 @@
 
 ## Installation
 
-The current model inventory supports Dart 3.11–3.13 and analyzer 14.1.0.
+The current model inventory supports Dart 3.11–3.14 and analyzer 14.1.0.
 Unreviewed environments emit `unsupported_exception_analysis_environment`
 warnings; source coverage and native models must be audited before widening
 support. All diagnostics are enabled when the plugin is enabled. Individual

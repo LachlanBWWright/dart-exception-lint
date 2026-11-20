@@ -795,6 +795,17 @@ final class ThrowSourceCatalog {
       );
     }
 
+    if (_isExpectedLibrary(libraryUri, 'dart:js_interop') &&
+        enclosingClassName == 'JSPromise' &&
+        name == 'resolve') {
+      return const ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: 'JSPromise.resolve',
+        exceptionTypes: ['ArgumentError'],
+      );
+    }
+
     if (_isExpectedLibrary(libraryUri, 'dart:typed_data') &&
         (name == 'getInt8' ||
             name == 'getUint8' ||
@@ -840,6 +851,7 @@ final class ThrowSourceCatalog {
           'sublist',
           'getRange',
           'setRange',
+          'rangeEquals',
         }.contains(name)) {
       return const ThrowSource(
         kind: ThrowSourceKind.collectionStateCall,

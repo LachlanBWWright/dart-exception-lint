@@ -135,6 +135,8 @@ ErrorProducer? explicitErrorProducer(Element? element) {
     ),
     ('dart:async', 'Future', 'error') => const ErrorProducer('Future.error'),
     ('dart:async', 'Stream', 'error') => const ErrorProducer('Stream.error'),
+    ('dart:js_interop', 'JSPromise', 'reject') when target.isStatic =>
+      const ErrorProducer('JSPromise.reject'),
     ('dart:async', 'Completer', 'completeError') => const ErrorProducer(
       'Completer.completeError',
     ),

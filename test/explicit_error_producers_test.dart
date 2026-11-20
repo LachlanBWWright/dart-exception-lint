@@ -18,6 +18,7 @@ void main() {
       );
       AnalysisContextCollection? collection;
       try {
+        final hasJsPromiseReject = Platform.version.startsWith('3.14.');
         await File('${directory.path}/lookalikes.dart').writeAsString('''
 class Future { Future.error(Object error); }
 class Stream { Stream.error(Object error); }
@@ -26,11 +27,13 @@ class Completer { void completeError(Object error) {} }
 class EventSink { void addError(Object error) {} }
 class Zone { void handleUncaughtError(Object error, StackTrace stack) {} }
 class MultiStreamController { void addErrorSync(Object error) {} }
+class JSPromise { static JSPromise reject(Object error) => JSPromise(); }
 ''');
         final file = File('${directory.path}/main.dart');
         await file.writeAsString('''
 import 'dart:async';
 import 'dart:io';
+${hasJsPromiseReject ? "import 'dart:js_interop';" : ''}
 import 'lookalikes.dart' as fake;
 void throwStack() => Error.throwWithStackTrace('e', StackTrace.empty);
 Future<int> futureError() => Future<int>.error('e');
@@ -65,10 +68,13 @@ void fakeCompleter(fake.Completer value) => value.completeError('e');
 void fakeSink(fake.EventSink value) => value.addError('e');
 void fakeZone(fake.Zone value) => value.handleUncaughtError('e', StackTrace.empty);
 void fakeMulti(fake.MultiStreamController value) => value.addErrorSync('e');
+fake.JSPromise fakePromise() => fake.JSPromise.reject('e');
+${hasJsPromiseReject ? 'JSPromise<Null> rejectPromise(JSAny value) => JSPromise.reject(value);' : ''}
 void references() {
   final futureReference = Future<int>.error;
   final streamReference = Stream<int>.error;
   final stackReference = Error.throwWithStackTrace;
+  ${hasJsPromiseReject ? 'final rejectReference = JSPromise.reject;' : ''}
 }
 ''');
         collection = AnalysisContextCollection(includedPaths: [directory.path]);
@@ -102,6 +108,7 @@ void references() {
           'ioSink': 'IOSink.addError',
           'socket': 'Socket.addError',
           'output': 'IOSink.addError',
+          if (hasJsPromiseReject) 'rejectPromise': 'JSPromise.reject',
         };
         for (final declaration in declarations.where(
           (declaration) => declaration.name.lexeme != 'references',
@@ -138,6 +145,7 @@ void references() {
           'futureReference': 'Future.error',
           'streamReference': 'Stream.error',
           'stackReference': 'Error.throwWithStackTrace',
+          if (hasJsPromiseReject) 'rejectReference': 'JSPromise.reject',
         }.entries) {
           final value = resolver.forElement(
             references.variables[entry.key]!.declaredFragment!.element,

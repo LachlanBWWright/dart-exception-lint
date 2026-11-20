@@ -3765,6 +3765,11 @@
       "external": true,
       "static": true
     },
+    "dart:core/BigInt/call/unary-": {
+      "type": "BigInt Function()",
+      "external": false,
+      "static": false
+    },
     "dart:core/BigInt/call/|": {
       "type": "BigInt Function(BigInt)",
       "external": false,
@@ -4201,7 +4206,7 @@
       "static": false
     },
     "dart:core/Duration/call/-": {
-      "type": "Duration Function()",
+      "type": "Duration Function(Duration)",
       "external": false,
       "static": false
     },
@@ -4242,6 +4247,11 @@
     },
     "dart:core/Duration/call/toString": {
       "type": "String Function()",
+      "external": false,
+      "static": false
+    },
+    "dart:core/Duration/call/unary-": {
+      "type": "Duration Function()",
       "external": false,
       "static": false
     },
@@ -6582,7 +6592,7 @@
       "static": false
     },
     "dart:core/double/call/-": {
-      "type": "double Function()",
+      "type": "double Function(num)",
       "external": false,
       "static": false
     },
@@ -6656,6 +6666,11 @@
       "external": true,
       "static": true
     },
+    "dart:core/double/call/unary-": {
+      "type": "double Function()",
+      "external": false,
+      "static": false
+    },
     "dart:core/double/call/~/": {
       "type": "int Function(num)",
       "external": false,
@@ -6698,11 +6713,6 @@
     },
     "dart:core/int/call/&": {
       "type": "int Function(int)",
-      "external": false,
-      "static": false
-    },
-    "dart:core/int/call/-": {
-      "type": "int Function()",
       "external": false,
       "static": false
     },
@@ -6816,6 +6826,11 @@
       "external": true,
       "static": true
     },
+    "dart:core/int/call/unary-": {
+      "type": "int Function()",
+      "external": false,
+      "static": false
+    },
     "dart:core/int/call/|": {
       "type": "int Function(int)",
       "external": false,
@@ -6877,7 +6892,7 @@
       "static": false
     },
     "dart:core/num/call/-": {
-      "type": "num Function()",
+      "type": "num Function(num)",
       "external": false,
       "static": false
     },
@@ -7010,6 +7025,11 @@
       "type": "num? Function(String)",
       "external": false,
       "static": true
+    },
+    "dart:core/num/call/unary-": {
+      "type": "num Function()",
+      "external": false,
+      "static": false
     },
     "dart:core/num/call/~/": {
       "type": "int Function(num)",
@@ -13598,6 +13618,11 @@
       "external": false,
       "static": false
     },
+    "dart:typed_data/Float32x4/call/unary-": {
+      "type": "Float32x4 Function()",
+      "external": false,
+      "static": false
+    },
     "dart:typed_data/Float32x4/call/withW": {
       "type": "Float32x4 Function(double)",
       "external": false,
@@ -15069,6 +15094,11 @@
       "static": false
     },
     "dart:typed_data/Float64x2/call/sqrt": {
+      "type": "Float64x2 Function()",
+      "external": false,
+      "static": false
+    },
+    "dart:typed_data/Float64x2/call/unary-": {
       "type": "Float64x2 Function()",
       "external": false,
       "static": false
