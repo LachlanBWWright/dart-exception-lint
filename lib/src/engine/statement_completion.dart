@@ -287,6 +287,11 @@ bool _operationCanExecute(AstNode node) => switch (node) {
   ThrowExpression(:final expression) => expressionCanCompleteNormally(
     expression,
   ),
+  ForEachParts(iterable: final expression) ||
+  SpreadElement(:final expression) ||
+  YieldStatement(
+    :final expression,
+  ) => expressionCanCompleteNormally(expression),
   _ => true,
 };
 

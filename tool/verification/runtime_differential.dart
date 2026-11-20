@@ -148,6 +148,7 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'blockedLazyConsumer': ('synchronous', 'int'),
   'stoppedGuardCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
   'postfixAssertion': ('synchronous', 'TypeError'),
@@ -190,6 +191,7 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'blockedLazyConsumer': 'String',
   'stoppedGuardCase': 'String',
   'skippedGuard': 'String',
   'caughtPostfixAssertion': 'TypeError',
@@ -218,6 +220,7 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'blocked_lazy_consumer': '42',
   'stopped_guard_case': '42',
   'skipped_guard': 'none',
   'postfix_assertion': 'TypeError',
@@ -400,6 +403,9 @@ void getterFailure(Data data) { if (data case Data(value: var item)) { item; } }
 Future<void> futureFailure() async { throw 'future'; }
 Stream<int> streamFailure() async* { throw 'stream'; }
 Iterable<int> lazyFailure() sync* { throw 'lazy'; }
+void blockedLazyConsumer() {
+  List<int>.of(lazyFailure(), growable: stopEvaluation());
+}
 void consumeWrappedLazy() { (lazyFailure()).toList(); }
 void consumeMappedLazy() { lazyFailure().map((value) => value).toList(); }
 void consumeCopiedLazy() { List<int>.of(lazyFailure()); }
@@ -473,6 +479,7 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'blocked_lazy_consumer': capture(blockedLazyConsumer),
     'stopped_guard_case': capture(stoppedGuardCase),
     'skipped_guard': capture(skippedGuard),
     'postfix_assertion': capture(() => postfixAssertion(null)),

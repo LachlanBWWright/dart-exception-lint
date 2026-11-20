@@ -21,6 +21,7 @@ void main() {
         final file = File('${directory.path}/main.dart');
         await file.writeAsString('''
 Iterable<int> values() sync* { throw 'failure'; }
+Never stop() => throw 42;
 Iterable<int> helper() {
   try { return values(); } on String { return []; }
 }
@@ -28,6 +29,8 @@ void consume() { values().toList(); }
 void consumeWrapped() { (values()).toList(); }
 void consumeMapped() { values().where((_) => true).map((value) => value).toList(); }
 void consumeCopied() { List<int>.of(values()); }
+void skippedConstructorConsumer() { List<int>.of(values(), growable: stop()); }
+void skippedMethodConsumer() { values().toList(growable: stop()); }
 void consumeIterator() { (values().iterator).moveNext(); }
 void consumeMappedIterator() { values().map((value) => value).iterator.moveNext(); }
 Iterator<int> createIterator() {
@@ -105,6 +108,18 @@ Iterable<int> relay() sync* { try { yield* values(); } on String {} }
           isNot(contains(ExceptionChannel.synchronous)),
         );
         expect(stringChannels('relay'), isEmpty);
+        for (final name in [
+          'skippedConstructorConsumer',
+          'skippedMethodConsumer',
+        ]) {
+          final summary = summaries[name]!;
+          expect(stringChannels(name), isEmpty, reason: name);
+          expect(
+            summary.sources.expand((source) => source.exceptionTypes),
+            contains('int'),
+            reason: name,
+          );
+        }
       } finally {
         await collection?.dispose();
         await directory.delete(recursive: true);

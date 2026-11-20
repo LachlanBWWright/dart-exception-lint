@@ -22,10 +22,13 @@ bool isProtectedByCatch(
   }
   // Awaiting a scheduler handle does not observe errors from its callback.
   if (channel == ExceptionChannel.scheduled) return false;
-  // Creating or returning a lazy value does not execute its iterator. A catch
-  // at that site cannot contain failures when another function consumes it.
-  if (channel == ExceptionChannel.deferred && !consumesDeferredValue(node)) {
-    return false;
+  if (channel == ExceptionChannel.deferred) {
+    final consumer = deferredExecutionSite(node);
+    // Creating a lazy value does not execute its iterator. Containment must
+    // apply at the operation that advances it, after that operation's inputs.
+    if (consumer == null) return false;
+    if (!isReachable(consumer)) return true;
+    node = consumer;
   }
   if (requireAsyncProtection && _hasAsyncErrorHandler(node)) {
     return true;
@@ -234,8 +237,8 @@ AstNode? asyncValueConsumer(AstNode node) {
   }
 }
 
-/// Whether this value reaches a verified synchronous iterator consumer.
-bool consumesDeferredValue(AstNode node) {
+/// The operation that executes a lazy value when its inputs finish evaluating.
+AstNode? deferredExecutionSite(AstNode node) {
   var forwarded = node;
   while (true) {
     final parent =
@@ -245,8 +248,8 @@ bool consumesDeferredValue(AstNode node) {
     forwarded = parent;
   }
   final consumer = forwarded.parent;
-  if (consumer is ForEachParts || consumer is SpreadElement) return true;
-  if (consumer is YieldStatement) return consumer.star != null;
+  if (consumer is ForEachParts || consumer is SpreadElement) return consumer;
+  if (consumer is YieldStatement && consumer.star != null) return consumer;
   if (consumer is ArgumentList &&
       consumer.arguments.isNotEmpty &&
       identical(consumer.arguments.first, forwarded)) {
@@ -257,10 +260,12 @@ bool consumesDeferredValue(AstNode node) {
     if (constructor?.library.uri.toString() == 'dart:core') {
       final owner = constructor?.enclosingElement.name;
       final name = constructor?.name;
-      return (const {'List', 'Set'}.contains(owner) &&
+      final consumes =
+          (const {'List', 'Set'}.contains(owner) &&
               const {'from', 'of', 'unmodifiable'}.contains(name)) ||
           (owner == 'Map' &&
               const {'fromIterable', 'fromEntries'}.contains(name));
+      if (consumes) return invocation;
     }
   }
   final element = switch (consumer) {
@@ -268,15 +273,17 @@ bool consumesDeferredValue(AstNode node) {
     PropertyAccess() => consumer.propertyName.element,
     _ => null,
   };
-  if (element?.library?.uri.toString() != 'dart:core') return false;
+  if (element?.library?.uri.toString() != 'dart:core') return null;
   final owner = element?.enclosingElement?.name;
   if (owner == 'Iterator') {
     return consumer is MethodInvocation &&
-        identical(consumer.realTarget, forwarded) &&
-        element?.name == 'moveNext';
+            identical(consumer.realTarget, forwarded) &&
+            element?.name == 'moveNext'
+        ? consumer
+        : null;
   }
-  if (!const {'Iterable', 'List', 'Set'}.contains(owner)) return false;
-  return switch (consumer) {
+  if (!const {'Iterable', 'List', 'Set'}.contains(owner)) return null;
+  final consumes = switch (consumer) {
     MethodInvocation() =>
       identical(consumer.realTarget, forwarded) &&
           const {
@@ -306,6 +313,7 @@ bool consumesDeferredValue(AstNode node) {
           }.contains(element?.name),
     _ => false,
   };
+  return consumes ? consumer : null;
 }
 
 PropertyAccess? _iterableIteratorAccess(AstNode target) {

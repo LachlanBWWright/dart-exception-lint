@@ -2910,15 +2910,12 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
             asyncValueConsumer(node) is ExpressionStatement);
     final consumer = node == null ? null : asyncValueConsumer(node);
     final consumesIterator =
-        (sourceChannel == ExceptionChannel.stream ||
-            sourceChannel == ExceptionChannel.deferred) &&
-        ((sourceChannel == ExceptionChannel.deferred &&
-                node != null &&
-                consumesDeferredValue(node)) ||
-            consumer is ForEachParts ||
-            (consumer is SpreadElement &&
-                sourceChannel == ExceptionChannel.deferred) ||
-            (consumer is YieldStatement && consumer.star != null));
+        sourceChannel == ExceptionChannel.deferred &&
+            node != null &&
+            deferredExecutionSite(node) != null ||
+        sourceChannel == ExceptionChannel.stream &&
+            (consumer is ForEachParts ||
+                consumer is YieldStatement && consumer.star != null);
     final channel = unverifiedUnobservedFuture
         ? ExceptionChannel.scheduled
         : sourceChannel == ExceptionChannel.synchronous ||
