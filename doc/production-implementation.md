@@ -80,6 +80,40 @@ still required; conservative unknown fallbacks do not complete semantic models.
 
 ## Verification evidence
 
+### Control-flow, dispatch and Future forwarding refinements
+
+The Dart 3.13.7 suite passes 486 tests. Shared resolved-constant branch facts
+now drive structural completion, inference and async ownership without treating
+pattern matches as boolean conditions. Exact generative allocations, `super`,
+extension and extension-type calls exclude unrelated overrides. Dispatch leaf
+checks include classes that declare no overrides, retaining unknown effects
+for open inherited implementations and incomplete inventories.
+
+Source Future error-channel proofs follow single-input static/top-level helpers
+and delegation, with named/stored alias ownership and typed containment. Immediate
+async return/await bodies also transfer error ownership without asserting Future
+object identity. Alias locations remain separate for async adoption, including
+synchronous wrappers around async delegates. Tracked local adoption retains the
+observed input's type facts and creates a separate obligation for each output.
+Regression tests cover typed output aliases, nested/repeated adoption, partial
+branch observation and overwritten outputs, and verify that catching the input
+cannot discharge an ignored async output. Scheduled or ambiguous mixed-channel
+producer effects cannot be reclassified as an adopted Future error.
+Proofs are limited by configured depth and eight helper declarations. Tests
+cover cycles, depth-sensitive cache reuse, dependency body changes, manifest
+creation/edits, invalid configuration and annotation precedence. Helpers with
+earlier work or suspension, mutable bodies, virtual targets and dynamic type
+boundaries cannot establish these proofs. These are partial advances on items 7, 13 and 18, not completion
+of general control-flow interpretation, dispatch or heap ownership.
+
+All 245 differential observations match on the VM and JavaScript backends,
+including immediate async adoption, typed containment, discarded results and
+the separate obligations created by stored and repeated async adoption. Existing core
+and callback performance gates pass. The new generated 1,000-caller forwarding
+gate now includes async adoption and measures 1,272 ms cold, 45 ms for ten warm
+passes and 663 MiB peak RSS on the local stable SDK; it runs in CI with 10-second cold/warm and 1-GiB RSS budgets.
+These generated checks do not establish real-project or IDE latency.
+
 ### Release-contract implementation batch
 
 The stable Dart 3.13.5 suite passes 440 tests, including new structural flow,

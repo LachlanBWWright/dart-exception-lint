@@ -25,6 +25,20 @@ class CatchRuntimeThrowSourcesRuleTest extends AnalysisRuleTest {
   static final CatchRuntimeThrowSourcesRule _rule =
       CatchRuntimeThrowSourcesRule();
 
+  Future<void>
+  test_sdkNames_withoutSdkIdentity_doNotProduceRuntimeModels() async {
+    await assertNoDiagnostics(r'''
+class Uri { static int parse(String value) => 1; }
+class RegExp { RegExp(String value); }
+int jsonDecode(String value) => 1;
+void f() { Uri.parse('bad'); RegExp('['); jsonDecode('bad'); }
+void dynamicTargets(dynamic Future, dynamic int) {
+  Future.error('bad');
+  int.parse('bad');
+}
+''');
+  }
+
   Future<void> test_numeric_compoundDivision_reports() async {
     const code = r'''
 void f(int value, int divisor) { value ~/= divisor; }

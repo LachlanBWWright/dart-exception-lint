@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- Track stored async adoption as an independent output obligation while retaining
+  the observed local input's error types. Preserve typed catches, aliases and
+  repeated adoption without merging distinct Future outputs.
+
+- Extend source Future forwarding proofs to immediate async return/await bodies,
+  preserving typed error ownership through adoption and delegation. Helpers with
+  earlier work or suspension remain unverified.
+
+- Share resolved constant-boolean branch facts between structural completion,
+  inference, and async ownership instead of using separate literal-only tests.
+- Exclude subclass overrides from exact allocations, `super`, extension and
+  extension-type dispatch; retain uncertainty for open leaves with no declared
+  overrides and for incomplete hierarchy inventories.
+- Preserve Future ownership through verified synchronous single-input source
+  forwarders, including named/stored aliases and cross-library delegation.
+  Bound proofs by call depth and eight helper declarations; invalidate them on
+  dependency/configuration changes and preserve explicit contracts/overrides.
+
+- Require resolved SDK declarations for invocation models; remove syntax-only
+  SDK matching and name-based body target reconstruction. Preserve unresolved
+  uppercase calls and dynamically shadowed SDK names as unknown behavior.
+- Retain effect evidence through propagation, callback scheduling, summary
+  deduplication and recursive convergence. CLI schema 2 distinguishes source,
+  language, SDK-model, annotation, manifest and unresolved evidence; older
+  baselines must be regenerated.
+
+- Add an agent-facing CLI with versioned JSON effect reports, source origins
+  and bounded causal paths, file/Git scopes, stable baseline comparisons,
+  configurable enforcement, and time/RSS budgets. Reuse plugin inference and
+  dependency resolution; distinguish findings from failed analysis.
+
 - Share residual-effect containment across inference, runtime and manifest
   reporting; preserve discarded failing Futures as scheduled caller effects.
 - Track argument/record evaluation order, short-circuit branches and

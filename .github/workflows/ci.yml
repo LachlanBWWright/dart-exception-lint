@@ -38,6 +38,8 @@ jobs:
         run: dart run tool/verification/benchmark.dart
       - name: Check callback inference performance budgets
         run: dart run tool/verification/callback_benchmark.dart
+      - name: Check source Future forwarding performance budgets
+        run: dart run tool/verification/future_forwarding_benchmark.dart
       - name: Compare inferred effects with VM and JavaScript behavior
         run: dart run tool/verification/runtime_differential.dart
       - name: Compare callback effects with VM and JavaScript behavior
@@ -57,7 +59,7 @@ jobs:
           dart analyze
       - name: Publish dry run
         run: dart pub publish --dry-run
-      - name: Verify clean release snapshot and enable-only consumer
+      - name: Verify clean release snapshot, standalone CLI, and enable-only consumer
         run: dart run tool/verification/release_smoke.dart
       - name: Verify Analysis Server editor overlays
         run: dart run tool/verification/ide_smoke.dart

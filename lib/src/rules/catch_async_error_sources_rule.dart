@@ -20,6 +20,7 @@ import '../engine/value_location.dart';
 import '../engine/effect_containment.dart';
 import '../engine/statement_completion.dart';
 import '../engine/invocation_targets.dart';
+import '../engine/future_forwarding.dart';
 import '../diagnostics.dart';
 import '../utils/source_utils.dart';
 
@@ -168,7 +169,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   }
 
   void _reportAbandonedEffect(_DeferredAsyncEffect effect) {
-    if (effect.isProtectedAt(effect.node)) {
+    if (!effect.requiresObservation || effect.isProtectedAt(effect.node)) {
       return;
     }
     if (_emissions.claim(effect.node)) {
@@ -260,7 +261,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   @override
   void visitConditionalExpression(ConditionalExpression node) {
     node.condition.accept(this);
-    if (node.condition case BooleanLiteral(:final value)) {
+    if (constantBooleanValue(node.condition) case final value?) {
       (value ? node.thenExpression : node.elseExpression).accept(this);
     } else {
       _visitAlternatives([node.thenExpression, node.elseExpression]);
@@ -272,7 +273,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     node.leftOperand.accept(this);
     final operator = node.operator.lexeme;
     if (operator == '&&' || operator == '||') {
-      if (node.leftOperand case BooleanLiteral(:final value)) {
+      if (constantBooleanValue(node.leftOperand) case final value?) {
         if ((operator == '&&' && value) || (operator == '||' && !value)) {
           node.rightOperand.accept(this);
         }
@@ -305,8 +306,11 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   void visitIfStatement(IfStatement node) {
     node.expression.accept(this);
     node.caseClause?.accept(this);
-    if (node.expression is BooleanLiteral) {
-      if ((node.expression as BooleanLiteral).value) {
+    final condition = node.caseClause == null
+        ? constantBooleanValue(node.expression)
+        : null;
+    if (condition != null) {
+      if (condition) {
         node.thenStatement.accept(this);
       } else {
         node.elseStatement?.accept(this);
@@ -319,8 +323,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   @override
   void visitWhileStatement(WhileStatement node) {
     node.condition.accept(this);
-    if (node.condition is BooleanLiteral &&
-        !(node.condition as BooleanLiteral).value) {
+    if (constantBooleanValue(node.condition) == false) {
       return;
     }
     final before = _copyEffects(_deferredEffects);
@@ -406,7 +409,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   @override
   void visitAwaitExpression(AwaitExpression node) {
     node.visitChildren(this);
-    final expression = node.expression;
+    var expression = node.expression;
+    for (var depth = 0; depth < 8; depth++) {
+      final forwarded = forwardedFutureArgument(
+        expression,
+        requireIdentity: true,
+      );
+      if (forwarded == null) break;
+      expression = forwarded;
+    }
     final stored = _effectsForExpression(expression);
     if (stored.isNotEmpty) {
       final residual = stored
@@ -562,6 +573,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       _invalidateStoredValue(target);
     }
     node.visitChildren(this);
+    if (_transferAdoptedFuture(node)) return;
     if (node.parent is AwaitExpression) {
       return;
     }
@@ -583,6 +595,20 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     }
 
     final method = node.methodName.element;
+    final forwarded = forwardedFutureArgument(node, requireIdentity: true);
+    if (forwarded != null &&
+        (_effectsForExpression(forwarded).isNotEmpty ||
+            [..._deferredEffects.values, ..._escapedEffects.values]
+                .expand((effects) => effects)
+                .any(
+                  (effect) =>
+                      effect.node.offset >= forwarded.offset &&
+                      effect.node.end <= forwarded.end,
+                ))) {
+      // A pure forwarder preserves the original obligation and its types.
+      // Do not replace it with the callee's context-free unknown parameter.
+      return;
+    }
     if (method?.library?.uri.toString() == 'dart:async' &&
         method?.enclosingElement?.name == 'Stream' &&
         method?.name == 'listen' &&
@@ -885,6 +911,63 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     return true;
   }
 
+  // Adoption observes the input but creates an independently failing output.
+  // Keep the input's type facts for later awaits/adoptions without retaining
+  // its observation obligation. Replacing objects within the current flow maps
+  // lets branch joins retain the pending alternative on unobserved paths.
+  bool _transferAdoptedFuture(MethodInvocation node) {
+    final input = forwardedFutureArgument(node);
+    if (input == null ||
+        forwardedFutureArgument(node, requireIdentity: true) != null) {
+      return false;
+    }
+    final inputLocation = _valueLocation(input);
+    if (inputLocation == null ||
+        !(inputLocation.root is LocalVariableElement ||
+            inputLocation.root is MethodInvocation)) {
+      return false;
+    }
+    final effects = _effectsForExpression(input).toSet();
+    if (effects.isEmpty ||
+        effects.any(
+          (effect) =>
+              effect.channel != ExceptionChannel.future &&
+              !(effect.channel == null && effect.analysis == null),
+        )) {
+      // A Future-valued producer can also start unrelated scheduled work.
+      // Adoption cannot observe that work or change its error channel.
+      return false;
+    }
+    final output = <_DeferredAsyncEffect>[];
+    for (final effect in effects) {
+      if (effect.requiresObservation) {
+        final observed = effect.withoutObservation();
+        for (final map in [_deferredEffects, _escapedEffects]) {
+          for (final values in map.values) {
+            for (var index = 0; index < values.length; index++) {
+              if (identical(values[index], effect)) values[index] = observed;
+            }
+          }
+        }
+        _orphanedEffects.remove(effect);
+      }
+      output.add(
+        _DeferredAsyncEffect(
+          node: node,
+          displayName: effect.displayName,
+          exceptionTypes: effect.exceptionTypes,
+          exceptionSupertypes: effect.exceptionSupertypes,
+          resolvedExceptionTypes: effect.resolvedExceptionTypes,
+          channel: ExceptionChannel.future,
+          analysis: effect.analysis,
+        ),
+      );
+    }
+    // An AST invocation identifies this evaluation, never the input's object.
+    _deferredEffects[ValueLocation(node)] = output;
+    return true;
+  }
+
   void _consumeStoredEffect(_DeferredAsyncEffect effect) {
     _orphanedEffects.remove(effect);
     for (final effects in [_deferredEffects, _escapedEffects]) {
@@ -942,7 +1025,15 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   }
 
   ValueLocation? _valueLocation(Expression expression) {
+    final forwarded = forwardedFutureArgument(
+      expression,
+      requireIdentity: true,
+    );
+    if (forwarded != null) return _valueLocation(forwarded);
     switch (expression) {
+      case MethodInvocation()
+          when _deferredEffects.containsKey(ValueLocation(expression)):
+        return ValueLocation(expression);
       case SimpleIdentifier(:final element):
         final variable = _storageElement(element);
         if (variable == null) return null;
@@ -1183,8 +1274,10 @@ final class _DeferredAsyncEffect {
     this.resolvedExceptionTypes = const [],
     this.channel,
     this.analysis,
+    this.requiresObservation = true,
   });
 
+  final bool requiresObservation;
   final AstNode node;
   final String displayName;
   final List<String> exceptionTypes;
@@ -1192,6 +1285,17 @@ final class _DeferredAsyncEffect {
   final List<DartType> resolvedExceptionTypes;
   final ExceptionChannel? channel;
   final InferredCallAnalysis? analysis;
+
+  _DeferredAsyncEffect withoutObservation() => _DeferredAsyncEffect(
+    node: node,
+    displayName: displayName,
+    exceptionTypes: exceptionTypes,
+    exceptionSupertypes: exceptionSupertypes,
+    resolvedExceptionTypes: resolvedExceptionTypes,
+    channel: channel,
+    analysis: analysis,
+    requiresObservation: false,
+  );
 
   bool isProtectedAt(AstNode consumer) =>
       analysis?.isProtectedAt(consumer, requireAsyncProtection: true) ??

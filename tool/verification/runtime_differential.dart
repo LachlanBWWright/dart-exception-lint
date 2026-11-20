@@ -36,6 +36,19 @@ Future<void> main() async {
     );
     for (final declaration
         in unit.unit.declarations.whereType<FunctionDeclaration>()) {
+      if (const {
+            'constantUnreachable',
+            'exactDispatch',
+            'forwardCaught',
+            'adoptCaught',
+          }.contains(declaration.name.lexeme) &&
+          analyzer
+              .summarizeExecutable(declaration.declaredFragment!.element)
+              .hasAnyThrowSource) {
+        throw StateError(
+          '${declaration.name.lexeme} retained an impossible effect',
+        );
+      }
       final suppressed = _suppressedEffects[declaration.name.lexeme];
       if (suppressed != null) {
         final summary = analyzer.summarizeExecutable(
@@ -134,6 +147,11 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'superDispatch': ('synchronous', 'String'),
+  'adoptFailure': ('future', 'String'),
+  'adoptDiscarded': ('scheduled', 'String'),
+  'forwardFailure': ('future', 'String'),
+  'forwardDiscarded': ('scheduled', 'String'),
   'callbackFailure': ('synchronous', 'String'),
   'callbackArgumentFailure': ('synchronous', 'TypeError'),
   'callbackResultFailure': ('synchronous', 'TypeError'),
@@ -160,6 +178,7 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'superDispatch': 'int',
   'callbackAwaitedCaught': 'String',
   'containedCast': 'TypeError',
   'finallySuppressCast': 'TypeError',
@@ -175,6 +194,19 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'constant_unreachable': 'none',
+  'exact_dispatch': 'none',
+  'super_dispatch': 'String',
+  'stored_adoption_caught': 'none',
+  'stored_adoption_wrong_catch': 'String',
+  'stored_adoption_two_outputs': 'none/String',
+  'adopt_separate_output': 'none/String',
+  'adopt_failure': 'String',
+  'adopt_caught': 'none',
+  'adopt_discarded': 'none/String',
+  'forward_failure': 'String',
+  'forward_caught': 'none',
+  'forward_discarded': 'none/String',
   'callback': 'String',
   'callback_argument': 'TypeError',
   'callback_result': 'TypeError',
@@ -212,6 +244,49 @@ const _observations = {
 const _fixture = r'''
 import 'dart:async';
 import 'dart:convert';
+
+const disabledBranch = false;
+void constantUnreachable() { if (disabledBranch) throw 'unreachable'; }
+class ExactBase { void run() {} }
+class ExactDerived extends ExactBase { @override void run() { throw 'override'; } }
+void exactDispatch() { ExactBase().run(); }
+class SuperBase { void run() { throw 'super'; } }
+class SuperChild extends SuperBase {
+  @override void run() { throw 42; }
+  void callSuper() { super.run(); }
+}
+void superDispatch() { SuperChild().callSuper(); }
+Future<void> storedAdoptionCaught() async {
+  final input = Future<void>.error('stored');
+  final output = adoptStatement(input);
+  try { await output; } on String {}
+}
+Future<void> storedAdoptionWrongCatch() async {
+  final input = Future<void>.error('stored');
+  final output = adoptStatement(input);
+  try { await output; } on int {}
+}
+Future<void> storedAdoptionTwoOutputs() async {
+  final input = Future<void>.error('stored');
+  final first = adoptStatement(input);
+  final second = adoptStatement(input);
+  try { await first; } on String {}
+}
+Future<void> adoptSeparateOutput() async {
+  final input = Future<void>.error('separate');
+  adoptStatement(input);
+  try { await input; } on String {}
+}
+Future<void> adoptReturn(Future<void> input) async => input;
+Future<void> adoptAwait(Future<void> input) async { return await adoptReturn(input); }
+Future<void> adoptStatement(Future<void> input) async { await adoptAwait(input); }
+Future<void> adoptFailure() async { await adoptStatement(Future<void>.error('adopt')); }
+Future<void> adoptCaught() async { try { await adoptStatement(Future<void>.error('adopt')); } on String {} }
+void adoptDiscarded() { try { adoptStatement(Future<void>.error('adopt')); } on String {} }
+Future<void> forwardFuture(Future<void> input) => input;
+Future<void> forwardFailure() async { await forwardFuture(Future<void>.error('forward')); }
+Future<void> forwardCaught() async { try { await forwardFuture(Future<void>.error('forward')); } on String {} }
+void forwardDiscarded() { try { forwardFuture(Future<void>.error('forward')); } on String {} }
 
 void invoke(void Function() action) { action(); }
 void callbackThrow() { throw 'callback'; }
@@ -308,6 +383,19 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'constant_unreachable': capture(constantUnreachable),
+    'exact_dispatch': capture(exactDispatch),
+    'super_dispatch': capture(superDispatch),
+    'stored_adoption_caught': await captureAsync(storedAdoptionCaught),
+    'stored_adoption_wrong_catch': await captureAsync(storedAdoptionWrongCatch),
+    'stored_adoption_two_outputs': await captureUnobserved(storedAdoptionTwoOutputs),
+    'adopt_separate_output': await captureUnobserved(adoptSeparateOutput),
+    'adopt_failure': await captureAsync(adoptFailure),
+    'adopt_caught': await captureAsync(adoptCaught),
+    'adopt_discarded': await captureUnobserved(() async { adoptDiscarded(); }),
+    'forward_failure': await captureAsync(forwardFailure),
+    'forward_caught': await captureAsync(forwardCaught),
+    'forward_discarded': await captureUnobserved(() async { forwardDiscarded(); }),
     'callback': capture(callbackFailure),
     'callback_argument': capture(() => callbackArgumentFailure('bad')),
     'callback_result': capture(() { callbackResultFailure(); }),

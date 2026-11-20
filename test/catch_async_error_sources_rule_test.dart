@@ -14,6 +14,275 @@ void main() {
 
 @reflectiveTest
 class CatchAsyncErrorSourcesRuleTest extends AnalysisRuleTest {
+  Future<void>
+  test_asyncAdoption_preservesUnknownAlongsideKnownEffects() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> produce(bool condition, Future<void> opaque) async {
+  if (condition) throw 'known';
+  await opaque;
+}
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f(bool condition, Future<void> opaque) async {
+  final pending = produce(condition, opaque);
+  final output = adopt(pending);
+  try { await output; } on String {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await output'), 'await output'.length),
+    ]);
+  }
+
+  Future<void> test_asyncAdoption_doesNotObserveProducerScheduledWork() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> produce() {
+  Future<void>.error('scheduled');
+  return Future<void>.value();
+}
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = produce();
+  try { await adopt(pending); } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('produce()'), 'produce()'.length),
+    ]);
+  }
+
+  Future<void> test_asyncAdoption_oneBranchLeavesInputPending() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f(bool condition) async {
+  final pending = Future<void>.error('failure');
+  if (condition) { adopt(pending).catchError((Object error) {}); }
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf("Future<void>.error('failure')"),
+        "Future<void>.error('failure')".length,
+      ),
+    ]);
+  }
+
+  Future<void> test_asyncAdoption_bothBranchesObserveInput() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f(bool condition) async {
+  final pending = Future<void>.error('failure');
+  if (condition) { adopt(pending).catchError((Object error) {}); }
+  else { adopt(pending).catchError((Object error) {}); }
+}
+''');
+  }
+
+  Future<void> test_asyncAdoption_overwrittenOutputRemainsPending() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  var output = adopt(pending);
+  output = Future<void>.value();
+  try { await output; } catch (_) {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('adopt(pending)'), 'adopt(pending)'.length),
+    ]);
+  }
+
+  Future<void> test_asyncAdoption_twoOutputsBothHandled() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  final first = adopt(pending);
+  final second = adopt(pending);
+  try { await first; } on String {}
+  try { await second; } on String {}
+}
+''');
+  }
+
+  Future<void> test_asyncAdoption_outputHandlerDoesNotChangeInputType() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  adopt(pending).catchError((Object error) {});
+  try { await pending; } on int {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await pending'), 'await pending'.length),
+    ]);
+  }
+
+  Future<void> test_asyncAdoption_storedOutputRetainsType() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt({required Future<void> input}) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  final originalAlias = pending;
+  final output = adopt(input: pending);
+  final outputAlias = output;
+  try { await outputAlias; } on String {}
+  try { await originalAlias; } on String {}
+}
+''');
+  }
+
+  Future<void> test_asyncAdoption_wrongOutputCatchRetainsType() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  final output = adopt(pending);
+  try { await output; } on int {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await output'), 'await output'.length),
+    ]);
+  }
+
+  Future<void> test_asyncAdoption_twoOutputsHaveSeparateObligations() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  final first = adopt(pending);
+  final second = adopt(pending);
+  try { await first; } on String {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('adopt(pending)'), 'adopt(pending)'.length),
+    ]);
+  }
+
+  Future<void> test_asyncAdoption_nestedOutputsAreHandled() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  try { await adopt(adopt(pending)); } on String {}
+}
+''');
+  }
+
+  Future<void>
+  test_asyncForwardingHelper_inputCatchDoesNotHandleOutput() async {
+    const code = r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+@ExceptionBoundary()
+Future<void> adopt(Future<void> input) async => await input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  adopt(pending);
+  try { await pending; } on String {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('adopt(pending)'), 'adopt(pending)'.length),
+    ]);
+  }
+
+  Future<void> test_forwardingHelper_immediateTypedContainment() async {
+    await assertNoDiagnostics(r'''
+import 'package:dart_exception_lint/dart_exception_lint.dart';
+Future<void> forward(Future<void> input) => input;
+@ExceptionBoundary()
+Future<void> delegate(Future<void> input) { return forward(input); }
+Future<void> f() async {
+  try { await delegate(Future<void>.error('failure')); } on String {}
+}
+''');
+  }
+
+  Future<void> test_forwardingHelper_storedNamedAliasTypedContainment() async {
+    await assertNoDiagnostics(r'''
+Future<void> forward({required Future<void> input}) => input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  final alias = forward(input: pending);
+  try { await alias; } on String {}
+}
+''');
+  }
+
+  Future<void> test_forwardingHelper_acrossResolvedLibrary() async {
+    newFile(
+      '$testPackageLibPath/forward.dart',
+      'Future<void> forward(Future<void> input) => input;',
+    );
+    await assertNoDiagnostics(r'''
+import 'forward.dart';
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  try { await forward(pending); } on String {}
+}
+''');
+  }
+
+  Future<void>
+  test_forwardingHelper_incompatibleCatchRetainsOriginalType() async {
+    const code = r'''
+Future<void> forward(Future<void> input) => input;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  try { await forward(pending); } on int {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('await forward'), 'await forward(pending)'.length),
+    ]);
+  }
+
+  Future<void> test_constTrueBranch_consumesStoredFuture() async {
+    await assertNoDiagnostics(r'''
+const enabled = true;
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  if (enabled) { try { await pending; } on String {} }
+}
+''');
+  }
+
+  Future<void> test_constFalseLoop_doesNotCreateObligations() async {
+    await assertNoDiagnostics(r'''
+const enabled = false;
+Future<void> f() async {
+  while (enabled) { Future<void>.error('unreachable'); }
+}
+''');
+  }
+
   Future<void> test_existingFutures_nestedAggregateAliasesAreHandled() async {
     await assertNoDiagnostics(r'''
 Future<void> f() async {

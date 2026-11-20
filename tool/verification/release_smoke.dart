@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -76,15 +77,58 @@ Future<void> main() async {
     await File(
       p.join(consumer.path, 'pubspec.yaml'),
     ).writeAsString('name: release_consumer\nenvironment:\n  sdk: ^3.11.0\n');
-    await File(p.join(consumer.path, 'analysis_options.yaml')).writeAsString(
-      'plugins:\n  dart_exception_lint:\n    path: ${snapshot.path}\n',
-    );
     final source = File(p.join(consumer.path, 'lib', 'main.dart'));
     await source.parent.create();
     await source.writeAsString(
       "void failure() { throw 'failure'; }\nvoid caller() { failure(); }\n",
     );
     await run(dart, ['pub', 'get'], consumer.path);
+    // The standalone CLI must work before the target enables the plugin.
+    final baseline = p.join(directory.path, 'baseline.json');
+    final cliArgs = [
+      'run',
+      'bin/dart_exception_lint.dart',
+      '--root',
+      consumer.path,
+      'lib',
+      '--write-baseline',
+      baseline,
+    ];
+    final cli = await Process.run(
+      dart,
+      cliArgs,
+      workingDirectory: snapshot.path,
+    );
+    final report = jsonDecode(cli.stdout as String) as Map<String, dynamic>;
+    if (cli.exitCode != 1 ||
+        report['status'] != 'completed' ||
+        !(report['findings'] as List).any(
+          (finding) => finding['symbol'] == 'function:caller',
+        )) {
+      throw StateError(
+        'Standalone CLI did not report consumer effects:\n${cli.stdout}\n${cli.stderr}',
+      );
+    }
+    final comparison = await run(dart, [
+      'run',
+      'bin/dart_exception_lint.dart',
+      '--root',
+      consumer.path,
+      'lib',
+      '--baseline',
+      baseline,
+    ], snapshot.path);
+    final compared =
+        jsonDecode(comparison.stdout as String) as Map<String, dynamic>;
+    if (compared['baseline']['new'] != 0 ||
+        compared['baseline']['existing'] == 0) {
+      throw StateError(
+        'Standalone CLI baseline comparison failed: ${comparison.stdout}',
+      );
+    }
+    await File(p.join(consumer.path, 'analysis_options.yaml')).writeAsString(
+      'plugins:\n  dart_exception_lint:\n    path: ${snapshot.path}\n',
+    );
     final analysis = await Process.run(dart, [
       'analyze',
       '--fatal-infos',
@@ -98,7 +142,7 @@ Future<void> main() async {
       );
     }
     stdout.writeln(
-      'Clean snapshot dry-run and enable-only consumer enforcement passed.',
+      'Clean snapshot dry-run, standalone CLI/baseline, and enable-only consumer enforcement passed.',
     );
   } finally {
     await directory.delete(recursive: true);

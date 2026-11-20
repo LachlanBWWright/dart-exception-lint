@@ -669,6 +669,7 @@ final class NumericChecks {
         ?_exceptionClass(target, name)?.thisType,
     ];
     return ThrowSource(
+      evidence: const {EffectEvidence.sdkModel},
       kind: ThrowSourceKind.arithmeticOperation,
       confidence: ThrowConfidence.possibleThrow,
       displayName: displayName,

@@ -16,6 +16,10 @@ final class ThrowSourceCatalog {
     Element? element,
     ExceptionAnalysisOptions options,
   ) {
+    // Spelling is not declaration identity. Unresolved calls are handled by
+    // inference as unknown, including calls that resemble familiar SDK APIs.
+    element = element?.baseElement;
+    if (element is! ExecutableElement || !element.library.isInSdk) return null;
     if (NumericParseChecks.modelsInvocation(node, element)) {
       return options.treatParseMethodsAsThrowing
           ? NumericParseChecks.invocation(node, element)
@@ -28,58 +32,31 @@ final class ThrowSourceCatalog {
           ? NumericChecks.invocation(node, element)
           : null;
     }
-    return switch (node) {
+    final source = switch (node) {
       MethodInvocation() => _matchMethodInvocation(
         node,
-        libraryUri: element?.library?.uri.toString(),
-        callableName: element?.name,
-        enclosingClassName: element?.enclosingElement?.name,
+        libraryUri: element.library.uri.toString(),
+        callableName: element.name,
+        enclosingClassName: element.enclosingElement is InterfaceElement
+            ? element.enclosingElement?.name
+            : null,
         options: options,
       ),
       FunctionExpressionInvocation() => _matchFunctionInvocation(
         node,
-        libraryUri: element?.library?.uri.toString(),
-        callableName: element?.name,
+        libraryUri: element.library.uri.toString(),
+        callableName: element.name,
         options: options,
       ),
       InstanceCreationExpression() => _matchInstanceCreation(
         node,
-        libraryUri: element?.library?.uri.toString(),
-        className: element?.enclosingElement?.name,
-        constructorName: element?.name,
+        libraryUri: element.library.uri.toString(),
+        className: element.enclosingElement?.name,
+        constructorName: element.name,
       ),
       _ => null,
     };
-  }
-
-  static ThrowSource? matchUnresolvedInvocation(
-    AstNode node,
-    ExceptionAnalysisOptions options,
-  ) {
-    return switch (node) {
-      MethodInvocation() => _matchMethodInvocation(
-        node,
-        libraryUri: null,
-        callableName: node.methodName.name,
-        options: options,
-      ),
-      FunctionExpressionInvocation(:final function)
-          when function is SimpleIdentifier =>
-        _matchFunctionInvocation(
-          node,
-          libraryUri: null,
-          callableName: function.name,
-          options: options,
-        ),
-      InstanceCreationExpression(:final constructorName) =>
-        _matchInstanceCreation(
-          node,
-          libraryUri: null,
-          className: constructorName.type.name.lexeme,
-          constructorName: constructorName.name?.name ?? '',
-        ),
-      _ => null,
-    };
+    return source?.withEvidence({EffectEvidence.sdkModel}, replace: true);
   }
 
   static ThrowSource? matchIndexAccess(
@@ -89,6 +66,9 @@ final class ThrowSourceCatalog {
     if (!options.treatIndexAccessAsThrowing) {
       return null;
     }
+    // A user implementation of List can define different index behavior.
+    // Its body/dispatch must be analyzed instead of borrowing the SDK model.
+    if (node.element?.library.isInSdk != true) return null;
 
     final target = node.realTarget;
     final type = target.staticType;
@@ -121,6 +101,7 @@ final class ThrowSourceCatalog {
     }
     return ThrowSource(
       kind: ThrowSourceKind.indexAccess,
+      evidence: const {EffectEvidence.sdkModel},
       confidence: ThrowConfidence.possibleThrow,
       displayName: 'index access',
       exceptionTypes: [
@@ -373,10 +354,7 @@ final class ThrowSourceCatalog {
         channel: ExceptionChannel.scheduled,
       );
     }
-    final targetSource =
-        enclosingClassName ??
-        node.target?.staticType?.getDisplayString() ??
-        node.target?.toSource();
+    final targetSource = enclosingClassName;
     if (libraryUri == 'dart:async' &&
         name == 'value' &&
         targetSource == 'Future') {
@@ -1093,11 +1071,9 @@ final class ThrowSourceCatalog {
     return null;
   }
 
-  /// A null URI means the invocation was unresolved while analyzing a body.
-  /// In that case the syntax-based fallback remains intentionally conservative;
-  /// a resolved invocation must belong to the expected SDK library.
+  /// SDK models require an established library identity.
   static bool _isExpectedLibrary(String? actual, String expected) {
-    return actual == null || actual == expected;
+    return actual == expected;
   }
 
   static List<String> _argumentExceptionTypes(ArgumentList arguments) {

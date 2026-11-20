@@ -201,6 +201,37 @@ dart test
 cd example && dart pub get && dart analyze
 ```
 
+## CLI for agents and CI
+
+The standalone CLI reports callable-level escaping effects using the plugin's
+inference engine. It resolves dependencies without installing the plugin in the
+target project. Run dependency resolution in the target project first.
+
+```bash
+# From this checkout; --root selects the project to inspect.
+dart run bin/dart_exception_lint.dart --root /path/to/project lib > effects.json
+
+# Establish a baseline, then fail only on new effects.
+dart run bin/dart_exception_lint.dart --root /path/to/project lib --write-baseline baseline.json
+dart run bin/dart_exception_lint.dart --root /path/to/project lib --baseline baseline.json
+
+# Inspect changed files while still resolving their dependencies.
+dart run bin/dart_exception_lint.dart --root /path/to/project --changed-since HEAD --format text
+```
+
+JSON output includes stable finding fingerprints, locations, exception types,
+channels, certainty, effect evidence, source origins, bounded dependency traces, and analysis
+completeness. Use `--fail-on all|known|unknown|none`, `--timeout SECONDS`, and
+`--max-rss-mb MB` to control enforcement and execution budgets.
+
+Exit codes distinguish a policy pass (`0`), new findings (`1`), execution or
+budget failure (`2`), and invalid arguments (`64`). A policy pass can still
+contain tolerated unknown effects; inspect `analysisComplete` and `errors`.
+
+The CLI is an effect report, with its own stable codes, rather than a replacement
+for every plugin lint. See [the CLI contract](doc/cli.md) for scope, baseline
+semantics, agent workflows, and limitations.
+
 ## Example
 
 See [`example/`](example) for a local consumer package that enables the plugin by path and includes manifest-backed and source-inferred sample violations.

@@ -27,6 +27,7 @@ import '../engine/syntax_coverage.dart';
 import '../engine/callback_models.dart';
 import '../engine/callback_values.dart';
 import '../engine/strongly_connected_components.dart';
+import '../engine/future_forwarding.dart';
 
 final class InferredCallAnalysis {
   const InferredCallAnalysis({
@@ -85,7 +86,7 @@ final class InferredThrowAnalyzer {
        _featureSetKey = featureSet.toString(),
        _resolvedPaths = knownUnits.keys.toSet(),
        _parsedUnits = Map<String, CompilationUnit>.from(knownUnits),
-       _knownExecutables = _collectKnownExecutables(knownUnits.values),
+       _dispatchIndex = _collectKnownExecutables(knownUnits.values),
        _callbackBindings = const {},
        _callbackContexts = _CallbackContexts(),
        _rootDepth = 0;
@@ -103,7 +104,7 @@ final class InferredThrowAnalyzer {
       _featureSetKey = parent._featureSetKey,
       _resolvedPaths = {...parent._resolvedPaths},
       _parsedUnits = {...parent._parsedUnits},
-      _knownExecutables = parent._knownExecutables,
+      _dispatchIndex = parent._dispatchIndex,
       _callbackContexts = parent._callbackContexts;
 
   final ThrowingApiManifest manifest;
@@ -122,11 +123,59 @@ final class InferredThrowAnalyzer {
   final Map<String, CompilationUnit> _parsedUnits;
   final Set<String> _resolvedPaths;
   final Map<String, int?> _dependencyFingerprints = {};
-  final List<ExecutableElement> _knownExecutables;
+  final _DispatchIndex _dispatchIndex;
+  List<ExecutableElement> get _knownExecutables => _dispatchIndex.executables;
   final Map<FormalParameterElement, CallbackValue> _callbackBindings;
   CallbackValueResolver? _callbackValueResolver;
   final _CallbackContexts _callbackContexts;
   final int _rootDepth;
+
+  /// A bounded supporting dependency path for an already inferred source.
+  /// This is an explanation of cached inference, not a runtime stack or an
+  /// exhaustive enumeration of paths. Context-specialized summaries may not
+  /// have a corresponding context-independent cache entry.
+  List<ThrowOrigin> explainSource(String elementKey, ThrowSource source) {
+    final origin = source.origin;
+    final frames = <ThrowOrigin>[];
+    final visited = <String>{};
+    var key = elementKey;
+    while (visited.length < 64 && visited.add(key)) {
+      final element = _summaryElements[key];
+      if (element != null) {
+        frames.add(
+          ThrowOrigin(
+            displayName: _displayNameForExecutable(element),
+            filePath: element.firstFragment.libraryFragment.source.fullName,
+            offset:
+                element.firstFragment.nameOffset ??
+                element.firstFragment.offset,
+            length: element.firstFragment.name?.length ?? 0,
+          ),
+        );
+      }
+      if (origin == null) break;
+      final candidates = (_directDependencies[key] ?? const <String>{}).toList()
+        ..sort();
+      String? next;
+      for (final candidate in candidates) {
+        if (visited.contains(candidate)) continue;
+        if (_summaryCache[candidate]?.sources.any(
+              (item) =>
+                  item.origin?.filePath == origin.filePath &&
+                  item.origin?.offset == origin.offset &&
+                  item.origin?.displayName == origin.displayName,
+            ) ==
+            true) {
+          next = candidate;
+          break;
+        }
+      }
+      if (next == null) break;
+      key = next;
+    }
+    if (origin != null) frames.add(origin);
+    return List.unmodifiable(frames);
+  }
 
   // Rule visitors are created per analyzed unit and per diagnostic. Keep the
   // expensive source parsing shared between those short-lived analyzers, but
@@ -460,6 +509,35 @@ final class InferredThrowAnalyzer {
     required int depth,
   }) {
     if (executable.library.isInSdk) return null;
+    final forwarded = forwardedFutureArgument(
+      call,
+      maxDepth: options.maxCallDepth - depth + 1,
+    );
+    if (forwarded != null && depth <= options.maxCallDepth) {
+      final target = switch (forwarded) {
+        MethodInvocation(:final methodName) => methodName.element,
+        InstanceCreationExpression(:final constructorName) =>
+          constructorName.element,
+        _ => null,
+      };
+      if (target is ExecutableElement) {
+        final direct = ThrowSourceCatalog.matchResolvedInvocation(
+          forwarded,
+          target,
+          options,
+        );
+        final input = direct == null
+            ? (_specializedSummary(target, forwarded, depth: depth + 1) ??
+                  summarizeExecutable(target))
+            : ThrowSummary.merge(
+                'forwarded Future',
+                [direct],
+                dependencyElementKeys: const [],
+                complete: true,
+              );
+        return _summaryForDispatch(target, input, forwarded);
+      }
+    }
     final parameters = executable.baseElement.formalParameters;
     if (!parameters.any((parameter) => parameter.type is FunctionType)) {
       return null;
@@ -685,6 +763,7 @@ final class InferredThrowAnalyzer {
     ExceptionChannel channel,
   ) => ThrowSource(
     kind: source.kind,
+    evidence: source.evidenceKinds,
     confidence: source.confidence,
     displayName: source.displayName,
     intent: source.effectiveIntent,
@@ -796,6 +875,7 @@ final class InferredThrowAnalyzer {
         [
           ThrowSource(
             kind: ThrowSourceKind.explicitThrow,
+            evidence: const {EffectEvidence.annotationContract},
             confidence: ThrowConfidence.definiteThrow,
             displayName: _displayNameForExecutable(executable),
           ),
@@ -829,6 +909,7 @@ final class InferredThrowAnalyzer {
             if (contract.kind != ExceptionContractKind.doesNotThrow)
               ThrowSource(
                 kind: ThrowSourceKind.manifestOverride,
+                evidence: const {EffectEvidence.annotationContract},
                 confidence: contract.kind == ExceptionContractKind.failingFuture
                     ? ThrowConfidence.asyncError
                     : ThrowConfidence.possibleThrow,
@@ -1000,6 +1081,9 @@ final class InferredThrowAnalyzer {
             .join(','),
         source.displayName,
         source.exceptionTypes.join(','),
+        (source.evidenceKinds.map((item) => item.name).toList()..sort()).join(
+          ',',
+        ),
         source.origin?.filePath,
         source.origin?.offset,
       ].join('|'),
@@ -1307,15 +1391,11 @@ final class InferredThrowAnalyzer {
         complete: true,
       );
     }
-    final directSource =
-        ThrowSourceCatalog.matchResolvedInvocation(
-          node,
-          resolvedElement,
-          options,
-        ) ??
-        (resolvedElement == null
-            ? ThrowSourceCatalog.matchUnresolvedInvocation(node, options)
-            : null);
+    final directSource = ThrowSourceCatalog.matchResolvedInvocation(
+      node,
+      resolvedElement,
+      options,
+    );
     if (directSource != null) {
       final discardedFuture =
           ExceptionEffect.fromSource(directSource).channel ==
@@ -1345,11 +1425,7 @@ final class InferredThrowAnalyzer {
       );
     }
 
-    final resolved =
-        _boundExecutable(resolvedElement) ??
-        (resolvedElement == null
-            ? _resolveBodyCall(node, currentExecutable)
-            : null);
+    final resolved = _boundExecutable(resolvedElement);
     if (resolved == null) {
       if (_looksLikeUnknownTarget(node, null) &&
           options.treatDynamicInvocationAsThrowing) {
@@ -1433,6 +1509,7 @@ final class InferredThrowAnalyzer {
               ? ThrowSourceKind.awaitedAsyncDependency
               : ThrowSourceKind.inferredCall,
           confidence: source.confidence,
+          evidence: source.evidenceKinds,
           displayName: _displayNameForExecutable(resolved),
           intent: source.effectiveIntent,
           isAsync: source.isAsync,
@@ -1573,6 +1650,10 @@ final class InferredThrowAnalyzer {
             : callback.channel;
         yield ThrowSource(
           kind: source.kind,
+          evidence: Set.unmodifiable({
+            ...source.evidenceKinds,
+            EffectEvidence.sdkModel,
+          }),
           confidence: effect.certainty == ExceptionCertainty.unknown
               ? ThrowConfidence.unknown
               : channel == ExceptionChannel.future ||
@@ -1609,7 +1690,9 @@ final class InferredThrowAnalyzer {
     AstNode callSite,
   ) {
     if ((declared is! MethodElement && declared is! PropertyAccessorElement) ||
-        declared.isStatic) {
+        declared.isStatic ||
+        declared.enclosingElement is! InterfaceElement ||
+        declared.enclosingElement is ExtensionTypeElement) {
       return baseSummary;
     }
 
@@ -1632,6 +1715,17 @@ final class InferredThrowAnalyzer {
       _ => null,
     };
     final receiverType = receiver?.staticType;
+    Expression? allocation = receiver;
+    while (allocation is ParenthesizedExpression) {
+      allocation = allocation.expression;
+    }
+    // These calls select a concrete implementation. Subclass overrides cannot
+    // execute on an exact generative allocation or through a super invocation.
+    if (receiver is SuperExpression ||
+        allocation is InstanceCreationExpression &&
+            allocation.constructorName.element?.isFactory == false) {
+      return baseSummary;
+    }
     final receiverElement = receiverType is InterfaceType
         ? receiverType.element
         : declared.enclosingElement is InterfaceElement
@@ -1686,9 +1780,6 @@ final class InferredThrowAnalyzer {
         ),
       );
     }
-    final exactAllocation =
-        receiver is InstanceCreationExpression &&
-        receiver.constructorName.element?.isFactory == false;
     // A concrete static receiver type still permits overriding subclasses.
     // Only an exact generative allocation or a closed hierarchy proves the
     // dispatch set complete; sealed roots with open leaves remain open.
@@ -1698,15 +1789,16 @@ final class InferredThrowAnalyzer {
             (receiverElement.isFinal ||
                 receiverElement.isSealed ||
                 receiverElement.isPrivate));
-    final openLeaf = candidateList.any((candidate) {
-      final owner = candidate.enclosingElement;
-      return owner is ClassElement &&
+    final openLeaf = _dispatchIndex.types.any((owner) {
+      return owner != receiverElement &&
+          owner is ClassElement &&
+          owner.allSupertypes.any((type) => type.element == receiverElement) &&
           !owner.isFinal &&
           !owner.isSealed &&
           !owner.isPrivate;
     });
     final incompleteAbstractDispatch =
-        !exactAllocation && (!closedRoot || openLeaf);
+        !_dispatchIndex.complete || !closedRoot || openLeaf;
     if (candidateSummaries.isEmpty && !incompleteAbstractDispatch) {
       return baseSummary;
     }
@@ -1746,13 +1838,16 @@ final class InferredThrowAnalyzer {
     );
   }
 
-  static List<ExecutableElement> _collectKnownExecutables(
+  static _DispatchIndex _collectKnownExecutables(
     Iterable<CompilationUnit> units,
   ) {
     final elements = <ExecutableElement>[];
     final elementSet = <ExecutableElement>{};
     final libraries = <LibraryElement>{};
     for (final unit in units) {
+      if (unit.declaredFragment?.element case final library?) {
+        libraries.add(library);
+      }
       final collected = <ExecutableElement>[];
       final collector = _ExecutableCollector(collected);
       unit.accept(collector);
@@ -1769,6 +1864,7 @@ final class InferredThrowAnalyzer {
     final pending = <LibraryElement>[...libraries];
     final visitedLibraries = <LibraryElement>{};
     const maxLibraries = 2048;
+    final types = <InterfaceElement>{};
     while (pending.isNotEmpty && visitedLibraries.length < maxLibraries) {
       final library = pending.removeLast();
       if (!visitedLibraries.add(library)) continue;
@@ -1782,6 +1878,7 @@ final class InferredThrowAnalyzer {
         ...library.enums,
         ...library.mixins,
       ]) {
+        types.add(type);
         for (final member in [
           ...type.methods,
           ...type.getters,
@@ -1791,125 +1888,11 @@ final class InferredThrowAnalyzer {
         }
       }
     }
-    return elements;
-  }
-
-  ExecutableElement? _resolveBodyCall(
-    AstNode node,
-    ExecutableElement currentExecutable,
-  ) {
-    final library = currentExecutable.library;
-
-    final enclosingInterface = switch (currentExecutable.enclosingElement) {
-      InterfaceElement interface => interface,
-      _ => null,
-    };
-
-    switch (node) {
-      case FunctionExpressionInvocation(:final function)
-          when function is SimpleIdentifier:
-        return library.getTopLevelFunction(function.name) ??
-            enclosingInterface?.getMethod(function.name);
-      case InstanceCreationExpression(:final constructorName):
-        final classElement = _resolveClassReference(
-          library,
-          constructorName.type.name.lexeme,
-        );
-        if (classElement == null) {
-          return null;
-        }
-        final name = constructorName.name?.name ?? '';
-        return classElement.getNamedConstructor(name) ??
-            classElement.constructors.where((constructor) {
-              return constructor.name == name;
-            }).firstOrNull;
-      case MethodInvocation(:final target, :final methodName):
-        final method = methodName.name;
-        if (target == null) {
-          final localMethod =
-              enclosingInterface?.getMethod(method) ??
-              library.getTopLevelFunction(method);
-          if (localMethod != null) {
-            return localMethod;
-          }
-
-          final constructorClass = _resolveClassReference(library, method);
-          if (constructorClass != null) {
-            final unnamedConstructor = constructorClass.getNamedConstructor('');
-            if (unnamedConstructor != null) {
-              return unnamedConstructor;
-            }
-            for (final constructor in constructorClass.constructors) {
-              if ((constructor.name ?? '').isEmpty) {
-                return constructor;
-              }
-            }
-            return null;
-          }
-          return null;
-        }
-
-        if (target is ThisExpression) {
-          return enclosingInterface?.getMethod(method);
-        }
-
-        if (target is SuperExpression && enclosingInterface != null) {
-          for (final type in enclosingInterface.allSupertypes) {
-            final member = type.element.getMethod(method);
-            if (member != null) {
-              return member;
-            }
-          }
-        }
-
-        if (target is SimpleIdentifier) {
-          final importLibrary = _resolvePrefixedLibrary(library, target.name);
-          if (importLibrary != null) {
-            return importLibrary.getTopLevelFunction(method) ??
-                _resolveClassReference(
-                  importLibrary,
-                  method,
-                )?.getMethod(method);
-          }
-
-          final classElement = _resolveClassReference(library, target.name);
-          return classElement?.getMethod(method);
-        }
-    }
-
-    return null;
-  }
-
-  ClassElement? _resolveClassReference(
-    LibraryElement library,
-    String className,
-  ) {
-    final localClass = library.getClass(className);
-    if (localClass != null) {
-      return localClass;
-    }
-
-    for (final import in library.firstFragment.libraryImports) {
-      final importedLibrary = import.importedLibrary;
-      final importedClass = importedLibrary?.getClass(className);
-      if (importedClass != null) {
-        return importedClass;
-      }
-    }
-
-    return null;
-  }
-
-  LibraryElement? _resolvePrefixedLibrary(
-    LibraryElement library,
-    String prefix,
-  ) {
-    for (final import in library.firstFragment.libraryImports) {
-      if (import.prefix?.name == prefix) {
-        return import.importedLibrary;
-      }
-    }
-    return null;
+    return _DispatchIndex(
+      elements,
+      types,
+      libraries.isNotEmpty && pending.isEmpty,
+    );
   }
 
   ThrowSummary? _manifestSummaryForElement(
@@ -2059,6 +2042,11 @@ final class InferredThrowAnalyzer {
     if (_resolvedPaths.contains(path)) return;
     final units = resolveDependency?.call(library);
     if (units == null) return;
+    _dispatchIndex.types.addAll([
+      ...library.classes,
+      ...library.enums,
+      ...library.mixins,
+    ]);
     for (final entry in units.entries) {
       _parsedUnits[entry.key] = entry.value;
       _resolvedPaths.add(entry.key);
@@ -2116,12 +2104,6 @@ final class InferredThrowAnalyzer {
 
   static bool _looksLikeUnknownTarget(AstNode node, Element? element) {
     if (element == null) {
-      if (node case MethodInvocation(:final target, :final methodName)
-          when target == null &&
-              methodName.name.isNotEmpty &&
-              _startsWithUppercase(methodName.name)) {
-        return false;
-      }
       return node is MethodInvocation ||
           node is FunctionExpressionInvocation ||
           node is InstanceCreationExpression ||
@@ -2244,11 +2226,6 @@ final class InferredThrowAnalyzer {
         : CodeOrigin.thirdParty;
   }
 
-  static bool _startsWithUppercase(String value) {
-    final firstCodeUnit = value.codeUnitAt(0);
-    return firstCodeUnit >= 65 && firstCodeUnit <= 90;
-  }
-
   bool _isWithinCurrentPackage(String path) {
     final root = packageRootPath;
     if (root == null) {
@@ -2311,6 +2288,13 @@ final class _ParsedUnitCacheEntry {
   final int fingerprint;
   final String featureSetKey;
   final CompilationUnit unit;
+}
+
+final class _DispatchIndex {
+  _DispatchIndex(this.executables, this.types, this.complete);
+  final List<ExecutableElement> executables;
+  final Set<InterfaceElement> types;
+  final bool complete;
 }
 
 final class _ExecutableCollector extends RecursiveAstVisitor<void> {
@@ -2490,7 +2474,9 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   void visitIfStatement(IfStatement node) {
     // The pattern and guard execute before either branch of an if-case.
     node.caseClause?.accept(this);
-    final constant = _constantBoolean(node.expression);
+    final constant = node.caseClause == null
+        ? _constantBoolean(node.expression)
+        : null;
     if (constant == null) {
       node.expression.accept(this);
       _conditionalDepth++;
@@ -2953,6 +2939,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
         : contextualConfidence;
     return ThrowSource(
       kind: source.kind,
+      evidence: source.evidenceKinds,
       confidence: confidence,
       displayName: source.displayName,
       intent: source.intent,
@@ -2981,7 +2968,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
               ? null
               : ThrowOrigin(
                   displayName: source.displayName,
-                  filePath: executable.library.firstFragment.source.fullName,
+                  filePath:
+                      executable.firstFragment.libraryFragment.source.fullName,
                   offset: node.offset,
                   length: node.length,
                 )),
@@ -3000,40 +2988,6 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
         parent is ExpressionFunctionBody;
   }
 
-  bool? _constantBoolean(Expression expression) {
-    if (expression is BooleanLiteral) return expression.value;
-    if (expression case ParenthesizedExpression(:final expression)) {
-      return _constantBoolean(expression);
-    }
-    if (expression case PrefixExpression(
-      :final operator,
-      :final operand,
-    ) when operator.lexeme == '!') {
-      final value = _constantBoolean(operand);
-      return value == null ? null : !value;
-    }
-    if (expression case BinaryExpression(
-      :final leftOperand,
-      :final operator,
-      :final rightOperand,
-    ) when operator.lexeme == '&&' || operator.lexeme == '||') {
-      return _constantLogicalBoolean(
-        leftOperand,
-        operator.lexeme,
-        rightOperand,
-      );
-    }
-    return null;
-  }
-
-  bool? _constantLogicalBoolean(
-    Expression left,
-    String operator,
-    Expression right,
-  ) {
-    final leftValue = _constantBoolean(left);
-    final rightValue = _constantBoolean(right);
-    if (leftValue == null || rightValue == null) return null;
-    return operator == '&&' ? leftValue && rightValue : leftValue || rightValue;
-  }
+  bool? _constantBoolean(Expression expression) =>
+      constantBooleanValue(expression);
 }

@@ -1,5 +1,6 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/dart/element/element.dart';
 
 /// Structural completion facts, independent of exception-source inference.
 /// Unknown expressions/statements retain normal completion. A missing normal
@@ -75,7 +76,7 @@ Set<CompletionTransfer> _statement(
     ):
       if (!expressionCanCompleteNormally(expression)) return {_thrown};
       final condition = statement.caseClause == null
-          ? _boolean(expression)
+          ? constantBooleanValue(expression)
           : null;
       if (condition == true) return _statement(thenStatement);
       if (condition == false) {
@@ -106,21 +107,21 @@ Set<CompletionTransfer> _statement(
       return result;
     case WhileStatement(:final condition, :final body):
       if (!expressionCanCompleteNormally(condition)) return {_thrown};
-      if (_boolean(condition) == false) return {_normal};
+      if (constantBooleanValue(condition) == false) return {_normal};
       return {
-        if (_boolean(condition) == null) _thrown,
+        if (constantBooleanValue(condition) == null) _thrown,
         ..._loop(
           _statement(body),
-          mayExitCondition: _boolean(condition) != true,
+          mayExitCondition: constantBooleanValue(condition) != true,
           labels: loopLabels,
         ),
       };
     case DoStatement(:final condition, :final body):
       return {
-        if (_boolean(condition) == null) _thrown,
+        if (constantBooleanValue(condition) == null) _thrown,
         ..._loop(
           _statement(body),
-          mayExitCondition: _boolean(condition) != true,
+          mayExitCondition: constantBooleanValue(condition) != true,
           labels: loopLabels,
           executesOnce: true,
         ),
@@ -131,8 +132,10 @@ Set<CompletionTransfer> _statement(
           : null;
       final isInfinite =
           forLoopParts is ForParts &&
-          (condition == null || _boolean(condition) == true);
-      if (condition != null && _boolean(condition) == false) return {_normal};
+          (condition == null || constantBooleanValue(condition) == true);
+      if (condition != null && constantBooleanValue(condition) == false) {
+        return {_normal};
+      }
       return {
         _thrown,
         ..._loop(
@@ -221,7 +224,7 @@ bool isReachable(AstNode node) {
       }
     }
     if (parent is IfStatement && parent.caseClause == null) {
-      final condition = _boolean(parent.expression);
+      final condition = constantBooleanValue(parent.expression);
       if ((condition == false && identical(current, parent.thenStatement)) ||
           (condition == true && identical(current, parent.elseStatement))) {
         return false;
@@ -229,7 +232,7 @@ bool isReachable(AstNode node) {
     }
     if (parent is WhileStatement &&
         identical(current, parent.body) &&
-        _boolean(parent.condition) == false) {
+        constantBooleanValue(parent.condition) == false) {
       return false;
     }
     current = parent;
@@ -262,10 +265,10 @@ bool expressionCanCompleteNormally(Expression expression) {
       expressionCanCompleteNormally(leftOperand) &&
           switch (operator.lexeme) {
             '&&' =>
-              _boolean(leftOperand) != true ||
+              constantBooleanValue(leftOperand) != true ||
                   expressionCanCompleteNormally(rightOperand),
             '||' =>
-              _boolean(leftOperand) != false ||
+              constantBooleanValue(leftOperand) != false ||
                   expressionCanCompleteNormally(rightOperand),
             '??' =>
               !_isNull(leftOperand) ||
@@ -278,7 +281,7 @@ bool expressionCanCompleteNormally(Expression expression) {
       :final elseExpression,
     ) =>
       expressionCanCompleteNormally(condition) &&
-          switch (_boolean(condition)) {
+          switch (constantBooleanValue(condition)) {
             true => expressionCanCompleteNormally(thenExpression),
             false => expressionCanCompleteNormally(elseExpression),
             null =>
@@ -334,15 +337,15 @@ bool _childCanExecute(AstNode parent, AstNode child) {
   if (parent is BinaryExpression && identical(child, parent.rightOperand)) {
     if (!expressionCanCompleteNormally(parent.leftOperand)) return false;
     return switch (parent.operator.lexeme) {
-      '&&' => _boolean(parent.leftOperand) != false,
-      '||' => _boolean(parent.leftOperand) != true,
+      '&&' => constantBooleanValue(parent.leftOperand) != false,
+      '||' => constantBooleanValue(parent.leftOperand) != true,
       '??' => !_isNonNull(parent.leftOperand),
       _ => true,
     };
   }
   if (parent is ConditionalExpression && !identical(child, parent.condition)) {
     if (!expressionCanCompleteNormally(parent.condition)) return false;
-    final value = _boolean(parent.condition);
+    final value = constantBooleanValue(parent.condition);
     if (identical(child, parent.thenExpression)) return value != false;
     if (identical(child, parent.elseExpression)) return value != true;
   }
@@ -365,7 +368,7 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     final parts = parent.forLoopParts;
     if (parts is ForParts && parts.condition != null) {
       return expressionCanCompleteNormally(parts.condition!) &&
-          _boolean(parts.condition!) != false;
+          constantBooleanValue(parts.condition!) != false;
     }
   }
   if (parent is RecordLiteral && child is RecordLiteralField) {
@@ -378,30 +381,53 @@ bool _childCanExecute(AstNode parent, AstNode child) {
 }
 
 bool _isNull(Expression expression) =>
+    _constantVariable(expression)?.computeConstantValue()?.isNull == true ||
     expression is NullLiteral ||
     expression is ParenthesizedExpression && _isNull(expression.expression);
 
 bool _isNonNull(Expression expression) =>
+    _constantVariable(expression)?.computeConstantValue()?.isNull == false ||
     expression is Literal && expression is! NullLiteral ||
     expression is FunctionExpression ||
     expression is ParenthesizedExpression && _isNonNull(expression.expression);
 
-bool? _boolean(Expression expression) => switch (expression) {
+bool? constantBooleanValue(Expression expression) => switch (expression) {
   BooleanLiteral(:final value) => value,
-  ParenthesizedExpression(:final expression) => _boolean(expression),
+  ParenthesizedExpression(:final expression) => constantBooleanValue(
+    expression,
+  ),
   PrefixExpression(:final operator, :final operand)
       when operator.lexeme == '!' =>
-    switch (_boolean(operand)) {
+    switch (constantBooleanValue(operand)) {
       true => false,
       false => true,
       _ => null,
     },
   BinaryExpression(:final leftOperand, :final operator, :final rightOperand)
       when operator.lexeme == '&&' || operator.lexeme == '||' =>
-    switch ((_boolean(leftOperand), operator.lexeme, _boolean(rightOperand))) {
+    switch ((
+      constantBooleanValue(leftOperand),
+      operator.lexeme,
+      constantBooleanValue(rightOperand),
+    )) {
       (false, '&&', _) || (true, '||', _) => operator.lexeme == '||',
       (true, '&&', final value) || (false, '||', final value) => value,
       _ => null,
     },
-  _ => null,
+  _ => _constantVariable(expression)?.computeConstantValue()?.toBoolValue(),
 };
+
+/// Resolved constants only: ordinary final/local initializers and getter bodies
+/// cannot establish a branch fact after mutation, escape or arbitrary execution.
+VariableElement? _constantVariable(Expression expression) {
+  final element = switch (expression) {
+    SimpleIdentifier(:final element) => element,
+    PrefixedIdentifier(:final element) => element,
+    PropertyAccess(:final propertyName) => propertyName.element,
+    _ => null,
+  };
+  final variable = element is PropertyAccessorElement
+      ? element.variable
+      : element;
+  return variable is VariableElement && variable.isConst ? variable : null;
+}

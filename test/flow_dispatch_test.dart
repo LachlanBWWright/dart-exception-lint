@@ -1,0 +1,231 @@
+import 'dart:io';
+
+import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
+import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:dart_exception_lint/src/analysis/inferred_throw_analyzer.dart';
+import 'package:dart_exception_lint/src/analysis/throw_summary.dart';
+import 'package:dart_exception_lint/src/config/exception_analysis_options.dart';
+import 'package:dart_exception_lint/src/config/throwing_api_manifest.dart';
+import 'package:dart_exception_lint/src/engine/resolved_dependencies.dart';
+import 'package:dart_exception_lint/src/engine/future_forwarding.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test(
+    'resolved constants control branches, loops and short circuiting',
+    () async {
+      await _verify(
+        '''
+const enabled = false;
+class Flags { static const disabled = true; }
+void branch() { if (enabled) throw 'bad'; }
+void loop() { while (enabled) { throw 'bad'; } }
+void shortCircuit() { enabled && (throw 'bad'); }
+void negated() { if (!Flags.disabled) throw 'bad'; }
+void positive() { if (!enabled) throw 'real'; }
+void casePattern() { if (enabled case false) throw 'pattern'; }
+void uncertain(bool enabled) { if (enabled) throw 'possible'; }
+''',
+        (summaries, _) {
+          for (final name in ['branch', 'loop', 'shortCircuit', 'negated']) {
+            expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
+          }
+          expect(summaries['positive']!.exceptionTypes, contains('String'));
+          expect(summaries['casePattern']!.exceptionTypes, contains('String'));
+          expect(summaries['uncertain']!.exceptionTypes, contains('String'));
+        },
+      );
+    },
+  );
+
+  test(
+    'exact allocations, super and extension dispatch exclude unrelated overrides',
+    () async {
+      await _verify(
+        '''
+class Base { void run() {} }
+class Derived extends Base { @override void run() { throw 'derived'; } void extra() { throw 'extra'; } }
+extension Extra on Base { void extra() {} }
+void exact() { Base().run(); }
+void parenthesized() { (Base()).run(); }
+void extensionCall(Base base) { base.extra(); }
+extension type View(Base base) { void run() {} }
+void viewCall(View view) { view.run(); }
+class Parent { void run() { throw 'parent'; } }
+class Middle extends Parent {
+  @override void run() { throw 42; }
+  void runSuper() { super.run(); }
+}
+class Leaf extends Middle { @override void run() { throw true; } }
+void superCall() { Middle().runSuper(); }
+void open(Base base) { base.run(); }
+sealed class Root { void run() {} }
+class OpenLeaf extends Root {}
+void openLeaf(Root root) { root.run(); }
+sealed class Closed { void run() {} }
+final class FinalLeaf extends Closed {}
+void closedLeaf(Closed root) { root.run(); }
+''',
+        (summaries, _) {
+          for (final name in [
+            'exact',
+            'parenthesized',
+            'extensionCall',
+            'viewCall',
+            'closedLeaf',
+          ]) {
+            expect(
+              summaries[name]!.hasAnyThrowSource,
+              isFalse,
+              reason:
+                  '$name: ${summaries[name]!.sources.map((s) => s.displayName)}',
+            );
+          }
+          expect(summaries['superCall']!.exceptionTypes, contains('String'));
+          expect(
+            summaries['superCall']!.exceptionTypes,
+            isNot(anyOf(contains('int'), contains('bool'))),
+          );
+          expect(summaries['open']!.exceptionTypes, contains('String'));
+          expect(summaries['open']!.hasUnknownEffects, isTrue);
+          expect(summaries['openLeaf']!.hasUnknownEffects, isTrue);
+        },
+      );
+    },
+  );
+
+  test(
+    'forwarding proof accepts immediate async adoption and rejects delayed, mutation, virtual, cyclic, dynamic and side effect bodies',
+    () async {
+      await _verify(
+        '''
+Future<void> good(Future<void> input) => input;
+Future<void> asyncReturn(Future<void> input) async => input;
+Future<void> bridge(Future<void> input) => asyncReturn(input);
+Future<void> asyncAwait(Future<void> input) async => await (input);
+Future<void> asyncStatement(Future<void> input) async { await input; }
+Future<void> asyncDelegate(Future<void> input) async { return await asyncReturn(input); }
+Future<void> delayedBad(Future<void> input) async {
+  await Future<void>.delayed(Duration.zero); return input;
+}
+Future<void> asyncWork(Future<void> input) async { print('work'); return input; }
+Future<void> asyncCatch(Future<void> input) async { try { await input; } catch (_) {} }
+Future<void> asyncFinally(Future<void> input) async { try { return await input; } finally { print('cleanup'); } }
+Future<void> mutation(Future<void> input) { input = Future<void>.value(); return input; }
+Future<void> sideEffect(Future<void> input) { print('side effect'); return input; }
+Future<void> cycle(Future<void> input) => cycle(input);
+class Virtual { Future<void> pass(Future<void> input) => input; }
+Future<dynamic> dynamicBad(Future<dynamic> input) => input;
+void calls(Future<void> input, Virtual instance, Future<dynamic> unknown) {
+  good(input); bridge(input); asyncReturn(input); asyncAwait(input); asyncStatement(input);
+  asyncDelegate(input); delayedBad(input); asyncWork(input); asyncCatch(input);
+  asyncFinally(input); mutation(input); sideEffect(input);
+  cycle(input); instance.pass(input); dynamicBad(unknown);
+}
+''',
+        (_, unit) {
+          final calls = _Calls();
+          unit.unit.accept(calls);
+          for (final call in calls.items.where(
+            (c) => c.parent is ExpressionStatement,
+          )) {
+            expect(
+              forwardedFutureArgument(call) != null,
+              [
+                'good',
+                'asyncReturn',
+                'bridge',
+                'asyncAwait',
+                'asyncStatement',
+                'asyncDelegate',
+              ].contains(call.methodName.name),
+              reason: call.toSource(),
+            );
+            expect(
+              forwardedFutureArgument(call, requireIdentity: true) != null,
+              call.methodName.name == 'good',
+              reason: 'Identity: ${call.toSource()}',
+            );
+          }
+        },
+      );
+    },
+  );
+
+  test(
+    'source Future forwarding retains typed failures in caller summaries',
+    () async {
+      await _verify(
+        '''
+Future<void> forward(Future<void> input) => input;
+Future<void> adopt(Future<void> input) async => await forward(input);
+Future<void> contained() async {
+  try { await adopt(Future<void>.error('failure')); } on String {}
+}
+Future<void> escaping() async { await adopt(Future<void>.error('failure')); }
+''',
+        (summaries, _) {
+          expect(summaries['contained']!.hasAnyThrowSource, isFalse);
+          expect(summaries['escaping']!.exceptionTypes, contains('String'));
+          expect(summaries['escaping']!.hasUnknownEffects, isFalse);
+        },
+      );
+    },
+  );
+}
+
+extension on ThrowSummary {
+  Iterable<String> get exceptionTypes =>
+      sources.expand((s) => s.exceptionTypes);
+}
+
+Future<void> _verify(
+  String content,
+  void Function(Map<String, ThrowSummary>, ResolvedUnitResult) verify,
+) async {
+  final directory = await Directory.systemTemp.createTemp('flow-dispatch-');
+  AnalysisContextCollection? collection;
+  try {
+    final file = File('${directory.path}/main.dart');
+    await file.writeAsString(content);
+    collection = AnalysisContextCollection(includedPaths: [directory.path]);
+    final unit =
+        await collection
+                .contextFor(file.path)
+                .currentSession
+                .getResolvedUnit(file.path)
+            as ResolvedUnitResult;
+    expect(unit.diagnostics.where((d) => d.severity.name == 'error'), isEmpty);
+    final dependencies = ResolvedDependencies(unit.libraryElement);
+    final analyzer = InferredThrowAnalyzer(
+      manifest: ThrowingApiManifest.empty(),
+      options: const ExceptionAnalysisOptions(),
+      featureSet: unit.libraryElement.featureSet,
+      packageRootPath: directory.path,
+      knownUnits: {file.path: unit.unit},
+      resolveDependency: dependencies.resolve,
+      resolutionIsCurrent: () => dependencies.isCurrent,
+    );
+    verify({
+      for (final declaration
+          in unit.unit.declarations.whereType<FunctionDeclaration>())
+        declaration.name.lexeme: analyzer.summarizeExecutable(
+          declaration.declaredFragment!.element,
+        ),
+    }, unit);
+  } finally {
+    await collection?.dispose();
+    await directory.delete(recursive: true);
+  }
+}
+
+final class _Calls extends RecursiveAstVisitor<void> {
+  final items = <MethodInvocation>[];
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    items.add(node);
+    super.visitMethodInvocation(node);
+  }
+}

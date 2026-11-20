@@ -83,6 +83,7 @@ final class NumericParseChecks {
     return types.isEmpty
         ? null
         : ThrowSource(
+            evidence: const {EffectEvidence.sdkModel},
             kind: ThrowSourceKind.parseCall,
             confidence: ThrowConfidence.possibleThrow,
             displayName: '$parser.${target.name}',

@@ -138,6 +138,19 @@ extension ThrowSourceKindExtension on ThrowSourceKind {
   };
 }
 
+/// How an effect was established, independently of its likelihood or channel.
+/// Multiple categories can contribute (for example a source callback routed
+/// through an SDK scheduler). Unclassified evidence is never presented as proof.
+enum EffectEvidence {
+  sourceAnalysis,
+  languageSemantics,
+  sdkModel,
+  annotationContract,
+  manifestContract,
+  unresolved,
+  unclassified,
+}
+
 final class ThrowSource {
   const ThrowSource({
     required this.kind,
@@ -152,6 +165,7 @@ final class ThrowSource {
     this.resolvedExceptionTypes = const [],
     this.exceptionSupertypes = const {},
     this.origin,
+    this.evidence = const {},
   });
 
   final ThrowSourceKind kind;
@@ -170,6 +184,50 @@ final class ThrowSource {
   /// Known ancestors of each thrown type, retained through inferred calls.
   final Map<String, List<String>> exceptionSupertypes;
   final ThrowOrigin? origin;
+  final Set<EffectEvidence> evidence;
+
+  Set<EffectEvidence> get evidenceKinds => Set.unmodifiable({
+    ...evidence,
+    if (confidence == ThrowConfidence.unknown ||
+        certainty == ExceptionCertainty.unknown)
+      EffectEvidence.unresolved,
+    if (evidence.isEmpty)
+      ...switch (kind) {
+        ThrowSourceKind.explicitThrow ||
+        ThrowSourceKind.rethrowExpression => {EffectEvidence.sourceAnalysis},
+        ThrowSourceKind.assertion ||
+        ThrowSourceKind.nullAssertion ||
+        ThrowSourceKind.asCast ||
+        ThrowSourceKind.lateInitializationRead => {
+          EffectEvidence.languageSemantics,
+        },
+        ThrowSourceKind.manifestOverride => {EffectEvidence.manifestContract},
+        _ =>
+          confidence == ThrowConfidence.unknown ||
+                  certainty == ExceptionCertainty.unknown
+              ? <EffectEvidence>{}
+              : {EffectEvidence.unclassified},
+      },
+  });
+
+  ThrowSource withEvidence(
+    Set<EffectEvidence> additional, {
+    bool replace = false,
+  }) => ThrowSource(
+    kind: kind,
+    confidence: confidence,
+    displayName: displayName,
+    intent: intent,
+    isAsync: isAsync,
+    timing: timing,
+    channel: channel,
+    certainty: certainty,
+    exceptionTypes: exceptionTypes,
+    resolvedExceptionTypes: resolvedExceptionTypes,
+    exceptionSupertypes: exceptionSupertypes,
+    origin: origin,
+    evidence: Set.unmodifiable({if (!replace) ...evidenceKinds, ...additional}),
+  );
 
   ThrowIntent get effectiveIntent => intent ?? kind.defaultIntent;
 
@@ -301,6 +359,9 @@ final class ThrowSummary {
         source.origin?.filePath,
         source.origin?.offset,
         source.origin?.length,
+        (source.evidenceKinds.map((item) => item.name).toList()..sort()).join(
+          ',',
+        ),
       ].join('|');
       uniqueSources.putIfAbsent(key, () => source);
     }

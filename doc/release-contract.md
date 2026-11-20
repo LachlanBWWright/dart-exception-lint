@@ -35,6 +35,28 @@ argument and record-field evaluation order, null-aware call arguments, and
 noncompleting expressions. This is a structural proof; opaque expressions keep
 possible normal completion. It is not a general symbolic value interpreter.
 
+Resolved constant booleans use the same branch facts in completion, inference
+and async ownership. Ordinary final/mutable initializers do not establish these
+facts. Exact generative allocations, `super`, extensions and extension types
+retain static dispatch; hierarchy inventories include classes without declared
+overrides, so an open leaf cannot disappear from completeness checks.
+
+Future error ownership can cross a source helper after proving a single-input
+static/top-level body immediately returns that input or a proven delegate. An
+async helper may return or await that value as its sole action. Async adoption
+creates a new Future; the proof preserves its error channel, not object identity.
+Proofs respect the configured call depth and a hard cap of eight
+helper declarations. Named and stored aliases retain the original obligation
+and catch types only for proven identity forwarding. Async adoption does not
+join the input and output alias locations. For tracked local inputs, the plugin
+retains their error-type facts after adoption and creates an independent
+obligation for each adopted output. Scheduled effects and ambiguous mixed
+channels cannot establish this transfer. Unknown inputs and general heap ownership
+remain conservative. Dependency edits, invalid configuration, annotation
+contracts, manifest overrides, dynamic type boundaries, and proof budgets cannot establish
+ownership through an unverified helper. Helpers with earlier work or suspension,
+general consumers, heap storage and captures remain conservative.
+
 Local async ownership distinguishes positional/named record fields and literal
 list/map slots, including aggregate aliases. Awaiting a slot checks every
 joined alternative. A consumer cannot discharge a sibling slot. Mutating or
@@ -55,6 +77,9 @@ summary. A synchronous catch around its creation cannot discharge that effect.
 - VM/JavaScript differential probes and generated cold/warm/RSS benchmarks pass.
 - Example analysis, clean-snapshot publish dry run, and installed enable-only
   consumer enforcement pass.
+- The clean snapshot's standalone CLI reports effects in a target that has not
+  enabled the plugin, then passes an unchanged baseline comparison. The
+  [CLI contract](cli.md) defines its separate callable-level reporting scope.
 - A real Analysis Server LSP consumer sees caller diagnostics appear and clear
   after unsaved body-only dependency edits through a source wrapper. Reverse
   effect dependencies schedule fresh caller analysis after the active lint

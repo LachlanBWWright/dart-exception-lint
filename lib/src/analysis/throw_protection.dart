@@ -5,6 +5,7 @@ import 'exception_annotations.dart';
 import 'exception_type_hierarchy.dart';
 import '../engine/exception_effect.dart';
 import '../engine/statement_completion.dart';
+import '../engine/future_forwarding.dart';
 
 bool isProtectedByCatch(
   AstNode node, {
@@ -105,6 +106,13 @@ bool _isAwaited(AstNode node, {ExceptionChannel? channel}) {
 // whether that invocation observes, returns, or discards the supplied Future.
 AstNode? _forwardingFutureParent(AstNode node) {
   final parent = node.parent;
+  if (parent is NamedArgument && parent.parent is ArgumentList) {
+    final invocation = parent.parent?.parent;
+    if (invocation != null &&
+        identical(forwardedFutureArgument(invocation), node)) {
+      return invocation;
+    }
+  }
   if (parent is ParenthesizedExpression ||
       parent is AsExpression ||
       (parent is PostfixExpression && parent.operator.lexeme == '!') ||
@@ -197,6 +205,10 @@ AstNode? _forwardingFutureParent(AstNode node) {
   // Future.value adopts the supplied Future rather than dropping its errors.
   if (parent is ArgumentList && parent.arguments.length == 1) {
     final invocation = parent.parent;
+    if (invocation != null &&
+        identical(forwardedFutureArgument(invocation), node)) {
+      return invocation;
+    }
     final element = switch (invocation) {
       InstanceCreationExpression(:final constructorName) =>
         constructorName.element,
