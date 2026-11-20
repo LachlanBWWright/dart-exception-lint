@@ -7,6 +7,7 @@ import 'throw_summary.dart';
 import '../engine/exception_effect.dart';
 import '../engine/numeric_checks.dart';
 import '../engine/numeric_parse_checks.dart';
+import '../engine/statement_completion.dart';
 
 final class ThrowSourceCatalog {
   const ThrowSourceCatalog._();
@@ -54,6 +55,11 @@ final class ThrowSourceCatalog {
         className: element.enclosingElement?.name,
         constructorName: element.name,
       ),
+      AssignmentExpression(leftHandSide: final IndexExpression index) ||
+      PrefixExpression(operand: final IndexExpression index) ||
+      PostfixExpression(
+        operand: final IndexExpression index,
+      ) => matchIndexAccess(index, options, indexedOperator: element),
       _ => null,
     };
     return source?.withEvidence({EffectEvidence.sdkModel}, replace: true);
@@ -61,14 +67,44 @@ final class ThrowSourceCatalog {
 
   static ThrowSource? matchIndexAccess(
     IndexExpression node,
-    ExceptionAnalysisOptions options,
-  ) {
+    ExceptionAnalysisOptions options, {
+    ExecutableElement? indexedOperator,
+  }) {
     if (!options.treatIndexAccessAsThrowing) {
       return null;
     }
-    // A user implementation of List can define different index behavior.
-    // Its body/dispatch must be analyzed instead of borrowing the SDK model.
-    if (node.element?.library.isInSdk != true) return null;
+    final parent = node.parent;
+    final writes =
+        node.inSetterContext() &&
+        (parent is! AssignmentExpression || assignmentWriteCanExecute(parent));
+    final (readElement, writeElement) = switch (parent) {
+      AssignmentExpression() when identical(parent.leftHandSide, node) => (
+        parent.readElement,
+        parent.writeElement,
+      ),
+      PrefixExpression() when node.inSetterContext() => (
+        parent.readElement,
+        parent.writeElement,
+      ),
+      PostfixExpression() when node.inSetterContext() => (
+        parent.readElement,
+        parent.writeElement,
+      ),
+      _ => (node.element, null),
+    };
+    // User-defined index operators must use their own inferred behavior.
+    final sdkRead =
+        node.inGetterContext() &&
+        readElement is ExecutableElement &&
+        readElement.library.isInSdk &&
+        (indexedOperator == null || indexedOperator == readElement.baseElement);
+    final sdkWrite =
+        writes &&
+        writeElement is ExecutableElement &&
+        writeElement.library.isInSdk &&
+        (indexedOperator == null ||
+            indexedOperator == writeElement.baseElement);
+    if (!sdkRead && !sdkWrite) return null;
 
     final target = node.realTarget;
     final type = target.staticType;
@@ -86,8 +122,8 @@ final class ThrowSourceCatalog {
       SimpleStringLiteral() => target.value.length,
       _ => null,
     };
-    if (node.inGetterContext() &&
-        !node.inSetterContext() &&
+    if (sdkRead &&
+        !sdkWrite &&
         index is IntegerLiteral &&
         literalLength != null &&
         index.value != null &&
@@ -99,6 +135,11 @@ final class ThrowSourceCatalog {
         displayName: 'proven in-bounds literal index',
       );
     }
+    // The runtime list can have a narrower element type than its static view.
+    final covariantWrite =
+        sdkWrite &&
+        writeElement.formalParameters.lastOrNull?.baseElement.type
+            is TypeParameterType;
     return ThrowSource(
       kind: ThrowSourceKind.indexAccess,
       evidence: const {EffectEvidence.sdkModel},
@@ -106,8 +147,8 @@ final class ThrowSourceCatalog {
       displayName: 'index access',
       exceptionTypes: [
         'RangeError',
-        if (index.staticType is DynamicType) 'TypeError',
-        if (node.inSetterContext()) 'UnsupportedError',
+        if (index.staticType is DynamicType || covariantWrite) 'TypeError',
+        if (sdkWrite) 'UnsupportedError',
       ],
     );
   }

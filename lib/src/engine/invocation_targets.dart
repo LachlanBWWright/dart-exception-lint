@@ -21,6 +21,8 @@ Iterable<Element?> invocationTargets(
       final dynamicReceiver = switch (node.leftHandSide) {
         PropertyAccess(:final realTarget) =>
           realTarget.staticType is DynamicType,
+        IndexExpression(:final realTarget) =>
+          realTarget.staticType is DynamicType,
         PrefixedIdentifier(:final prefix) => prefix.staticType is DynamicType,
         _ => false,
       };

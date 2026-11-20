@@ -2548,11 +2548,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitIndexExpression(IndexExpression node) {
-    final source = ThrowSourceCatalog.matchIndexAccess(node, analyzer.options);
-    if (source != null && !_isProtected(node, source)) {
-      sources.add(_normalize(source, node));
-    }
-    _recordCall(node);
+    if (!node.inSetterContext()) _recordCall(node);
     super.visitIndexExpression(node);
   }
 

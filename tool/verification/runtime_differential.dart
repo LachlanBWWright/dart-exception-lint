@@ -150,6 +150,9 @@ Future<void> main() async {
 const _effects = {
   'stoppedPropertyWrite': ('synchronous', 'int'),
   'stoppedCompoundPropertyWrite': ('synchronous', 'String'),
+  'stoppedIndexWrite': ('synchronous', 'int'),
+  'stoppedCompoundIndexWrite': ('synchronous', 'RangeError'),
+  'covariantIndexWrite': ('synchronous', 'TypeError'),
   'storedLazyIterator': ('synchronous', 'String'),
   'blockedLazyConsumer': ('synchronous', 'int'),
   'stoppedGuardCase': ('synchronous', 'int'),
@@ -196,6 +199,8 @@ const _effects = {
 const _suppressedEffects = {
   'stoppedPropertyWrite': 'bool',
   'stoppedCompoundPropertyWrite': 'bool',
+  'stoppedIndexWrite': 'RangeError',
+  'stoppedCompoundIndexWrite': 'UnsupportedError',
   'storedLazyIteratorCaught': 'String',
   'unusedLazyIterator': 'String',
   'blockedLazyConsumer': 'String',
@@ -229,6 +234,9 @@ const _unknownEffects = {
 const _observations = {
   'stopped_property_write': '42',
   'stopped_compound_property_write': 'String',
+  'stopped_index_write': '42',
+  'stopped_compound_index_write': 'RangeError',
+  'covariant_index_write': 'TypeError',
   'stored_lazy_iterator': 'String',
   'stored_lazy_iterator_caught': 'none',
   'unused_lazy_iterator': 'none',
@@ -306,14 +314,23 @@ const disabledBranch = false;
 Never stopEvaluation() => throw 42;
 Never throwString() => throw 'effect';
 final class AssignmentTarget {
-  int get value => throwString();
-  set value(int next) { throw true; }
+  num get value => throwString();
+  set value(num next) { throw true; }
 }
 void stoppedPropertyWrite() {
   AssignmentTarget().value = stopEvaluation();
 }
 void stoppedCompoundPropertyWrite() {
   AssignmentTarget().value += stopEvaluation();
+}
+void stoppedIndexWrite() {
+  <num>[][0] = stopEvaluation();
+}
+void stoppedCompoundIndexWrite() {
+  <num>[][0] += stopEvaluation();
+}
+void covariantIndexWrite(List<num> values) {
+  values[0] = 1.5;
 }
 void stoppedGuardCase() {
   final result = switch (false) {
@@ -491,7 +508,7 @@ void containedCast(dynamic value) {
   try { String text = value; text.length; } on TypeError {}
 }
 
-String label(Object error) => error is TypeError ? 'TypeError' : error is String ? 'String' : '$error';
+String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is String ? 'String' : '$error';
 String capture(void Function() operation) {
   try { operation(); return 'none'; } catch (error) { return label(error); }
 }
@@ -517,6 +534,9 @@ Future<void> main() async {
   final observations = {
     'stopped_property_write': capture(stoppedPropertyWrite),
     'stopped_compound_property_write': capture(stoppedCompoundPropertyWrite),
+    'stopped_index_write': capture(stoppedIndexWrite),
+    'stopped_compound_index_write': capture(stoppedCompoundIndexWrite),
+    'covariant_index_write': capture(() => covariantIndexWrite(<int>[0])),
     'stored_lazy_iterator': capture(storedLazyIterator),
     'stored_lazy_iterator_caught': capture(storedLazyIteratorCaught),
     'unused_lazy_iterator': capture(unusedLazyIterator),

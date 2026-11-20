@@ -137,6 +137,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitPropertyAccess(PropertyAccess node) {
+    if (isAssignmentTarget(node)) return;
     _reportIfNeeded(
       node,
       element: node.propertyName.element,
@@ -146,6 +147,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    if (isAssignmentTarget(node)) return;
     _reportIfNeeded(
       node,
       element: node.identifier.element,
@@ -160,6 +162,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitIndexExpression(IndexExpression node) {
+    if (isAssignmentTarget(node)) return;
     _reportIfNeeded(node, element: node.element, diagnosticTarget: node);
   }
 

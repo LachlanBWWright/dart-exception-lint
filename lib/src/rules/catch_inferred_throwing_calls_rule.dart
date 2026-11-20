@@ -139,6 +139,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitIndexExpression(IndexExpression node) {
+    if (isAssignmentTarget(node)) return;
     _report(node, element: node.element, diagnosticTarget: node);
   }
 

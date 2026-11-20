@@ -285,6 +285,55 @@ void lateWrite() { late int value; value = 3; }
     );
   });
 
+  test('index assignment models the read and write that can execute', () async {
+    await _verify(
+      '''
+final class Indexed {
+  num operator [](int index) => throw 'read';
+  void operator []=(int index, num value) { throw true; }
+}
+Never stop() => throw 3;
+void blockedSdkWrite(List<num> values) { values[0] = stop(); }
+void blockedSdkCompound(List<num> values) { values[0] += stop(); }
+void sdkWrite(List<num> values) { values[0] = 1; }
+void sdkPostfix(List<num> values) { values[0]--; }
+void nestedSdkRead(List<num> values) { values[0] += values[1]; }
+void blockedUserWrite(Indexed values) { values[0] = stop(); }
+void blockedUserCompound(Indexed values) { values[0] += stop(); }
+void userWrite(Indexed values) { values[0] = 1; }
+''',
+      (summaries, _) {
+        for (final name in ['blockedSdkWrite', 'blockedUserWrite']) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'int',
+          }, reason: name);
+        }
+        final sdkCompound = summaries['blockedSdkCompound']!;
+        expect(
+          sdkCompound.exceptionTypes.toSet(),
+          {'int', 'RangeError'},
+          reason: sdkCompound.sources
+              .map(
+                (source) => '${source.displayName}: ${source.exceptionTypes}',
+              )
+              .join('\n'),
+        );
+        expect(summaries['blockedUserCompound']!.exceptionTypes.toSet(), {
+          'int',
+          'String',
+        });
+        for (final name in ['sdkWrite', 'sdkPostfix', 'nestedSdkRead']) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            containsAll(['RangeError', 'TypeError', 'UnsupportedError']),
+            reason: name,
+          );
+        }
+        expect(summaries['userWrite']!.exceptionTypes.toSet(), {'bool'});
+      },
+    );
+  });
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''
