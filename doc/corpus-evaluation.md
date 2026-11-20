@@ -1,5 +1,31 @@
 # External smoke evaluation
 
+## Dart 3.14.1 and analyzer 14.3.0
+
+The evaluator completed one package at each of 10 pinned revisions on Linux
+x64. Dependency resolution and plugin analysis succeeded for every package,
+and the evaluator restored their tracked files afterward.
+
+| Repository | Diagnostics |
+| --- | ---: |
+| dart_http | 135 |
+| dart_path | 448 |
+| dart_args | 1,597 |
+| dart_collection | 2,377 |
+| dart_crypto | 1,088 |
+| dart_intl | 1,531 |
+| dart_yaml | 201 |
+| dart_source_span | 91 |
+| dart_async | 1,412 |
+| dart_ffi | 142 |
+| Total | 9,022 |
+
+The HTTP manifest entry selects `pkgs/http`. The startup probe confirmed
+that the installed plugin emitted `no_manual_throw`. The table records
+diagnostic volume. The separate semantic corpus carries expected effect labels.
+
+## Earlier release-contract run
+
 The release-contract implementation batch exercised three pinned repositories
 from `tool/corpus/projects.tsv` on Dart 3.13.5/Linux x64:
 
