@@ -74,17 +74,14 @@ Set<CompletionTransfer> _statement(
       :final elseStatement,
     ):
       if (!expressionCanCompleteNormally(expression)) return {_thrown};
-      final condition = statement.caseClause == null
-          ? constantBooleanValue(expression)
-          : null;
-      if (condition == true) return _statement(thenStatement);
-      if (condition == false) {
-        return elseStatement == null ? {_normal} : _statement(elseStatement);
-      }
+      final selection = _ifSelection(expression, statement.caseClause);
       return {
-        _thrown,
-        ..._statement(thenStatement),
-        if (elseStatement == null) _normal else ..._statement(elseStatement),
+        if (statement.caseClause != null ||
+            selection.selects && selection.fallsThrough)
+          _thrown,
+        if (selection.selects) ..._statement(thenStatement),
+        if (selection.fallsThrough)
+          if (elseStatement == null) _normal else ..._statement(elseStatement),
       };
     case LabeledStatement(:final labels, :final statement):
       final names = labels.map((label) => label.name.lexeme).toSet();
@@ -269,13 +266,6 @@ bool isReachable(AstNode node) {
         if (!statementCompletion(statement).canCompleteNormally) return false;
       }
     }
-    if (parent is IfStatement && parent.caseClause == null) {
-      final condition = constantBooleanValue(parent.expression);
-      if ((condition == false && identical(current, parent.thenStatement)) ||
-          (condition == true && identical(current, parent.elseStatement))) {
-        return false;
-      }
-    }
     if (parent is WhileStatement &&
         identical(current, parent.body) &&
         constantBooleanValue(parent.condition) == false) {
@@ -417,6 +407,7 @@ bool expressionCanCompleteNormally(Expression expression) {
               expressionCanCompleteNormally(thenExpression) ||
                   expressionCanCompleteNormally(elseExpression),
           },
+    SwitchExpression() => _switchExpressionCanComplete(expression),
     MethodInvocation() ||
     FunctionExpressionInvocation() ||
     PropertyAccess() ||
@@ -459,13 +450,11 @@ bool _collectionElementCanCompleteNormally(CollectionElement? element) =>
                 expressionCanCompleteNormally(value)),
       IfElement(:final expression, :final thenElement, :final elseElement) =>
         expressionCanCompleteNormally(expression) &&
-            switch (_collectionCondition(element)) {
-              true => _collectionElementCanCompleteNormally(thenElement),
-              false => _collectionElementCanCompleteNormally(elseElement),
-              null =>
-                _collectionElementCanCompleteNormally(thenElement) ||
-                    _collectionElementCanCompleteNormally(elseElement),
-            },
+            _ifElementBranchCanComplete(
+              _ifSelection(expression, element.caseClause),
+              thenElement,
+              elseElement,
+            ),
       ForElement(:final forLoopParts) =>
         _forInputCanCompleteNormally(forLoopParts) &&
             switch (forLoopParts) {
@@ -478,9 +467,63 @@ bool _collectionElementCanCompleteNormally(CollectionElement? element) =>
       _ => true,
     };
 
-bool? _collectionCondition(IfElement element) => element.caseClause == null
-    ? constantBooleanValue(element.expression)
-    : null;
+typedef _Selection = ({bool selects, bool fallsThrough});
+
+_Selection _ifSelection(Expression subject, CaseClause? clause) {
+  if (clause != null) return _caseSelection(subject, clause.guardedPattern);
+  final value = constantBooleanValue(subject);
+  return (selects: value != false, fallsThrough: value != true);
+}
+
+bool _ifElementBranchCanComplete(
+  _Selection selection,
+  CollectionElement thenElement,
+  CollectionElement? elseElement,
+) =>
+    selection.selects && _collectionElementCanCompleteNormally(thenElement) ||
+    selection.fallsThrough &&
+        _collectionElementCanCompleteNormally(elseElement);
+
+_Selection _caseSelection(Expression subject, GuardedPattern clause) {
+  final matches = _simplePatternMatch(subject, clause.pattern);
+  final guard = clause.whenClause?.expression;
+  if (guard == null) {
+    return (selects: matches != false, fallsThrough: matches != true);
+  }
+  final completes = expressionCanCompleteNormally(guard);
+  final guardValue = constantBooleanValue(guard);
+  return (
+    selects: matches != false && completes && guardValue != false,
+    fallsThrough: matches != true || completes && guardValue != true,
+  );
+}
+
+bool? _simplePatternMatch(Expression subject, DartPattern pattern) {
+  switch (pattern) {
+    case WildcardPattern(type: null) || DeclaredVariablePattern(type: null):
+      return true;
+    case ParenthesizedPattern(:final pattern):
+      return _simplePatternMatch(subject, pattern);
+    case ConstantPattern(:final expression):
+      final input = constantBooleanValue(subject);
+      final expected = constantBooleanValue(expression);
+      return input == null || expected == null ? null : input == expected;
+    default:
+      return null;
+  }
+}
+
+bool _switchExpressionCanComplete(SwitchExpression node) {
+  if (!expressionCanCompleteNormally(node.expression)) return false;
+  for (final arm in node.cases) {
+    final selection = _caseSelection(node.expression, arm.guardedPattern);
+    if (selection.selects && expressionCanCompleteNormally(arm.expression)) {
+      return true;
+    }
+    if (!selection.fallsThrough) return false;
+  }
+  return node.cases.isEmpty;
+}
 
 bool _childCanExecute(AstNode parent, AstNode child) {
   if (parent is ArgumentList && child is Argument) {
@@ -525,13 +568,16 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     }
   }
   if (parent is IfStatement && !identical(child, parent.expression)) {
-    return expressionCanCompleteNormally(parent.expression);
+    if (!expressionCanCompleteNormally(parent.expression)) return false;
+    final selection = _ifSelection(parent.expression, parent.caseClause);
+    if (identical(child, parent.thenStatement)) return selection.selects;
+    if (identical(child, parent.elseStatement)) return selection.fallsThrough;
   }
   if (parent is IfElement && !identical(child, parent.expression)) {
     if (!expressionCanCompleteNormally(parent.expression)) return false;
-    final condition = _collectionCondition(parent);
-    if (identical(child, parent.thenElement)) return condition != false;
-    if (identical(child, parent.elseElement)) return condition != true;
+    final selection = _ifSelection(parent.expression, parent.caseClause);
+    if (identical(child, parent.thenElement)) return selection.selects;
+    if (identical(child, parent.elseElement)) return selection.fallsThrough;
   }
   if (parent is WhileStatement && identical(child, parent.body)) {
     return expressionCanCompleteNormally(parent.condition);
@@ -573,6 +619,33 @@ bool _childCanExecute(AstNode parent, AstNode child) {
   }
   if (parent is SwitchStatement && child is SwitchMember) {
     return expressionCanCompleteNormally(parent.expression);
+  }
+  if (parent is SwitchExpression && child is SwitchExpressionCase) {
+    final subject = parent.expression;
+    if (!expressionCanCompleteNormally(subject)) return false;
+    for (final arm in parent.cases) {
+      if (identical(arm, child)) break;
+      if (!_caseSelection(subject, arm.guardedPattern).fallsThrough) {
+        return false;
+      }
+    }
+    return _simplePatternMatch(subject, child.guardedPattern.pattern) != false;
+  }
+  if (parent is SwitchExpressionCase && identical(child, parent.expression)) {
+    final owner = parent.parent;
+    if (owner is SwitchExpression) {
+      return _caseSelection(owner.expression, parent.guardedPattern).selects;
+    }
+  }
+  if (parent is GuardedPattern && child is WhenClause) {
+    final subject = switch (parent.parent?.parent) {
+      IfStatement(:final expression) ||
+      IfElement(:final expression) => expression,
+      _ => null,
+    };
+    if (subject != null) {
+      return _simplePatternMatch(subject, parent.pattern) != false;
+    }
   }
   if (parent is TryStatement && child is CatchClause) {
     return statementCompletion(parent.body).transfers.contains(_thrown);

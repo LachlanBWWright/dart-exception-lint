@@ -53,6 +53,14 @@ void main() {
     '{ for (; throw "failure"; ) { break; } }': false,
     '{ for (final item in throw "failure") { break; } }': false,
     '{ switch (throw "failure") { default: break; } }': false,
+    '{ final result = switch (throw "failure") { _ => 0 }; }': false,
+    '{ final result = switch (true) { true => throw "failure", _ => 0 }; }':
+        false,
+    '{ final result = switch (flag) { _ when false => throw "failure", _ => 0 }; }':
+        true,
+    '{ final result = switch (flag) { _ when throw "failure" => 1, _ => 0 }; }':
+        false,
+    '{ if (value case _ when throw "failure") {} }': false,
     '{ for (final item in items) { return; } }': true,
     '{ outer: while (true) { while (true) { break outer; } } }': true,
     '{ outer: while (true) { continue outer; } }': false,
@@ -120,6 +128,13 @@ void main() {
     '[if (false) probe()]': false,
     '[if (true) 0 else probe()]': false,
     '[if (false case false) probe()]': true,
+    '[if (false case true when probe()) 0]': false,
+    '[if (true case _ when false) probe()]': false,
+    '(switch (throw "stop") { _ => probe() })': false,
+    '(switch (true) { true => 1, _ => probe() })': false,
+    '(switch (flag) { _ when false => probe(), _ => 1 })': false,
+    '(switch (flag) { _ when false => 1, _ => probe() })': true,
+    '(switch (flag) { _ when throw "stop" => 1, _ => probe() })': false,
     '[if (throw "stop") probe()]': false,
     '[for (; false;) probe()]': false,
     '[for (var i = throw "stop"; probe();) 0]': false,

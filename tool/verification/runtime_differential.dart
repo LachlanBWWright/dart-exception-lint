@@ -148,6 +148,7 @@ Future<void> main() async {
 }
 
 const _effects = {
+  'stoppedGuardCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
   'postfixAssertion': ('synchronous', 'TypeError'),
   'stoppedCascade': ('synchronous', 'int'),
@@ -189,6 +190,8 @@ const _effects = {
 };
 
 const _suppressedEffects = {
+  'stoppedGuardCase': 'String',
+  'skippedGuard': 'String',
   'caughtPostfixAssertion': 'TypeError',
   'skippedSelector': 'String',
   'stoppedCascade': 'String',
@@ -215,6 +218,8 @@ const _unknownEffects = {
 };
 
 const _observations = {
+  'stopped_guard_case': '42',
+  'skipped_guard': 'none',
   'postfix_assertion': 'TypeError',
   'caught_postfix_assertion': 'none',
   'skipped_selector': 'none',
@@ -285,6 +290,18 @@ import 'dart:convert';
 const disabledBranch = false;
 Never stopEvaluation() => throw 42;
 Never throwString() => throw 'effect';
+void stoppedGuardCase() {
+  final result = switch (false) {
+    _ when stopEvaluation() => throwString(),
+    _ => throwString(),
+  };
+}
+void skippedGuard() {
+  final result = switch (false) {
+    true when throwString() => throwString(),
+    _ => 0,
+  };
+}
 final class CascadeTarget {
   Never stop() => stopEvaluation();
   Never fail() => throwString();
@@ -456,6 +473,8 @@ Future<void> main() async {
   final scheduled = Completer<String>();
   runZonedGuarded(scheduledFailure, (error, stack) { scheduled.complete(label(error)); });
   final observations = {
+    'stopped_guard_case': capture(stoppedGuardCase),
+    'skipped_guard': capture(skippedGuard),
     'postfix_assertion': capture(() => postfixAssertion(null)),
     'caught_postfix_assertion': capture(() => caughtPostfixAssertion(null)),
     'skipped_selector': capture(skippedSelector),

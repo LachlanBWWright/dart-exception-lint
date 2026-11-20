@@ -214,6 +214,40 @@ void genericFallback<T>(T value) { value ?? input(); }
     );
   });
 
+  test('pattern guards govern selection and fallthrough', () async {
+    await _verify(
+      '''
+bool probe() => throw 'guard or arm';
+Never stop() => throw 3;
+void input() { final result = switch (stop()) { _ => probe() }; probe(); }
+void firstMatch() { final result = switch (true) { true => stop(), _ => probe() }; probe(); }
+void falseGuard(bool value) { final result = switch (value) { _ when false => probe(), _ => stop() }; }
+void stoppedGuard(bool value) { final result = switch (value) { _ when stop() => probe(), _ => probe() }; probe(); }
+void stoppedIfCase(bool value) { if (value case _ when stop()) probe(); else probe(); }
+void failedIfCase() { if (false case true when probe()) probe(); else stop(); }
+void possibleElse(Object value) { if (value case int _ when stop()) probe(); else probe(); }
+''',
+      (summaries, _) {
+        for (final name in [
+          'input',
+          'firstMatch',
+          'falseGuard',
+          'stoppedGuard',
+          'stoppedIfCase',
+          'failedIfCase',
+        ]) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'int',
+          }, reason: name);
+        }
+        expect(summaries['possibleElse']!.exceptionTypes.toSet(), {
+          'int',
+          'String',
+        });
+      },
+    );
+  });
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''
