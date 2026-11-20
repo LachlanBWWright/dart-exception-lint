@@ -40,6 +40,69 @@ void uncertain(bool enabled) { if (enabled) throw 'possible'; }
     },
   );
 
+  test('loop evaluation order retains only reachable effects', () async {
+    await _verify(
+      '''
+bool probe() => throw 'probe';
+Never stop() => throw 3;
+Never? nullableBottom() => null;
+void initializer() { for (int i = stop(); probe(); probe()) { probe(); } }
+void condition() { for (; stop(); probe()) { probe(); } }
+void iterable() { for (final item in stop()) { probe(); } }
+void skippedUpdate() { for (;; probe()) { break; } }
+void skippedDoCondition() { do { return; } while (probe()); }
+void continuedUpdate() { outer: for (;; probe()) { continue outer; } }
+void continuedDoCondition() { outer: do { continue outer; } while (probe()); }
+void updateOrder() { for (;; stop(), probe()) {} }
+void switchInput() { switch (stop()) { default: probe(); } }
+void switchBody(int value) {
+  switch (value) { case 1: return; probe(); }
+}
+void nullableResult() { nullableBottom(); probe(); }
+void lazyInitializer() { late final int value = stop(); probe(); }
+''',
+      (summaries, _) {
+        for (final name in [
+          'initializer',
+          'condition',
+          'iterable',
+          'updateOrder',
+          'switchInput',
+        ]) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            contains('int'),
+            reason: name,
+          );
+          expect(
+            summaries[name]!.exceptionTypes,
+            isNot(contains('String')),
+            reason: name,
+          );
+        }
+        for (final name in [
+          'skippedUpdate',
+          'skippedDoCondition',
+          'switchBody',
+        ]) {
+          expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
+        }
+        for (final name in [
+          'continuedUpdate',
+          'continuedDoCondition',
+          'nullableResult',
+          'lazyInitializer',
+        ]) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            contains('String'),
+            reason: name,
+          );
+        }
+      },
+    );
+  });
+
   test(
     'exact allocations, super and extension dispatch exclude unrelated overrides',
     () async {

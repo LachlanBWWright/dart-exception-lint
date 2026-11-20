@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
+import 'package:analyzer/dart/element/type.dart';
 
 /// Structural completion facts, independent of exception-source inference.
 /// Unknown expressions/statements retain normal completion. A missing normal
@@ -56,19 +57,17 @@ Set<CompletionTransfer> _statement(
           ? {_thrown}
           : {_normal, _thrown};
     case VariableDeclarationStatement(:final variables):
-      return variables.variables.any(
-            (variable) =>
-                variable.initializer != null &&
-                !expressionCanCompleteNormally(variable.initializer!),
-          )
-          ? {_thrown}
-          : {
-              _normal,
-              if (variables.variables.any(
-                (variable) => variable.initializer != null,
-              ))
-                _thrown,
-            };
+      if (variables.isLate) return {_normal};
+      return {
+        if (_variablesCanCompleteNormally(variables)) _normal,
+        if (variables.variables.any((variable) => variable.initializer != null))
+          _thrown,
+      };
+    case PatternVariableDeclarationStatement(:final declaration):
+      return {
+        if (expressionCanCompleteNormally(declaration.expression)) _normal,
+        _thrown,
+      };
     case IfStatement(
       :final expression,
       :final thenStatement,
@@ -117,34 +116,42 @@ Set<CompletionTransfer> _statement(
         ),
       };
     case DoStatement(:final condition, :final body):
-      return {
-        if (constantBooleanValue(condition) == null) _thrown,
-        ..._loop(
-          _statement(body),
-          mayExitCondition: constantBooleanValue(condition) != true,
-          labels: loopLabels,
-          executesOnce: true,
-        ),
-      };
+      final conditionValue = constantBooleanValue(condition);
+      return _loop(
+        _statement(body),
+        mayExitCondition: false,
+        labels: loopLabels,
+        afterBody: {
+          if (conditionValue == null) _thrown,
+          if (conditionValue != true &&
+              expressionCanCompleteNormally(condition))
+            _normal,
+        },
+      );
     case ForStatement(:final forLoopParts, :final body):
+      if (!_forInputCanCompleteNormally(forLoopParts)) return {_thrown};
       final condition = forLoopParts is ForParts
           ? forLoopParts.condition
           : null;
-      final isInfinite =
-          forLoopParts is ForParts &&
-          (condition == null || constantBooleanValue(condition) == true);
-      if (condition != null && constantBooleanValue(condition) == false) {
-        return {_normal};
+      final conditionValue = condition == null
+          ? null
+          : constantBooleanValue(condition);
+      if (condition != null) {
+        if (!expressionCanCompleteNormally(condition)) return {_thrown};
+        if (conditionValue == false) return {_normal, _thrown};
       }
       return {
         _thrown,
         ..._loop(
           _statement(body),
-          mayExitCondition: !isInfinite,
+          mayExitCondition:
+              forLoopParts is ForEachParts ||
+              (condition != null && conditionValue != true),
           labels: loopLabels,
         ),
       };
-    case SwitchStatement(:final members):
+    case SwitchStatement(:final expression, :final members):
+      if (!expressionCanCompleteNormally(expression)) return {_thrown};
       final result = <CompletionTransfer>{
         _thrown,
         if (!members.any((member) => member is SwitchDefault)) _normal,
@@ -187,27 +194,60 @@ Set<CompletionTransfer> _loop(
   Set<CompletionTransfer> body, {
   required bool mayExitCondition,
   required Set<String> labels,
-  bool executesOnce = false,
+  Set<CompletionTransfer> afterBody = const {},
 }) {
-  final result = <CompletionTransfer>{};
-  var reachesCondition = false;
+  final result = <CompletionTransfer>{if (mayExitCondition) _normal};
   for (final transfer in body) {
     final targetsLoop =
         transfer.label == null || labels.contains(transfer.label);
-    if (transfer.kind == CompletionKind.normal ||
-        (transfer.kind == CompletionKind.continued && targetsLoop)) {
-      reachesCondition = true;
+    if (_continuesLoop(transfer, labels)) {
+      result.addAll(afterBody);
     } else if (transfer.kind == CompletionKind.broke && targetsLoop) {
       result.add(_normal);
     } else {
       result.add(transfer);
     }
   }
-  if (mayExitCondition && (!executesOnce || reachesCondition)) {
-    result.add(_normal);
-  }
   return result;
 }
+
+bool _continuesLoop(CompletionTransfer transfer, Set<String> labels) =>
+    transfer.kind == CompletionKind.normal ||
+    transfer.kind == CompletionKind.continued &&
+        (transfer.label == null || labels.contains(transfer.label));
+
+bool _reachesNextIteration(Statement loop, Statement body) {
+  final labels = <String>{};
+  for (
+    var parent = loop.parent;
+    parent is LabeledStatement;
+    parent = parent.parent
+  ) {
+    labels.addAll(parent.labels.map((label) => label.name.lexeme));
+  }
+  return statementCompletion(
+    body,
+  ).transfers.any((transfer) => _continuesLoop(transfer, labels));
+}
+
+bool _variablesCanCompleteNormally(VariableDeclarationList variables) =>
+    variables.isLate ||
+    variables.variables.every((variable) {
+      final initializer = variable.initializer;
+      return initializer == null || expressionCanCompleteNormally(initializer);
+    });
+
+bool _forInputCanCompleteNormally(ForLoopParts parts) => switch (parts) {
+  ForEachParts(:final iterable) => expressionCanCompleteNormally(iterable),
+  ForPartsWithDeclarations(:final variables) => _variablesCanCompleteNormally(
+    variables,
+  ),
+  ForPartsWithExpression(:final initialization) =>
+    initialization == null || expressionCanCompleteNormally(initialization),
+  ForPartsWithPattern(:final variables) => expressionCanCompleteNormally(
+    variables.expression,
+  ),
+};
 
 /// Whether lexical control flow permits execution of this node. Callable
 /// bodies are separate entry points, including hoisted local declarations.
@@ -217,8 +257,12 @@ bool isReachable(AstNode node) {
     final parent = current.parent;
     if (parent is FunctionBody) return true;
     if (parent != null && !_childCanExecute(parent, current)) return false;
-    if (parent is Block && current is Statement) {
-      for (final statement in parent.statements) {
+    final statements = switch (parent) {
+      Block(:final statements) || SwitchMember(:final statements) => statements,
+      _ => null,
+    };
+    if (statements != null && current is Statement) {
+      for (final statement in statements) {
         if (identical(statement, current)) break;
         if (!statementCompletion(statement).canCompleteNormally) return false;
       }
@@ -245,7 +289,8 @@ bool isReachable(AstNode node) {
 /// while a throw or a resolved Never result cannot. Closures are values; their
 /// bodies execute only at separate entry points.
 bool expressionCanCompleteNormally(Expression expression) {
-  if (expression.staticType is NeverType ||
+  final type = expression.staticType;
+  if (type is NeverType && type.nullabilitySuffix == NullabilitySuffix.none ||
       expression is ThrowExpression ||
       expression is RethrowExpression) {
     return false;
@@ -325,7 +370,9 @@ bool _childCanExecute(AstNode parent, AstNode child) {
       }
     }
   }
-  if (parent is VariableDeclarationList && child is VariableDeclaration) {
+  if (parent is VariableDeclarationList &&
+      !parent.isLate &&
+      child is VariableDeclaration) {
     for (final variable in parent.variables) {
       if (identical(variable, child)) break;
       if (variable.initializer != null &&
@@ -364,12 +411,39 @@ bool _childCanExecute(AstNode parent, AstNode child) {
   if (parent is WhileStatement && identical(child, parent.body)) {
     return expressionCanCompleteNormally(parent.condition);
   }
+  if (parent is DoStatement && identical(child, parent.condition)) {
+    return _reachesNextIteration(parent, parent.body);
+  }
+  if (parent is ForParts &&
+      child is Expression &&
+      (identical(child, parent.condition) || parent.updaters.contains(child))) {
+    if (!_forInputCanCompleteNormally(parent)) return false;
+    final condition = parent.condition;
+    if (identical(child, condition)) return true;
+    if (condition != null &&
+        (!expressionCanCompleteNormally(condition) ||
+            constantBooleanValue(condition) == false)) {
+      return false;
+    }
+    final loop = parent.parent;
+    if (loop is ForStatement && !_reachesNextIteration(loop, loop.body)) {
+      return false;
+    }
+    for (final updater in parent.updaters) {
+      if (identical(updater, child)) break;
+      if (!expressionCanCompleteNormally(updater)) return false;
+    }
+  }
   if (parent is ForStatement && identical(child, parent.body)) {
     final parts = parent.forLoopParts;
+    if (!_forInputCanCompleteNormally(parts)) return false;
     if (parts is ForParts && parts.condition != null) {
       return expressionCanCompleteNormally(parts.condition!) &&
           constantBooleanValue(parts.condition!) != false;
     }
+  }
+  if (parent is SwitchStatement && child is SwitchMember) {
+    return expressionCanCompleteNormally(parent.expression);
   }
   if (parent is RecordLiteral && child is RecordLiteralField) {
     for (final field in parent.fields) {
