@@ -255,6 +255,7 @@ const _suppressedEffects = {
   'stoppedSuperArgument': 'String',
   'guardedStringIndex': 'RangeError',
   'boundedSubstringStart': 'RangeError',
+  'nativeStringEquality': 'String',
   'caughtDynamicBoolean': 'TypeError',
   'blockedCastFailure': 'TypeError',
   'blockedCovarianceFailure': 'TypeError',
@@ -318,6 +319,7 @@ const _observations = {
   'rebound_string_index': 'RangeError',
   'second_string_index': 'RangeError',
   'bounded_substring_start': 'none',
+  'native_string_equality': 'none',
   'negative_substring_start': 'RangeError',
   'reversed_substring_range': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
@@ -502,6 +504,11 @@ void boundedSubstringStart(String text) {
   }
   if (start < text.length) text.substring(start);
 }
+final class EqualityTrap {
+  bool operator ==(Object other) => throw 'custom equality';
+  int get hashCode => 0;
+}
+bool nativeStringEquality(String left, Object? right) => left == right || left != right;
 void negativeSubstringStart(String text, int start) {
   if (start < text.length) text.substring(start);
 }
@@ -836,6 +843,7 @@ Future<void> main() async {
     'rebound_string_index': capture(() => reboundStringIndex('A')),
     'second_string_index': capture(() => secondStringIndex('A')),
     'bounded_substring_start': capture(() { boundedSubstringStart(''); boundedSubstringStart('word'); }),
+    'native_string_equality': capture(() => nativeStringEquality('value', EqualityTrap())),
     'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
     'reversed_substring_range': capture(() => reversedSubstringRange('word')),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),

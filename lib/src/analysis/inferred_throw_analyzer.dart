@@ -294,10 +294,10 @@ final class InferredThrowAnalyzer {
         ThrowSourceCatalog.matchAssignmentExpression(node, options),
       _ => ThrowSourceCatalog.matchResolvedInvocation(node, element, options),
     };
-    // The native numeric proof covers the actual operator or SDK method at
+    // The native proof covers the actual operator or SDK method at
     // this call site, including implicit arguments to increment and decrement.
     // Its internal SDK implementations cannot add an unrelated source effect.
-    if (directSource == null && _isProvenSafeNumeric(node, element)) {
+    if (directSource == null && _isProvenSafeNativeOperation(node, element)) {
       return null;
     }
     final baseSummary = _summaryForDispatch(
@@ -722,12 +722,13 @@ final class InferredThrowAnalyzer {
     channel: ExceptionChannel.scheduled,
   );
 
-  static bool _isProvenSafeNumeric(AstNode node, Element? element) =>
+  static bool _isProvenSafeNativeOperation(AstNode node, Element? element) =>
       switch (node) {
         BinaryExpression()
             when element?.baseElement == node.element?.baseElement =>
-          NumericChecks.modelsBinary(node) &&
-              NumericChecks.binary(node) == null,
+          ThrowSourceCatalog.isNativeStringEquality(node) ||
+              NumericChecks.modelsBinary(node) &&
+                  NumericChecks.binary(node) == null,
         AssignmentExpression()
             when element?.baseElement == node.element?.baseElement =>
           NumericChecks.modelsAssignment(node) &&
@@ -765,7 +766,7 @@ final class InferredThrowAnalyzer {
                 dependencyElementKeys: const [],
                 complete: true,
               )
-            : _isProvenSafeNumeric(node, target)
+            : _isProvenSafeNativeOperation(node, target)
             ? ThrowSummary.noObviousThrow(node.toSource())
             : (_specializedSummary(target, node, depth: 0) ??
                   summarizeExecutable(target)),
@@ -1444,7 +1445,7 @@ final class InferredThrowAnalyzer {
       }
     }
 
-    if (_isProvenSafeNumeric(node, resolvedElement)) {
+    if (_isProvenSafeNativeOperation(node, resolvedElement)) {
       return ThrowSummary.merge(
         node.toSource(),
         callbackSources,

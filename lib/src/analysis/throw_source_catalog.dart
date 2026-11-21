@@ -231,6 +231,16 @@ final class ThrowSourceCatalog {
         : null;
   }
 
+  static bool isNativeStringEquality(BinaryExpression node) {
+    final element = node.element?.baseElement;
+    return (node.operator.lexeme == '==' || node.operator.lexeme == '!=') &&
+        element is MethodElement &&
+        element.library.isInSdk &&
+        element.library.uri.toString() == 'dart:core' &&
+        element.enclosingElement?.name == 'String' &&
+        element.name == '==';
+  }
+
   static ThrowSource? matchAssignmentExpression(
     AssignmentExpression node,
     ExceptionAnalysisOptions options,
