@@ -143,6 +143,10 @@ source locations. A compatible catch contained the parser failure. The
 widget test ran on headless Chromium 154 and rendered both successful
 input and the handled failure. CI runs this check in a separate Flutter job.
 
+CI also defines macOS and Windows jobs on Dart 3.14.1 for CLI paths and
+baselines, release installation, and Analysis Server overlays. The workflows
+pass actionlint. Execution on those hosts remains to be verified.
+
 ### Dart 3.14 release verification
 
 All 42 test suites passed with analyzer 14.3.0 on Linux x64. Dart 3.11.0,

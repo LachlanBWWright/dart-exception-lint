@@ -64,6 +64,28 @@ jobs:
       - name: Verify Analysis Server editor overlays
         run: dart run tool/verification/ide_smoke.dart
 
+  desktop-portability:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.14.1'
+      - name: Install dependencies
+        run: dart pub get
+      - name: Analyze package
+        run: dart analyze
+      - name: Verify CLI paths and baseline handling
+        run: dart test --timeout 4x test/cli_test.dart
+      - name: Verify clean release snapshot and installed CLI
+        run: dart run tool/verification/release_smoke.dart
+      - name: Verify Analysis Server editor overlays
+        run: dart run tool/verification/ide_smoke.dart
+
   flutter-browser:
     runs-on: ubuntu-latest
     env:
