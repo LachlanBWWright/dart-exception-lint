@@ -308,6 +308,10 @@ opaque callback can start a Timer before returning, so awaiting its result does
 not prove that all its errors are contained. Returned lazy callback values also
 retain uncertainty until their later execution is proven contained.
 
+JSON decoding tracks the parser's `FormatException` separately from errors
+thrown by a resolved reviver. A catch that handles one failure leaves the
+other visible when its type can escape.
+
 Known models report exception effects and incomplete analysis is reported as
 unknown by default. Full control-flow interpretation, higher-order execution,
 and async ownership are still incomplete.

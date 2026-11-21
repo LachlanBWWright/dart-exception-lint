@@ -118,6 +118,42 @@ void ignoredFutures() {
     expect(result.stdout, contains('third_party_stub/DangerousClient.fetch'));
   });
 
+  test('reports JSON parser and reviver failures separately', () async {
+    final result = await _analyzeFixture(
+      dependencySource: '',
+      mainSource: '''
+import 'dart:convert' as codec;
+Object? fail(Object? key, Object? value) => throw StateError('reviver');
+void parserCaught(String input) {
+  try { codec.jsonDecode(input, reviver: fail); } on FormatException {}
+}
+void callbackCaught(String input) {
+  try { codec.json.decode(input, reviver: fail); } on StateError {}
+}
+void bothCaught(String input) {
+  try { codec.JsonDecoder(fail).convert(input); }
+  on FormatException {} on StateError {}
+}
+''',
+    );
+
+    expect(result.exitCode, 0, reason: result.stderr.toString());
+    final lines = result.stdout
+        .toString()
+        .split('\n')
+        .where((line) => line.contains(' - lib/main.dart:'))
+        .toList();
+    final inferred = lines
+        .where((line) => line.contains('catch_inferred_throwing_calls'))
+        .toList();
+    final runtime = lines
+        .where((line) => line.contains('catch_runtime_throw_sources'))
+        .toList();
+    expect(inferred, [contains('lib/main.dart:4:')], reason: lines.join('\n'));
+    expect(runtime, [contains('lib/main.dart:7:')], reason: lines.join('\n'));
+    expect(lines, isNot(contains(contains('catch_unknown_dynamic_calls'))));
+  });
+
   test('keeps manifest-backed reporting alongside inferred rules', () async {
     final result = await _analyzeFixture(
       dependencySource: '''

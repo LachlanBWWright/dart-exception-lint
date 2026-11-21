@@ -57,6 +57,16 @@ final class ThrowSourceCatalog {
           ? NumericChecks.invocation(node, element)
           : null;
     }
+    final jsonDecoding = jsonDecodingInvocation(node, element);
+    if (jsonDecoding != null) {
+      return ThrowSource(
+        kind: ThrowSourceKind.decodeCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: jsonDecoding.name,
+        exceptionTypes: const ['FormatException'],
+        evidence: const {EffectEvidence.sdkModel},
+      );
+    }
     final source = switch (node) {
       MethodInvocation() => _matchMethodInvocation(
         node,
@@ -321,16 +331,6 @@ final class ThrowSourceCatalog {
         channel: ExceptionChannel.scheduled,
       );
     }
-    if (callableName == 'jsonDecode' &&
-        _isExpectedLibrary(libraryUri, 'dart:convert')) {
-      return const ThrowSource(
-        kind: ThrowSourceKind.decodeCall,
-        confidence: ThrowConfidence.possibleThrow,
-        displayName: 'jsonDecode',
-        exceptionTypes: ['FormatException'],
-      );
-    }
-
     if (callableName == 'base64Decode' &&
         _isExpectedLibrary(libraryUri, 'dart:convert')) {
       return const ThrowSource(
@@ -686,30 +686,6 @@ final class ThrowSourceCatalog {
         displayName: 'String character construction',
         exceptionTypes: ['RangeError'],
       );
-    }
-
-    if (name == 'jsonDecode' &&
-        enclosingClassName == null &&
-        _isExpectedLibrary(libraryUri, 'dart:convert')) {
-      return _jsonDecodingSource('jsonDecode', _jsonReviver(node));
-    }
-
-    if (name == 'decode' &&
-        enclosingClassName == 'JsonCodec' &&
-        _isExpectedLibrary(libraryUri, 'dart:convert') &&
-        _isDefaultJsonCodec(node.realTarget)) {
-      return _jsonDecodingSource('JsonCodec.decode', _jsonReviver(node));
-    }
-
-    if (name == 'convert' &&
-        enclosingClassName == 'JsonDecoder' &&
-        _isExpectedLibrary(libraryUri, 'dart:convert')) {
-      final creation = _nativeJsonDecoderCreation(node.realTarget);
-      if (creation != null) {
-        final reviver =
-            creation.argumentList.arguments.firstOrNull?.argumentExpression;
-        return _jsonDecodingSource('JsonDecoder.convert', reviver);
-      }
     }
 
     if (name == 'convert' &&
@@ -1393,20 +1369,52 @@ final class ThrowSourceCatalog {
     );
   }
 
-  static ThrowSource _jsonDecodingSource(String name, Expression? reviver) =>
-      ThrowSource(
-        kind: ThrowSourceKind.decodeCall,
-        confidence: ThrowConfidence.possibleThrow,
-        displayName: name,
-        exceptionTypes:
-            reviver == null || reviver.staticType?.isDartCoreNull == true
-            ? const ['FormatException']
-            : const [],
+  /// JSON conversion can fail independently in the parser and the reviver.
+  static ({String name, Expression? reviver})? jsonDecodingInvocation(
+    AstNode node,
+    Element? element,
+  ) {
+    if (element is! ExecutableElement ||
+        !element.library.isInSdk ||
+        element.library.uri.toString() != 'dart:convert') {
+      return null;
+    }
+    if (element is TopLevelFunctionElement && element.name == 'jsonDecode') {
+      final arguments = switch (node) {
+        MethodInvocation(:final argumentList) => argumentList,
+        FunctionExpressionInvocation(:final argumentList)
+            when node.element?.baseElement == element.baseElement =>
+          argumentList,
+        _ => null,
+      };
+      if (arguments != null) {
+        return (name: 'jsonDecode', reviver: _jsonReviver(arguments));
+      }
+    }
+    if (node is! MethodInvocation) return null;
+    if (element.enclosingElement?.name == 'JsonCodec' &&
+        element.name == 'decode' &&
+        _isDefaultJsonCodec(node.realTarget)) {
+      return (
+        name: 'JsonCodec.decode',
+        reviver: _jsonReviver(node.argumentList),
       );
+    }
+    if (element.enclosingElement?.name == 'JsonDecoder' &&
+        element.name == 'convert') {
+      final creation = _nativeJsonDecoderCreation(node.realTarget);
+      if (creation != null) {
+        return (
+          name: 'JsonDecoder.convert',
+          reviver:
+              creation.argumentList.arguments.firstOrNull?.argumentExpression,
+        );
+      }
+    }
+    return null;
+  }
 
-  static Expression? _jsonReviver(MethodInvocation node) => node
-      .argumentList
-      .arguments
+  static Expression? _jsonReviver(ArgumentList arguments) => arguments.arguments
       .whereType<NamedArgument>()
       .where((argument) => argument.name.lexeme == 'reviver')
       .firstOrNull

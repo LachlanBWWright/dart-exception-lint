@@ -27,6 +27,16 @@ Iterable<CallbackExecution> callbackExecutions(
   Element? element,
 ) sync* {
   final library = element?.library?.uri.toString();
+  if (library == 'dart:convert') {
+    final reviver = ThrowSourceCatalog.jsonDecodingInvocation(
+      node,
+      element,
+    )?.reviver;
+    if (reviver != null) {
+      yield CallbackExecution(reviver, ExceptionChannel.synchronous);
+    }
+    return;
+  }
   final owner = element?.enclosingElement?.name;
   final name = element?.name;
   final arguments = switch (node) {

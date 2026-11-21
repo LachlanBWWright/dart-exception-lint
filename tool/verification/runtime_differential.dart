@@ -46,6 +46,7 @@ Future<void> main() async {
             'directNativeFutureIgnore',
             'handledTypedFutureError',
             'createJsonDecoder',
+            'caughtJsonReviver',
             'nullComparison',
             'storedConstantListIndex',
           }.contains(declaration.name.lexeme) &&
@@ -117,11 +118,15 @@ Future<void> main() async {
           '$platform did not finish its runtime probes: ${result.stderr}',
         );
       }
-      final observed = jsonDecode((result.stdout as String).trim());
-      if (jsonEncode(observed) != jsonEncode(_observations)) {
-        throw StateError(
-          '$platform observed $observed, expected $_observations',
-        );
+      final observed =
+          jsonDecode((result.stdout as String).trim()) as Map<String, dynamic>;
+      final differences = [
+        for (final key in {..._observations.keys, ...observed.keys})
+          if (observed[key] != _observations[key])
+            '$key observed ${observed[key]}, expected ${_observations[key]}',
+      ];
+      if (differences.isNotEmpty) {
+        throw StateError('$platform: ${differences.join(', ')}');
       }
       stdout.writeln(
         '$platform: ${_observations.length} labeled runtime observations match.',
@@ -183,6 +188,8 @@ const _effects = {
   'decodePrefixedJson': ('synchronous', 'FormatException'),
   'decodeDefaultJsonCodec': ('synchronous', 'FormatException'),
   'convertJsonDecoder': ('synchronous', 'FormatException'),
+  'jsonParserCaught': ('synchronous', 'StateError'),
+  'jsonReviverCaught': ('synchronous', 'FormatException'),
   'reversedSubstringRange': ('synchronous', 'RangeError'),
   'dynamicBooleanFailure': ('synchronous', 'TypeError'),
   'blockedCastFailure': ('synchronous', 'int'),
@@ -279,6 +286,8 @@ const _suppressedEffects = {
   'guardedStringIndex': 'RangeError',
   'boundedSubstringStart': 'RangeError',
   'containedJsonDecode': 'FormatException',
+  'jsonParserCaught': 'FormatException',
+  'jsonReviverCaught': 'StateError',
   'nativeStringEquality': 'String',
   'caughtDynamicBoolean': 'TypeError',
   'blockedCastFailure': 'TypeError',
@@ -353,6 +362,9 @@ const _observations = {
   'decode_default_json_codec': 'FormatException',
   'convert_json_decoder': 'FormatException',
   'contained_json_decode': 'none',
+  'json_parser_caught': 'StateError',
+  'json_reviver_caught': 'FormatException',
+  'caught_json_reviver': 'none',
   'native_string_equality': 'none',
   'null_comparison': 'none',
   'ordinary_equality': 'String',
@@ -583,6 +595,17 @@ void containedJsonDecode(String text) {
   try { codec.jsonDecode(text); } on FormatException {}
   try { codec.json.decode(text); } on FormatException {}
   try { const codec.JsonDecoder().convert(text); } on FormatException {}
+}
+Object? rejectJsonValue(Object? key, Object? value) => throw StateError('reviver');
+void jsonParserCaught(String text) {
+  try { codec.jsonDecode(text, reviver: rejectJsonValue); } on FormatException {}
+}
+void jsonReviverCaught(String text) {
+  try { codec.json.decode(text, reviver: rejectJsonValue); } on StateError {}
+}
+void caughtJsonReviver(String text) {
+  try { codec.JsonDecoder(rejectJsonValue).convert(text); }
+  on FormatException {} on StateError {}
 }
 void reversedSubstringRange(String text) {
   var start = 0;
@@ -906,6 +929,7 @@ String label(Object error) => switch (error) {
   RangeError() => 'RangeError',
   ArgumentError() => 'ArgumentError',
   FormatException() => 'FormatException',
+  StateError() => 'StateError',
   AssertionError() => 'AssertionError',
   UnsupportedError() => 'UnsupportedError',
   String() => 'String',
@@ -964,6 +988,9 @@ Future<void> main() async {
     'decode_default_json_codec': capture(() => decodeDefaultJsonCodec('{')),
     'convert_json_decoder': capture(() => convertJsonDecoder('{')),
     'contained_json_decode': capture(() => containedJsonDecode('{')),
+    'json_parser_caught': capture(() => jsonParserCaught('null')),
+    'json_reviver_caught': capture(() => jsonReviverCaught('{')),
+    'caught_json_reviver': capture(() { caughtJsonReviver('{'); caughtJsonReviver('null'); }),
     'native_string_equality': capture(() => nativeStringEquality('value', EqualityTrap())),
     'null_comparison': capture(() => nullComparison(EqualityTrap())),
     'ordinary_equality': capture(() => ordinaryEquality(EqualityTrap(), Object())),

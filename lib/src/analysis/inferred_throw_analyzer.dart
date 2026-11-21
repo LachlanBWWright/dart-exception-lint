@@ -218,6 +218,7 @@ final class InferredThrowAnalyzer {
     required bool treatUnknownAsReportable,
     required bool requireObservedAsyncError,
     bool includeManifestOverrides = true,
+    bool includeDirectSource = true,
   }) {
     if (node is BinaryExpression && isNullComparison(node)) return null;
     if ((node is PropertyAccess || node is PrefixedIdentifier) &&
@@ -225,7 +226,8 @@ final class InferredThrowAnalyzer {
         element is! PropertyAccessorElement) {
       return null;
     }
-    if (node is FunctionExpressionInvocation) {
+    if (node is FunctionExpressionInvocation &&
+        ThrowSourceCatalog.jsonDecodingInvocation(node, element) == null) {
       // Resolve the value actually invoked, rather than a visitor's stale
       // initializer alias. Getter-returned and mutated values remain unknown.
       final value = _callbackValues.resolve(node.function);
@@ -312,7 +314,7 @@ final class InferredThrowAnalyzer {
                 summarizeExecutable(executable))
           : ThrowSummary.merge(
               _displayNameForExecutable(executable),
-              [directSource],
+              [if (includeDirectSource) directSource],
               dependencyElementKeys: const [],
               complete: true,
             ),

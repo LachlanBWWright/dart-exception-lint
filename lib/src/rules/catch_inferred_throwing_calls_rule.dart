@@ -244,12 +244,16 @@ final class _Visitor extends SimpleAstVisitor<void> {
       _ => null,
     };
     if (runtimeSource != null) return;
-    if (ThrowSourceCatalog.matchResolvedInvocation(
-          node,
-          element,
-          analyzer.options,
-        ) !=
-        null) {
+    final directSource = ThrowSourceCatalog.matchResolvedInvocation(
+      node,
+      element,
+      analyzer.options,
+    );
+    // JSON parsing has a runtime report. The user-supplied reviver has a
+    // separate inferred report when its own failures escape.
+    if (directSource != null &&
+        ThrowSourceCatalog.jsonDecodingInvocation(node, element)?.reviver ==
+            null) {
       return;
     }
     final analysis = analyzer.analyzeResolvedCall(
@@ -258,6 +262,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
       treatUnknownAsReportable: false,
       requireObservedAsyncError: false,
       includeManifestOverrides: false,
+      includeDirectSource: false,
     );
     if (analysis == null || analysis.isAsync || analysis.isDeferred) {
       return;
