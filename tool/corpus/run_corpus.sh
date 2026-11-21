@@ -237,8 +237,11 @@ while IFS=$'\t' read -r id url manager commit package_path; do
     options="$package_dir/analysis_options.yaml"
     backup="$plugin_root/corpus-package.options.backup"
     had_options=0
-    if [[ -f "$options" ]]; then
-      cp "$options" "$backup"
+    if [[ -f "$options" || -L "$options" ]]; then
+      if ! cp -P -- "$options" "$backup"; then
+        if [[ "$package_status" == ok ]]; then package_status=configuration_failed; fi
+        continue
+      fi
       had_options=1
     fi
     active_options="$options"
@@ -260,14 +263,15 @@ while IFS=$'\t' read -r id url manager commit package_path; do
       find "$package_dir" \( -name .dart_tool -o -name .git \) -prune -o \
         -type f -name pubspec.yaml -print0
     )
-    : > "$options"
+    overlay="$plugin_root/corpus-package.overlay.yaml"
+    : > "$overlay"
     if [[ "${#nested_packages[@]}" != 0 ]]; then
-      printf 'analyzer:\n  exclude:\n' >> "$options"
+      printf 'analyzer:\n  exclude:\n' >> "$overlay"
       for nested_package in "${nested_packages[@]}"; do
-        printf "    - '%s/**'\n" "${nested_package//\'/\'\'}" >> "$options"
+        printf "    - '%s/**'\n" "${nested_package//\'/\'\'}" >> "$overlay"
       done
     fi
-    cat >> "$options" <<EOF
+    cat >> "$overlay" <<EOF
 plugins:
   dart_exception_lint:
     path: $plugin_root
@@ -282,6 +286,13 @@ plugins:
       invalid_exception_analysis_config: true
       invalid_exception_contract: true
 EOF
+    if ! (
+      cd "$plugin_root" && timeout "$timeout_seconds" dart run tool/corpus/isolate_workspace_plugins.dart --configure-package "$overlay" "$options"
+    ) >"$corpus_root/$id.$package_count.options.log" 2>&1; then
+      if [[ "$package_status" == ok ]]; then package_status=configuration_failed; fi
+      restore_options
+      continue
+    fi
 
     dependency_log="$corpus_root/$id.$package_count.pubget.log"
     output_file="$corpus_root/$id.$package_count.analyze.log"
