@@ -2987,11 +2987,18 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitAssignmentExpression(AssignmentExpression node) {
+    final canSkipWrite =
+        node.operator.lexeme == '??=' && node.readType?.isDartCoreNull != true;
     _recordImplicitCast(node.rightHandSide, node.writeType);
     for (final target in invocationTargets(node, executable.library)) {
-      _recordInvocation(node, target);
+      _recordInvocation(
+        node,
+        target,
+        conditional: canSkipWrite && target == node.writeElement,
+      );
     }
-    super.visitAssignmentExpression(node);
+    node.leftHandSide.accept(this);
+    _visitWithCertainty(node.rightHandSide, conditional: canSkipWrite);
   }
 
   @override
@@ -3103,7 +3110,11 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   void _recordCall(AstNode node, {Element? element}) =>
       _recordInvocation(node, element ?? _elementForNode(node));
 
-  void _recordInvocation(AstNode node, Element? element) {
+  void _recordInvocation(
+    AstNode node,
+    Element? element, {
+    bool conditional = false,
+  }) {
     final consumer = asyncValueConsumer(node);
     final storedAwait = immediateAwaitOfStoredFuture(consumer, node);
     final summary = analyzer.inferCallFromBody(
@@ -3131,7 +3142,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
           ? deferredLocalUses(node)
           : null;
       if (local == null || local.escapes) {
-        residualSources.add(_normalize(source, node));
+        residualSources.add(_normalize(source, node, conditional: conditional));
       }
       if (local == null) continue;
       final observed = InferredThrowAnalyzer._sourceWithChannel(

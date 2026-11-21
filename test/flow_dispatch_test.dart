@@ -560,6 +560,29 @@ void lateWrite() { late int value; value = 3; }
     );
   });
 
+  test('coalescing assignments can skip the operand and setter', () async {
+    await _verify(
+      '''
+final class Holder {
+  Holder(this.current);
+  final int? current;
+  int? get item => current;
+  set item(int? value) { throw 'setter'; }
+}
+void skippedSetter(int? current) { Holder(current).item ??= 1; }
+void skippedOperand(int? current) { Holder(current).item ??= throw 3; }
+''',
+      (summaries, _) {
+        final setter = summaries['skippedSetter']!;
+        final operand = summaries['skippedOperand']!;
+        expect(setter.exceptionTypes.toSet(), {'String'});
+        expect(operand.exceptionTypes.toSet(), {'int'});
+        expect(setter.confidence, ThrowConfidence.possibleThrow);
+        expect(operand.confidence, ThrowConfidence.possibleThrow);
+      },
+    );
+  });
+
   test('String bounds follow nonempty guards for stable values', () async {
     await _verify(
       '''
