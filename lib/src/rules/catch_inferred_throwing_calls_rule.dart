@@ -244,6 +244,22 @@ final class _Visitor extends SimpleAstVisitor<void> {
       _ => null,
     };
     if (runtimeSource != null) return;
+    if (element is GetterElement && element.isStatic) {
+      final name = switch (node) {
+        SimpleIdentifier() => node,
+        PrefixedIdentifier() => node.identifier,
+        PropertyAccess() => node.propertyName,
+        _ => null,
+      };
+      if (name != null &&
+          ThrowSourceCatalog.matchLateInitializationRead(
+                name,
+                analyzer.options,
+              ) !=
+              null) {
+        return;
+      }
+    }
     final directSource = ThrowSourceCatalog.matchResolvedInvocation(
       node,
       element,

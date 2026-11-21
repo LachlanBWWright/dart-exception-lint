@@ -41,6 +41,20 @@ int handled() {
     await assertDiagnostics(code, [lint(code.indexOf('risky;'), 5)]);
   }
 
+  Future<void> test_staticLateReadIsReportedByRuntimeRule() async {
+    const code = '''
+late String value;
+class Settings { static late String option; }
+String readValue() { final copy = value; return copy; }
+String readOption() { final copy = Settings.option; return copy; }
+void caller() { readValue(); readOption(); }
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('readValue();'), 'readValue'.length),
+      lint(code.indexOf('readOption();'), 'readOption'.length),
+    ]);
+  }
+
   Future<void> test_shortCircuitAndArgumentOrder_doNotLeakDeadSources() async {
     await assertNoDiagnostics(r'''
 // ignore_for_file: dead_code

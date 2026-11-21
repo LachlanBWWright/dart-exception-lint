@@ -305,7 +305,8 @@ final class ThrowSourceCatalog {
     if (variable is PropertyInducingElement && variable.hasInitializer) {
       return null;
     }
-    if (node.parent is VariableDeclaration) {
+    if (variable is LocalVariableElement &&
+        node.parent is VariableDeclaration) {
       return null;
     }
     return ThrowSource(

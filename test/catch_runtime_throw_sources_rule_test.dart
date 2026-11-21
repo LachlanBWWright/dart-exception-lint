@@ -313,6 +313,19 @@ void f() {
     ]);
   }
 
+  Future<void> test_lateRead_variableInitializerReports() async {
+    const code = r'''
+late String value;
+class Settings { static late String option; }
+String readValue() { final copy = value; return copy; }
+String readOption() { final copy = Settings.option; return copy; }
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('value; return'), 'value'.length),
+      lint(code.indexOf('option; return'), 'option'.length),
+    ]);
+  }
+
   Future<void> test_integerDivision_reports() async {
     const code = r'''
 void f(int value) {
