@@ -1,7 +1,7 @@
 # id	url	manager	commit (HEAD observed 2026-10-04; fixed thereafter)	package path (optional)
 dart_sdk	https://github.com/dart-lang/sdk.git	dart	7ca61c210632aa1c96d85aa17e916fabfb955243
 dart_linter	https://github.com/dart-lang/linter.git	dart	4b53999c3af99229fa7b47ca52cf40a2a8d62b3a
-dart_test	https://github.com/dart-lang/test.git	dart	3be2f547208fc569964973d6f13ec1985c4a9fdd
+dart_test	https://github.com/dart-lang/test.git	dart	3be2f547208fc569964973d6f13ec1985c4a9fdd	pkgs/test
 dart_http	https://github.com/dart-lang/http.git	dart	47c57df399bf38927d2c9f047a1a5e3c049c0271	pkgs/http
 dart_path	https://github.com/dart-lang/path.git	dart	7e3d5d87220133ad9cc99f82e85a826011a62859
 dart_args	https://github.com/dart-lang/args.git	dart	7a2dfb528768f0a2e5680f711dbfb948f1d6c255
@@ -12,26 +12,26 @@ dart_yaml	https://github.com/dart-lang/yaml.git	dart	fbb921d7568dc36ea40774a1478
 dart_source_span	https://github.com/dart-lang/source_span.git	dart	e6a34591b7f7880c7ca0fcb95b858ccf7f8be304
 dart_async	https://github.com/dart-lang/async.git	dart	d6a6a4dbe0c636e42d6cf4ede88ed5a33e35a6ca
 dart_ffi	https://github.com/dart-lang/ffi.git	dart	fb9345230221a7f069690e06cacdc00b031729cb
-dart_build	https://github.com/dart-lang/build.git	dart	4800d7e734f7d9a2704d7f1d525c7bd131bac5e5
-dart_json_serializable	https://github.com/google/json_serializable.dart.git	dart	f65cd713ddd22de091ba9b0bd2e86ebac8980b61
+dart_build	https://github.com/dart-lang/build.git	dart	4800d7e734f7d9a2704d7f1d525c7bd131bac5e5	build
+dart_json_serializable	https://github.com/google/json_serializable.dart.git	dart	f65cd713ddd22de091ba9b0bd2e86ebac8980b61	json_serializable
 dart_flutter	https://github.com/flutter/flutter.git	flutter	53d381d9067f16b1d4132f5b8f059a9cc5ddb9ec
 flutter_packages	https://github.com/flutter/packages.git	flutter	10cde9a3b14d04f4f8ab8892e1dadcbad885fa48
 flutter_samples	https://github.com/flutter/samples.git	flutter	a05867daaad66d9b89609b5eeb766acb0ac4e76c
 flutterfire	https://github.com/firebase/flutterfire.git	flutter	0a41f05f82b344b5966055d27999ee68346475ff
-riverpod	https://github.com/rrousselGit/riverpod.git	dart	90c5a0bb144c3d782475c0d525cb2f6e45eef1c8
-freezed	https://github.com/rrousselGit/freezed.git	dart	154a1e779c7a0fe3474fadab2fbb15a00a7de90f
-bloc	https://github.com/felangel/bloc.git	dart	b9be1e252ee24ffbe9f2fb629edc7624b2cfbf05
+riverpod	https://github.com/rrousselGit/riverpod.git	dart	90c5a0bb144c3d782475c0d525cb2f6e45eef1c8	packages/riverpod
+freezed	https://github.com/rrousselGit/freezed.git	dart	154a1e779c7a0fe3474fadab2fbb15a00a7de90f	packages/freezed
+bloc	https://github.com/felangel/bloc.git	dart	b9be1e252ee24ffbe9f2fb629edc7624b2cfbf05	packages/bloc
 equatable	https://github.com/felangel/equatable.git	dart	832990678125b10103b26500ce8ce7188d775925
 hydrated_bloc	https://github.com/felangel/hydrated_bloc.git	dart	bb69309d683ff7d0b724300f643917880e4880b9
 dart_lints	https://github.com/dart-lang/lints.git	dart	deff4270a7800197c402eb1c76915ad3fac2d512
-dio	https://github.com/cfug/dio.git	dart	4684e29dabaa2655606f1620a4ed316ee3f8c963
+dio	https://github.com/cfug/dio.git	dart	4684e29dabaa2655606f1620a4ed316ee3f8c963	dio
 drift	https://github.com/simolus3/drift.git	dart	f7e4c72bd10d92b9e1a8bfb768730ca1096b1341
 isar	https://github.com/isar/isar.git	dart	713001bf1615ea15460d9bc8d3fb9c8cb4150a2e
 hive	https://github.com/isar/hive.git	dart	1b4febe967370f790759823a5e154adc383e53d3
 getx	https://github.com/jonataslaw/getx.git	flutter	e3c8fa04ae65ebf7ff0128dbeb2dc91d4dafa429
 get_it	https://github.com/fluttercommunity/get_it.git	dart	f4c447fc8d3fc2425dc43efe86905ef86905442e
 auto_route	https://github.com/Milad-Akarie/auto_route_library.git	dart	1505c67a42466bb929c2ad833c5b15d67b94b2f9
-retrofit	https://github.com/trevorwang/retrofit.dart.git	dart	81c39a6169a86c27e9dfd7260ff58f2520748987
+retrofit	https://github.com/trevorwang/retrofit.dart.git	dart	81c39a6169a86c27e9dfd7260ff58f2520748987	retrofit
 fpdart	https://github.com/SandroMaglione/fpdart.git	dart	27e0576669fc86197db02f042ef3455b2ec153ee	packages/fpdart
 rxdart	https://github.com/ReactiveX/rxdart.git	dart	d1f3ba64f71669a137489341009345f59ec84614	packages/rxdart
 mocktail	https://github.com/felangel/mocktail.git	dart	d6a96e15b9203d33af61083e02e8c40ac07192d6	packages/mocktail
