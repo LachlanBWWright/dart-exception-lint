@@ -75,7 +75,7 @@ still required; conservative unknown fallbacks do not complete semantic models.
 | 26 | Direct SDK reporting and direct manifest reports have separate owners; source origins retained. | One stable residual-effect diagnostic pipeline, CLI/IDE parity and complete cross-rule deduplication. |
 | 27 | Defining-unit cache sharing during registration, options/manifest comparison, resolved-library/unit identity checks and dependency content/deletion checks. | Reverse effect dependencies now schedule caller reanalysis after local body-only edits, including transitive unsaved overlays verified through Analysis Server LSP on minimum/stable SDKs. Complete package/SDK/feature graph invalidation, deletion/cancellation, cross-context overlays, graph bounds and race tests. |
 | 28 | Generated 200/2,000-function, 2,000-statement-body, resolved-dependency, shared-callback, stored/returned-callback and context-limit cold/warm/RSS workloads with CI budgets. Scoped Dart and Flutter package runs include a profiled RxDart workload and repeated LSP edit measurements. | Reproducible performance baselines across platforms and larger editing workloads. |
-| 29 | Regression and integration tests run on four Dart SDKs. A 29-case semantic corpus checks effect channels and includes 16 exact type checks. The external manifest pins 52 repositories, and CI includes a Flutter and Chromium consumer. | Broader language and platform probes, fuzzing, more reviewed external diagnostic labels, and compatibility coverage beyond the tested Linux, Node and Chromium environments. |
+| 29 | Regression and integration tests run on four Dart SDKs. A 30-case semantic corpus checks effect channels and includes 17 exact type checks. The external manifest pins 52 repositories, and CI includes a Flutter and Chromium consumer. | Broader language and platform probes, fuzzing, more reviewed external diagnostic labels, and compatibility coverage beyond the tested Linux, Node and Chromium environments. |
 | 30 | Minimum SDK corrected; strict defaults and migration documented; clean snapshot publish dry-run and enable-only consumer enforcement pass. | Every release gate across the full supported matrix, including platform and IDE cases. |
 
 ## Verification evidence
@@ -93,12 +93,17 @@ The later `969a2ea` snapshot passed the same 21 gates on Dart 3.11.0 and
 `83fface` passed 372 focused tests on each SDK and matched 93 differential
 observations on both runtime backends.
 
-The `d6d4dcd` snapshot passed 21 gates and 592 tests on Dart 3.11.0, plus
-21 gates and 593 tests on Dart 3.14.1. The later `1087f0e` snapshot passed
+The `d6d4dcd` snapshot passed all 21 gates on Dart 3.11.0, 3.12.0, 3.13.5
+and 3.14.1. The first three SDKs passed 592 tests each, and Dart 3.14.1
+passed 593. The later `1087f0e` snapshot passed
 338 focused tests on both SDKs, with 121 core and 132 numeric observations
 matching on both the VM and Node. At `8070270`, the core differential gate
 matched 122 observations on both Dart 3.14.1 backends. Its 29-case semantic
 corpus reported zero unexpected or missing effect labels.
+The `94c1506` snapshot matched 129 VM and Node observations on Dart 3.14.1,
+including synchronous null failures and asynchronous callback errors from
+native Future factories. Its 30 semantic cases passed with zero unexpected
+or missing labels.
 
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive

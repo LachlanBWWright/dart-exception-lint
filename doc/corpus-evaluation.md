@@ -49,6 +49,24 @@ Its pinned package root contains 83 library files. The `dart_path`, Dart Lints,
 Mocktail and Very Good Analysis rows were verified at `83997df`. The Mocktail
 run used an existing bare clone with an unavailable upstream.
 
+### Dart monorepo package selection
+
+The run at `1087f0e` selected the maintained packages inside their pinned
+repositories. Bloc, Dio, and Retrofit completed with zero dependency and
+plugin failures.
+
+| Package | Plugin diagnostics |
+| --- | ---: |
+| Bloc | 4,543 |
+| Dio | 10,303 |
+| Retrofit | 445 |
+
+The pinned `json_serializable` package produced 11 compiler errors after Pub
+resolved `source_helper` 1.4.0 under its `^1.3.10` constraint. The two packages
+defined conflicting imports and extensions. A separate run with `source_helper`
+1.3.10 in a disposable workspace override completed with analyzer exit code
+zero. The regular corpus result records the original dependency resolution.
+
 ## Flutter 3.50.1 and bundled Dart 3.14.0
 
 Three pinned Flutter packages completed dependency resolution and plugin
