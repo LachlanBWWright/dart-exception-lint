@@ -1733,7 +1733,8 @@ final class InferredThrowAnalyzer {
       return baseSummary;
     }
     if (callSite is MethodInvocation &&
-        (literalListMutationReceiver(callSite) != null ||
+        (ThrowSourceCatalog.nativeCompleterAllocation(callSite) != null ||
+            literalListMutationReceiver(callSite) != null ||
             ThrowSourceCatalog.isSdkIterableTraversal(declared) &&
                 isLiteralListAllocation(callSite.realTarget))) {
       return baseSummary;

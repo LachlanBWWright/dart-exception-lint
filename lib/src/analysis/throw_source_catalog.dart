@@ -454,6 +454,16 @@ final class ThrowSourceCatalog {
     }
 
     if (libraryUri == 'dart:async' &&
+        className == 'Completer' &&
+        const {'', 'new', 'sync'}.contains(constructorName)) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: 'Completer constructor',
+      );
+    }
+
+    if (libraryUri == 'dart:async' &&
         className == 'Future' &&
         constructorName == 'value') {
       final argument =
@@ -593,6 +603,33 @@ final class ThrowSourceCatalog {
             exceptionTypes: ['ArgumentError'],
             evidence: {EffectEvidence.sdkModel},
           );
+  }
+
+  static InstanceCreationExpression? nativeCompleterAllocation(
+    MethodInvocation node,
+  ) {
+    if (node.methodName.name != 'complete') {
+      return null;
+    }
+    final target = node.methodName.element;
+    if (target is! MethodElement ||
+        !target.library.isInSdk ||
+        target.library.uri.toString() != 'dart:async' ||
+        target.enclosingElement?.name != 'Completer') {
+      return null;
+    }
+    final allocation = _nativeCreation(
+      node.realTarget,
+      'dart:async',
+      'Completer',
+    );
+    return const {
+          '',
+          'new',
+          'sync',
+        }.contains(allocation?.constructorName.element?.name)
+        ? allocation
+        : null;
   }
 
   static bool _futureValueRejectsNull(InstanceCreationExpression node) {
@@ -1232,11 +1269,39 @@ final class ThrowSourceCatalog {
     if (name == 'complete' &&
         enclosingClassName == 'Completer' &&
         _isExpectedLibrary(libraryUri, 'dart:async')) {
-      return const ThrowSource(
+      final allocation = nativeCompleterAllocation(node);
+      final type = allocation?.staticType;
+      final library = allocation?.constructorName.element?.library;
+      final valueType = type is InterfaceType
+          ? type.typeArguments.singleOrNull
+          : null;
+      final acceptsNull =
+          valueType != null &&
+          library != null &&
+          library.typeSystem.isSubtypeOf(
+            library.typeProvider.nullType,
+            valueType,
+          );
+      final value = node.argumentList.arguments.firstOrNull?.argumentExpression;
+      final parent = node.parent;
+      final firstOperation =
+          !node.isCascaded ||
+          parent is CascadeExpression &&
+              identical(parent.cascadeSections.firstOrNull, node);
+      final exceptions = [
+        if (allocation == null || !firstOperation) 'StateError',
+        if (options.treatAsCastsAsThrowing &&
+            !acceptsNull &&
+            (value == null || !isDefinitelyNonNull(value)))
+          'TypeError',
+      ];
+      return ThrowSource(
         kind: ThrowSourceKind.collectionStateCall,
-        confidence: ThrowConfidence.possibleThrow,
+        confidence: exceptions.isEmpty
+            ? ThrowConfidence.noObviousThrow
+            : ThrowConfidence.possibleThrow,
         displayName: 'Completer.complete',
-        exceptionTypes: ['StateError'],
+        exceptionTypes: exceptions,
       );
     }
 
@@ -1479,7 +1544,11 @@ final class ThrowSourceCatalog {
     }
     if (element.enclosingElement?.name == 'JsonDecoder' &&
         element.name == 'convert') {
-      final creation = _nativeJsonDecoderCreation(node.realTarget);
+      final creation = _nativeCreation(
+        node.realTarget,
+        'dart:convert',
+        'JsonDecoder',
+      );
       if (creation != null) {
         return (
           name: 'JsonDecoder.convert',
@@ -1513,8 +1582,10 @@ final class ThrowSourceCatalog {
         element.name == 'json';
   }
 
-  static InstanceCreationExpression? _nativeJsonDecoderCreation(
+  static InstanceCreationExpression? _nativeCreation(
     Expression? receiver,
+    String libraryUri,
+    String className,
   ) {
     while (receiver is ParenthesizedExpression) {
       receiver = receiver.expression;
@@ -1523,8 +1594,8 @@ final class ThrowSourceCatalog {
     final constructor = receiver.constructorName.element;
     return constructor != null &&
             constructor.library.isInSdk &&
-            constructor.library.uri.toString() == 'dart:convert' &&
-            constructor.enclosingElement.name == 'JsonDecoder'
+            constructor.library.uri.toString() == libraryUri &&
+            constructor.enclosingElement.name == className
         ? receiver
         : null;
   }

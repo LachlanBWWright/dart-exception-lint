@@ -43,6 +43,9 @@ Future<void> main() async {
             'forwardCaught',
             'adoptCaught',
             'synchronousValueFactory',
+            'freshNullableCompleter',
+            'caughtFreshCompleterNull',
+            'freshCascadedCompleter',
             'directNativeFutureIgnore',
             'handledTypedFutureError',
             'createJsonDecoder',
@@ -201,6 +204,9 @@ const _effects = {
   'failedAssertionCondition': ('synchronous', 'int'),
   'failedAssertionMessage': ('synchronous', 'String'),
   'failedAssertionInitializer': ('synchronous', 'AssertionError'),
+  'freshCompleterNull': ('synchronous', 'TypeError'),
+  'widenedCompleterNull': ('synchronous', 'TypeError'),
+  'cascadedCompleterRepeat': ('synchronous', 'StateError'),
   'unmatchedLiteralCatch': ('synchronous', 'String'),
   'stoppedConstructorField': ('synchronous', 'int'),
   'stoppedSuperArgument': ('synchronous', 'int'),
@@ -314,6 +320,8 @@ const _suppressedEffects = {
   'firstLiteralCatch': 'String',
   'unmatchedLiteralCatch': 'bool',
   'failedAssertionMessage': 'AssertionError',
+  'freshCompleterNull': 'StateError',
+  'cascadedCompleterRepeat': 'TypeError',
   'stoppedConstructorField': 'String',
   'stoppedSuperArgument': 'String',
   'guardedStringIndex': 'RangeError',
@@ -380,6 +388,12 @@ const _observations = {
   'failed_assertion_message': 'String',
   'skipped_assertion_message': 'none',
   'failed_assertion_initializer': 'AssertionError',
+  'fresh_completer_null': 'TypeError',
+  'widened_completer_null': 'TypeError',
+  'cascaded_completer_repeat': 'StateError',
+  'fresh_nullable_completer': 'none',
+  'caught_fresh_completer_null': 'none',
+  'fresh_cascaded_completer': 'none',
   'first_literal_catch': 'none',
   'unmatched_literal_catch': 'String',
   'stopped_constructor_field': '42',
@@ -541,6 +555,21 @@ const _fixture = r'''
 import 'dart:async';
 import 'dart:convert';
 import 'dart:convert' as codec;
+
+void freshCompleterNull() { Completer<int>().complete(); }
+void widenedCompleterNull() {
+  final Completer<num?> completer = Completer<int>();
+  completer.complete();
+}
+void cascadedCompleterRepeat() { Completer<void>.sync()..complete()..complete(); }
+void freshNullableCompleter() {
+  Completer<int?>().complete();
+  Completer<void>.sync().complete();
+}
+void caughtFreshCompleterNull() {
+  try { Completer<int>.sync().complete(); } on TypeError {}
+}
+void freshCascadedCompleter() { Completer<void>.sync()..complete(); }
 
 const disabledBranch = false;
 Never stopEvaluation() => throw 42;
@@ -1067,6 +1096,12 @@ Future<void> main() async {
     'failed_assertion_message': capture(failedAssertionMessage),
     'skipped_assertion_message': capture(skippedAssertionMessage),
     'failed_assertion_initializer': capture(failedAssertionInitializer),
+    'fresh_completer_null': capture(freshCompleterNull),
+    'widened_completer_null': capture(widenedCompleterNull),
+    'cascaded_completer_repeat': capture(cascadedCompleterRepeat),
+    'fresh_nullable_completer': capture(freshNullableCompleter),
+    'caught_fresh_completer_null': capture(caughtFreshCompleterNull),
+    'fresh_cascaded_completer': capture(freshCascadedCompleter),
     'first_literal_catch': capture(firstLiteralCatch),
     'unmatched_literal_catch': capture(unmatchedLiteralCatch),
     'stopped_constructor_field': capture(stoppedConstructorField),
