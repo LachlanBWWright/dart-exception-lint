@@ -124,7 +124,6 @@ final class InferredThrowAnalyzer {
   final Set<String> _resolvedPaths;
   final Map<String, int?> _dependencyFingerprints = {};
   final _DispatchIndex _dispatchIndex;
-  List<ExecutableElement> get _knownExecutables => _dispatchIndex.executables;
   final Map<FormalParameterElement, CallbackValue> _callbackBindings;
   CallbackValueResolver? _callbackValueResolver;
   final _CallbackContexts _callbackContexts;
@@ -1735,27 +1734,30 @@ final class InferredThrowAnalyzer {
         : null;
     if (receiverElement == null) return baseSummary;
 
-    final candidates = _knownExecutables.where((candidate) {
-      if (candidate.isStatic ||
-          candidate.runtimeType != declared.baseElement.runtimeType) {
-        return false;
-      }
-      if (candidate.name != declared.name) return false;
-      final enclosing = candidate.enclosingElement;
-      if (enclosing is! InterfaceElement) return false;
-      if (enclosing == declared.enclosingElement) return false;
-      return enclosing == receiverElement ||
-          enclosing.allSupertypes.any(
-            (type) => type.element == receiverElement,
-          );
-    });
-
-    final candidateList = candidates.toList();
     final candidateLimit = options.maxDispatchCandidates < 0
         ? 0
         : options.maxDispatchCandidates;
+    final candidates = <ExecutableElement>[];
+    var dispatchWasTruncated = false;
+    final declaredType = declared.baseElement.runtimeType;
+    for (final candidate in _dispatchIndex.membersNamed(declared.name)) {
+      if (candidate.runtimeType != declaredType) continue;
+      final owner = candidate.enclosingElement;
+      if (owner is! InterfaceElement || owner == declared.enclosingElement) {
+        continue;
+      }
+      if (owner != receiverElement &&
+          !owner.allSupertypes.any((type) => type.element == receiverElement)) {
+        continue;
+      }
+      if (candidates.length == candidateLimit) {
+        dispatchWasTruncated = true;
+        break;
+      }
+      candidates.add(candidate);
+    }
     final candidateSummaries = <ThrowSummary>[];
-    for (final candidate in candidateList.take(candidateLimit)) {
+    for (final candidate in candidates) {
       final callable = ResolvedCallable.tryCreate(candidate);
       final key =
           callable?.elementKey ??
@@ -1784,21 +1786,16 @@ final class InferredThrowAnalyzer {
             (receiverElement.isFinal ||
                 receiverElement.isSealed ||
                 receiverElement.isPrivate));
-    final openLeaf = _dispatchIndex.types.any((owner) {
-      return owner != receiverElement &&
-          owner is ClassElement &&
-          owner.allSupertypes.any((type) => type.element == receiverElement) &&
-          !owner.isFinal &&
-          !owner.isSealed &&
-          !owner.isPrivate;
-    });
     final incompleteAbstractDispatch =
-        !_dispatchIndex.complete || !closedRoot || openLeaf;
-    if (candidateSummaries.isEmpty && !incompleteAbstractDispatch) {
+        !_dispatchIndex.complete ||
+        !closedRoot ||
+        _dispatchIndex.hasOpenLeaf(receiverElement);
+    if (candidateSummaries.isEmpty &&
+        !incompleteAbstractDispatch &&
+        !dispatchWasTruncated) {
       return baseSummary;
     }
 
-    final dispatchWasTruncated = candidateList.length > candidateLimit;
     final dispatchSources = <ThrowSource>[
       ...baseSummary.sources,
       for (final summary in candidateSummaries) ...summary.sources,
@@ -2070,7 +2067,7 @@ final class InferredThrowAnalyzer {
     if (_resolvedPaths.contains(path)) return;
     final units = resolveDependency?.call(library);
     if (units == null) return;
-    _dispatchIndex.types.addAll([
+    _dispatchIndex.addTypes([
       ...library.classes,
       ...library.enums,
       ...library.mixins,
@@ -2083,11 +2080,10 @@ final class InferredThrowAnalyzer {
     // The initial dispatch index already walks imported library elements.
     // Add newly bound local declarations without duplicating that whole graph
     // for every resolved dependency (duplicates also consume dispatch budgets).
-    final known = _knownExecutables.toSet();
     for (final unit in units.values) {
       final collected = <ExecutableElement>[];
       unit.accept(_ExecutableCollector(collected));
-      _knownExecutables.addAll(collected.where(known.add));
+      _dispatchIndex.addMembers(collected);
     }
   }
 
@@ -2319,10 +2315,48 @@ final class _ParsedUnitCacheEntry {
 }
 
 final class _DispatchIndex {
-  _DispatchIndex(this.executables, this.types, this.complete);
-  final List<ExecutableElement> executables;
-  final Set<InterfaceElement> types;
+  _DispatchIndex(
+    Iterable<ExecutableElement> executables,
+    this._types,
+    this.complete,
+  ) {
+    addMembers(executables);
+  }
+
+  final _members = <String?, Set<ExecutableElement>>{};
+  final Set<InterfaceElement> _types;
+  final _openLeaves = <InterfaceElement, bool>{};
   final bool complete;
+
+  Iterable<ExecutableElement> membersNamed(String? name) =>
+      _members[name] ?? const [];
+
+  void addMembers(Iterable<ExecutableElement> executables) {
+    for (final member in executables) {
+      if (!member.isStatic && member.enclosingElement is InterfaceElement) {
+        (_members[member.name] ??= {}).add(member);
+      }
+    }
+  }
+
+  void addTypes(Iterable<InterfaceElement> types) {
+    final previousSize = _types.length;
+    _types.addAll(types);
+    if (_types.length != previousSize) _openLeaves.clear();
+  }
+
+  bool hasOpenLeaf(InterfaceElement receiver) => _openLeaves.putIfAbsent(
+    receiver,
+    () => _types.any(
+      (owner) =>
+          owner != receiver &&
+          owner is ClassElement &&
+          !owner.isFinal &&
+          !owner.isSealed &&
+          !owner.isPrivate &&
+          owner.allSupertypes.any((type) => type.element == receiver),
+    ),
+  );
 }
 
 final class _ExecutableCollector extends RecursiveAstVisitor<void> {

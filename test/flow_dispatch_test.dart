@@ -568,6 +568,29 @@ void entry(First first, Second second, bool fail) => first.first(second, fail);
   );
 
   test(
+    'zero dispatch candidates retain uncertainty in a closed hierarchy',
+    () async {
+      await _verify(
+        '''
+sealed class Base { void run() {} }
+final class Implementation extends Base {
+  @override
+  void run() { throw 'override'; }
+}
+void entry(Base input) => input.run();
+''',
+        (summaries, _) {
+          final entry = summaries['entry']!;
+          expect(entry.hasUnknownEffects, isTrue);
+          expect(entry.truncationReason, 'max_dispatch_candidates');
+          expect(entry.exceptionTypes, isEmpty);
+        },
+        options: const ExceptionAnalysisOptions(maxDispatchCandidates: 0),
+      );
+    },
+  );
+
+  test(
     'forwarding proof accepts immediate async adoption and rejects delayed, mutation, virtual, cyclic, dynamic and side effect bodies',
     () async {
       await _verify(
@@ -654,8 +677,9 @@ extension on ThrowSummary {
 
 Future<void> _verify(
   String content,
-  void Function(Map<String, ThrowSummary>, ResolvedUnitResult) verify,
-) async {
+  void Function(Map<String, ThrowSummary>, ResolvedUnitResult) verify, {
+  ExceptionAnalysisOptions options = const ExceptionAnalysisOptions(),
+}) async {
   final directory = await Directory.systemTemp.createTemp('flow-dispatch-');
   AnalysisContextCollection? collection;
   try {
@@ -672,7 +696,7 @@ Future<void> _verify(
     final dependencies = ResolvedDependencies(unit.libraryElement);
     final analyzer = InferredThrowAnalyzer(
       manifest: ThrowingApiManifest.empty(),
-      options: const ExceptionAnalysisOptions(),
+      options: options,
       featureSet: unit.libraryElement.featureSet,
       packageRootPath: directory.path,
       knownUnits: {file.path: unit.unit},
