@@ -25,8 +25,8 @@ equatable	https://github.com/felangel/equatable.git	dart	832990678125b10103b2650
 hydrated_bloc	https://github.com/felangel/hydrated_bloc.git	dart	bb69309d683ff7d0b724300f643917880e4880b9
 dart_lints	https://github.com/dart-lang/lints.git	dart	deff4270a7800197c402eb1c76915ad3fac2d512
 dio	https://github.com/cfug/dio.git	dart	4684e29dabaa2655606f1620a4ed316ee3f8c963	dio
-drift	https://github.com/simolus3/drift.git	dart	f7e4c72bd10d92b9e1a8bfb768730ca1096b1341
-isar	https://github.com/isar/isar.git	dart	713001bf1615ea15460d9bc8d3fb9c8cb4150a2e
+drift	https://github.com/simolus3/drift.git	flutter	f7e4c72bd10d92b9e1a8bfb768730ca1096b1341	drift
+isar	https://github.com/isar/isar.git	dart	713001bf1615ea15460d9bc8d3fb9c8cb4150a2e	packages/isar
 hive	https://github.com/isar/hive.git	dart	1b4febe967370f790759823a5e154adc383e53d3
 getx	https://github.com/jonataslaw/getx.git	flutter	e3c8fa04ae65ebf7ff0128dbeb2dc91d4dafa429
 get_it	https://github.com/fluttercommunity/get_it.git	dart	f4c447fc8d3fc2425dc43efe86905ef86905442e
@@ -38,11 +38,11 @@ mocktail	https://github.com/felangel/mocktail.git	dart	d6a96e15b9203d33af61083e0
 very_good_cli	https://github.com/VeryGoodOpenSource/very_good_cli.git	dart	255af7c3ed0809d323d8d3f6ed9496d0b6857840
 very_good_analysis	https://github.com/VeryGoodOpenSource/very_good_analysis.git	dart	0261a0a008067eafb130d6ab45f4c583eade3032
 flutter_native_splash	https://github.com/jonbhanson/flutter_native_splash.git	flutter	3de495d6cc4d4a2bce0e2e12286e1ffee15f1a35
-patrol	https://github.com/leancodepl/patrol.git	flutter	4e84f9b71681c702e6a74050190239a8edb7e73f
-melos	https://github.com/invertase/melos.git	dart	073b15060c5269496b065aa5629008bb1b5a2bfe
-mason	https://github.com/felangel/mason.git	dart	5beba2574aac1555ad09abe59b3d5ef85fa4c8a6
-serverpod	https://github.com/serverpod/serverpod.git	dart	b693774b77613a21a3ebca3e1d310e59ca578c13
-supabase_flutter	https://github.com/supabase/supabase-flutter.git	flutter	1eefe0ee2b22c883fb26ac21cb5bbe38d7df2493
+patrol	https://github.com/leancodepl/patrol.git	flutter	4e84f9b71681c702e6a74050190239a8edb7e73f	packages/patrol
+melos	https://github.com/invertase/melos.git	dart	073b15060c5269496b065aa5629008bb1b5a2bfe	packages/melos
+mason	https://github.com/felangel/mason.git	dart	5beba2574aac1555ad09abe59b3d5ef85fa4c8a6	packages/mason
+serverpod	https://github.com/serverpod/serverpod.git	flutter	b693774b77613a21a3ebca3e1d310e59ca578c13	packages/serverpod
+supabase_flutter	https://github.com/supabase/supabase-flutter.git	flutter	1eefe0ee2b22c883fb26ac21cb5bbe38d7df2493	packages/supabase_flutter
 permission_handler	https://github.com/Baseflow/flutter-permission-handler.git	flutter	06844691889603bf867ef03e8f3ca24b83f9f1a0	permission_handler
 plus_plugins	https://github.com/fluttercommunity/plus_plugins.git	flutter	53e5ecf38c8775af21c62c2932d07f88bad1a3b2	packages/connectivity_plus/connectivity_plus
 flutter_hooks	https://github.com/rrousselGit/flutter_hooks.git	flutter	6f7344fc09f3800c1a9944d06ae56d5324e084e3	packages/flutter_hooks
