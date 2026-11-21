@@ -128,6 +128,17 @@ Both Flutter scopes then exited successfully and their plugin processes
 reported idle. The run emitted 3,601 plugin diagnostics in `lib` and 6,021
 in `test`.
 
+At `f24a4a9`, five additional packages in Flutter repositories completed
+their selected scopes with zero dependency and plugin failures.
+
+| Package | Plugin diagnostics |
+| --- | ---: |
+| AutoRoute | 10,841 |
+| Permission Handler | 241 |
+| Connectivity Plus | 572 |
+| Workmanager | 853 |
+| Sqflite | 1,181 |
+
 ## Reviewed source sites
 
 - In `dart_path`, the nonempty check guards `path.codeUnitAt(0)` and `path[0]`
