@@ -74,7 +74,7 @@ Set<CompletionTransfer> _statement(
       :final elseStatement,
     ):
       if (!expressionCanCompleteNormally(expression)) return {_thrown};
-      final selection = _ifSelection(expression, statement.caseClause);
+      final selection = ifBranchSelection(expression, statement.caseClause);
       return {
         if (statement.caseClause != null ||
             selection.selects && selection.fallsThrough)
@@ -457,7 +457,7 @@ bool _collectionElementCanCompleteNormally(CollectionElement? element) =>
       IfElement(:final expression, :final thenElement, :final elseElement) =>
         expressionCanCompleteNormally(expression) &&
             _ifElementBranchCanComplete(
-              _ifSelection(expression, element.caseClause),
+              ifBranchSelection(expression, element.caseClause),
               thenElement,
               elseElement,
             ),
@@ -473,16 +473,18 @@ bool _collectionElementCanCompleteNormally(CollectionElement? element) =>
       _ => true,
     };
 
-typedef _Selection = ({bool selects, bool fallsThrough});
+typedef BranchSelection = ({bool selects, bool fallsThrough, bool canStop});
 
-_Selection _ifSelection(Expression subject, CaseClause? clause) {
-  if (clause != null) return _caseSelection(subject, clause.guardedPattern);
+BranchSelection ifBranchSelection(Expression subject, CaseClause? clause) {
+  if (clause != null) {
+    return guardedPatternSelection(subject, clause.guardedPattern);
+  }
   final value = constantBooleanValue(subject);
-  return (selects: value != false, fallsThrough: value != true);
+  return (selects: value != false, fallsThrough: value != true, canStop: false);
 }
 
 bool _ifElementBranchCanComplete(
-  _Selection selection,
+  BranchSelection selection,
   CollectionElement thenElement,
   CollectionElement? elseElement,
 ) =>
@@ -490,26 +492,34 @@ bool _ifElementBranchCanComplete(
     selection.fallsThrough &&
         _collectionElementCanCompleteNormally(elseElement);
 
-_Selection _caseSelection(Expression subject, GuardedPattern clause) {
-  final matches = _simplePatternMatch(subject, clause.pattern);
+BranchSelection guardedPatternSelection(
+  Expression subject,
+  GuardedPattern clause,
+) {
+  final matches = simplePatternMatch(subject, clause.pattern);
   final guard = clause.whenClause?.expression;
   if (guard == null) {
-    return (selects: matches != false, fallsThrough: matches != true);
+    return (
+      selects: matches != false,
+      fallsThrough: matches != true,
+      canStop: false,
+    );
   }
   final completes = expressionCanCompleteNormally(guard);
   final guardValue = constantBooleanValue(guard);
   return (
     selects: matches != false && completes && guardValue != false,
     fallsThrough: matches != true || completes && guardValue != true,
+    canStop: matches != false && !completes,
   );
 }
 
-bool? _simplePatternMatch(Expression subject, DartPattern pattern) {
+bool? simplePatternMatch(Expression subject, DartPattern pattern) {
   switch (pattern) {
     case WildcardPattern(type: null) || DeclaredVariablePattern(type: null):
       return true;
     case ParenthesizedPattern(:final pattern):
-      return _simplePatternMatch(subject, pattern);
+      return simplePatternMatch(subject, pattern);
     case ConstantPattern(:final expression):
       final input = constantBooleanValue(subject);
       final expected = constantBooleanValue(expression);
@@ -522,7 +532,10 @@ bool? _simplePatternMatch(Expression subject, DartPattern pattern) {
 bool _switchExpressionCanComplete(SwitchExpression node) {
   if (!expressionCanCompleteNormally(node.expression)) return false;
   for (final arm in node.cases) {
-    final selection = _caseSelection(node.expression, arm.guardedPattern);
+    final selection = guardedPatternSelection(
+      node.expression,
+      arm.guardedPattern,
+    );
     if (selection.selects && expressionCanCompleteNormally(arm.expression)) {
       return true;
     }
@@ -623,13 +636,13 @@ bool _childCanExecute(AstNode parent, AstNode child) {
   }
   if (parent is IfStatement && !identical(child, parent.expression)) {
     if (!expressionCanCompleteNormally(parent.expression)) return false;
-    final selection = _ifSelection(parent.expression, parent.caseClause);
+    final selection = ifBranchSelection(parent.expression, parent.caseClause);
     if (identical(child, parent.thenStatement)) return selection.selects;
     if (identical(child, parent.elseStatement)) return selection.fallsThrough;
   }
   if (parent is IfElement && !identical(child, parent.expression)) {
     if (!expressionCanCompleteNormally(parent.expression)) return false;
-    final selection = _ifSelection(parent.expression, parent.caseClause);
+    final selection = ifBranchSelection(parent.expression, parent.caseClause);
     if (identical(child, parent.thenElement)) return selection.selects;
     if (identical(child, parent.elseElement)) return selection.fallsThrough;
   }
@@ -679,16 +692,19 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     if (!expressionCanCompleteNormally(subject)) return false;
     for (final arm in parent.cases) {
       if (identical(arm, child)) break;
-      if (!_caseSelection(subject, arm.guardedPattern).fallsThrough) {
+      if (!guardedPatternSelection(subject, arm.guardedPattern).fallsThrough) {
         return false;
       }
     }
-    return _simplePatternMatch(subject, child.guardedPattern.pattern) != false;
+    return simplePatternMatch(subject, child.guardedPattern.pattern) != false;
   }
   if (parent is SwitchExpressionCase && identical(child, parent.expression)) {
     final owner = parent.parent;
     if (owner is SwitchExpression) {
-      return _caseSelection(owner.expression, parent.guardedPattern).selects;
+      return guardedPatternSelection(
+        owner.expression,
+        parent.guardedPattern,
+      ).selects;
     }
   }
   if (parent is GuardedPattern && child is WhenClause) {
@@ -698,7 +714,7 @@ bool _childCanExecute(AstNode parent, AstNode child) {
       _ => null,
     };
     if (subject != null) {
-      return _simplePatternMatch(subject, parent.pattern) != false;
+      return simplePatternMatch(subject, parent.pattern) != false;
     }
   }
   if (parent is TryStatement && child is CatchClause) {

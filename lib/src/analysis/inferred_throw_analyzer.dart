@@ -2476,26 +2476,67 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitIfStatement(IfStatement node) {
-    // The pattern and guard execute before either branch of an if-case.
-    node.caseClause?.accept(this);
-    final constant = node.caseClause == null
-        ? _constantBoolean(node.expression)
-        : null;
-    if (constant == null) {
-      node.expression.accept(this);
-      _conditionalDepth++;
-      node.thenStatement.accept(this);
-      node.elseStatement?.accept(this);
-      _conditionalDepth--;
-      return;
-    }
+    _visitIfBranches(
+      node.expression,
+      node.caseClause,
+      node.thenStatement,
+      node.elseStatement,
+    );
+  }
 
-    node.expression.accept(this);
-    if (constant) {
-      node.thenStatement.accept(this);
-    } else {
-      node.elseStatement?.accept(this);
+  @override
+  void visitIfElement(IfElement node) {
+    _visitIfBranches(
+      node.expression,
+      node.caseClause,
+      node.thenElement,
+      node.elseElement,
+    );
+  }
+
+  void _visitIfBranches(
+    Expression subject,
+    CaseClause? clause,
+    AstNode thenNode,
+    AstNode? elseNode,
+  ) {
+    subject.accept(this);
+    clause?.accept(this);
+    final selection = ifBranchSelection(subject, clause);
+    if (selection.selects) {
+      _visitWithCertainty(thenNode, conditional: selection.fallsThrough);
     }
+    if (selection.fallsThrough) {
+      _visitWithCertainty(
+        elseNode,
+        conditional: selection.selects || selection.canStop,
+      );
+    }
+  }
+
+  @override
+  void visitGuardedPattern(GuardedPattern node) {
+    node.pattern.accept(this);
+    final guard = node.whenClause;
+    if (guard == null) return;
+    final subject = switch (node.parent?.parent) {
+      IfStatement(:final expression) ||
+      IfElement(:final expression) ||
+      SwitchExpression(:final expression) ||
+      SwitchStatement(:final expression) => expression,
+      _ => null,
+    };
+    _visitWithCertainty(
+      guard,
+      conditional:
+          subject == null || simplePatternMatch(subject, node.pattern) != true,
+    );
+  }
+
+  void _visitWithCertainty(AstNode? node, {required bool conditional}) {
+    if (conditional) _conditionalDepth++;
+    node?.accept(this);
+    if (conditional) _conditionalDepth--;
   }
 
   @override
@@ -2519,6 +2560,41 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
       member.accept(this);
     }
     _conditionalDepth--;
+  }
+
+  @override
+  void visitSwitchExpression(SwitchExpression node) {
+    final subject = node.expression;
+    subject.accept(this);
+    var canSkipArm = false;
+    for (final arm in node.cases) {
+      final clause = arm.guardedPattern;
+      _visitWithCertainty(clause, conditional: canSkipArm);
+      final selection = guardedPatternSelection(subject, clause);
+      if (selection.selects) {
+        _visitWithCertainty(
+          arm.expression,
+          conditional: canSkipArm || selection.fallsThrough,
+        );
+      }
+      if (!selection.fallsThrough) break;
+      canSkipArm |= selection.selects || selection.canStop;
+    }
+  }
+
+  @override
+  void visitForElement(ForElement node) {
+    node.forLoopParts.accept(this);
+    _visitWithCertainty(node.body, conditional: true);
+  }
+
+  @override
+  void visitMapLiteralEntry(MapLiteralEntry node) {
+    node.key.accept(this);
+    _visitWithCertainty(
+      node.value,
+      conditional: node.keyQuestion != null && !isDefinitelyNonNull(node.key),
+    );
   }
 
   @override

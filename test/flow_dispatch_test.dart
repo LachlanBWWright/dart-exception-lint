@@ -248,6 +248,55 @@ void possibleElse(Object value) { if (value case int _ when stop()) probe(); els
     );
   });
 
+  test('selection certainty follows collection and pattern branches', () async {
+    await _verify(
+      '''
+void conditionalIf(bool choose) { [if (choose) throw 1]; }
+void knownIf() { [if (true) throw 1]; }
+void collectionFor(List<int> inputs) { [for (final input in inputs) throw 1]; }
+void nullAwareKey(int? input) { <int, int>{?input: throw 1}; }
+void conditionalSwitch(bool choose) {
+  final result = switch (choose) { true => throw 1, false => 0 };
+}
+void knownSwitch() {
+  final result = switch (true) { true => throw 1, false => 0 };
+}
+void laterGuard(bool choose) {
+  final result = switch (choose) { true => 0, _ when (throw 1) => 0, _ => 0 };
+}
+void firstGuard(bool choose) {
+  final result = switch (choose) { _ when (throw 1) => 0, _ => 0 };
+}
+void maybeStoppedIf(Object input) {
+  if (input case int _ when (throw 1)) {} else { throw 2; }
+}
+''',
+      (summaries, _) {
+        for (final name in [
+          'conditionalIf',
+          'collectionFor',
+          'nullAwareKey',
+          'conditionalSwitch',
+          'laterGuard',
+          'maybeStoppedIf',
+        ]) {
+          expect(
+            summaries[name]!.confidence,
+            ThrowConfidence.possibleThrow,
+            reason: name,
+          );
+        }
+        for (final name in ['knownIf', 'knownSwitch', 'firstGuard']) {
+          expect(
+            summaries[name]!.confidence,
+            ThrowConfidence.definiteThrow,
+            reason: name,
+          );
+        }
+      },
+    );
+  });
+
   test('assignment effects follow evaluation and short circuits', () async {
     await _verify(
       '''
