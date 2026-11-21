@@ -62,6 +62,7 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     registry.addDoStatement(this, visitor);
     registry.addForPartsWithDeclarations(this, visitor);
     registry.addForPartsWithExpression(this, visitor);
+    registry.addForPartsWithPattern(this, visitor);
     registry.addWhenClause(this, visitor);
     registry.addSimpleIdentifier(this, visitor);
     registry.addAssertStatement(this, visitor);
@@ -280,6 +281,10 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitForPartsWithExpression(ForPartsWithExpression node) =>
+      _recordBooleanCheck(node.condition);
+
+  @override
+  void visitForPartsWithPattern(ForPartsWithPattern node) =>
       _recordBooleanCheck(node.condition);
 
   @override

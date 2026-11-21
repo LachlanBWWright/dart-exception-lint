@@ -323,15 +323,27 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   @override
   void visitWhileStatement(WhileStatement node) {
     node.condition.accept(this);
-    if (constantBooleanValue(node.condition) == false) {
-      return;
+    if (!isReachable(node.body)) return;
+    if (constantBooleanValue(node.condition) == true) {
+      node.body.accept(this);
+    } else {
+      _visitOptional(() => node.body.accept(this));
     }
+  }
+
+  @override
+  void visitDoStatement(DoStatement node) {
+    node.body.accept(this);
+    if (isReachable(node.condition)) {
+      _visitOptional(() => node.condition.accept(this));
+    }
+  }
+
+  void _visitOptional(void Function() visit) {
     final before = _copyEffects(_deferredEffects);
     final escapes = _copyEffects(_escapedEffects);
     final orphans = {..._orphanedEffects};
-    node.body.accept(this);
-    // The body may execute zero times: a consumer inside it cannot establish
-    // ownership for an effect created outside it.
+    visit();
     _deferredEffects = _joinEffects(before, _deferredEffects);
     _escapedEffects = _joinEffects(escapes, _escapedEffects);
     _orphanedEffects.addAll(orphans);
@@ -528,18 +540,9 @@ final class _Visitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitForStatement(ForStatement node) {
-    node.forLoopParts.accept(this);
-    final before = _copyEffects(_deferredEffects);
-    final escapes = _copyEffects(_escapedEffects);
-    final orphans = {..._orphanedEffects};
-    node.body.accept(this);
-    _deferredEffects = _joinEffects(before, _deferredEffects);
-    _escapedEffects = _joinEffects(escapes, _escapedEffects);
-    _orphanedEffects.addAll(orphans);
-    if (node.forLoopParts is! ForEachParts) {
-      return;
-    }
-    final parts = node.forLoopParts as ForEachParts;
+    final parts = node.forLoopParts;
+    _visitLoop(parts, node.body);
+    if (parts is! ForEachParts || !isReachable(parts)) return;
     final iterable = parts.iterable;
     final analysis = analyzer.analyzeResolvedCall(
       iterable,
@@ -563,6 +566,44 @@ final class _Visitor extends RecursiveAstVisitor<void> {
           ],
         );
       }
+    }
+  }
+
+  @override
+  void visitForElement(ForElement node) =>
+      _visitLoop(node.forLoopParts, node.body);
+
+  void _visitLoop(ForLoopParts parts, AstNode body) {
+    if (parts is! ForParts) {
+      parts.accept(this);
+      if (isReachable(body)) _visitOptional(() => body.accept(this));
+      return;
+    }
+    final initializer = switch (parts) {
+      ForPartsWithDeclarations(:final variables) => variables,
+      ForPartsWithExpression(:final initialization) => initialization,
+      ForPartsWithPattern(:final variables) => variables,
+    };
+    initializer?.accept(this);
+    final condition = parts.condition;
+    if (condition != null && isReachable(condition)) condition.accept(this);
+    if (!isReachable(body)) return;
+
+    void visitIteration() {
+      body.accept(this);
+      if (parts.updaters.isEmpty || !isReachable(parts.updaters.first)) return;
+      _visitOptional(() {
+        for (final updater in parts.updaters) {
+          if (!isReachable(updater)) break;
+          updater.accept(this);
+        }
+      });
+    }
+
+    if (condition == null || constantBooleanValue(condition) == true) {
+      visitIteration();
+    } else {
+      _visitOptional(visitIteration);
     }
   }
 

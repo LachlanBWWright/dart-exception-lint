@@ -283,6 +283,46 @@ Future<void> f() async {
 ''');
   }
 
+  Future<void> test_zeroIterationPreservesFutureBeforeForUpdater() async {
+    const code = r'''
+void f(bool enabled) {
+  final pending = Future<void>.error('failure');
+  for (; enabled; pending.catchError((Object _) {})) { enabled = false; }
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future<void>.error'),
+        "Future<void>.error('failure')".length,
+      ),
+    ]);
+  }
+
+  Future<void> test_unreachedDoConditionCannotConsumeFuture() async {
+    const code = r'''
+// ignore_for_file: dead_code
+Future<void> f() async {
+  final pending = Future<bool>.error('failure');
+  do { break; } while (await pending);
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future<bool>.error'),
+        "Future<bool>.error('failure')".length,
+      ),
+    ]);
+  }
+
+  Future<void> test_firstIterationOfConstantLoopCanConsumeFuture() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  final pending = Future<void>.error('failure');
+  while (true) { try { await pending; } on String {} break; }
+}
+''');
+  }
+
   Future<void> test_existingFutures_nestedAggregateAliasesAreHandled() async {
     await assertNoDiagnostics(r'''
 Future<void> f() async {
