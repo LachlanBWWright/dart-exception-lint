@@ -39,6 +39,7 @@ Future<void> main() async {
     if (pub.exitCode != 0) {
       throw StateError('Consumer resolution: ${pub.stderr}');
     }
+    final startup = Stopwatch()..start();
     client = _LspClient(
       await Process.start(Platform.resolvedExecutable, [
         'language-server',
@@ -56,18 +57,36 @@ Future<void> main() async {
     client.open(dependency.uri, safeSource);
     await client.diagnostics(mainFile.uri, throwing: false);
     await client.diagnostics(dependency.uri, throwing: false);
-    var since = client.events.length;
-    client.change(dependency.uri, throwingSource, 2);
-    await client.diagnostics(mainFile.uri, throwing: true, since: since);
-    since = client.events.length;
-    client.change(dependency.uri, safeSource, 3);
-    await client.diagnostics(mainFile.uri, throwing: false, since: since);
+    startup.stop();
+
+    final appeared = <int>[];
+    final cleared = <int>[];
+    var version = 1;
+    Future<void> verifyEdit({required bool throwing}) async {
+      final since = client!.events.length;
+      final elapsed = Stopwatch()..start();
+      client.change(
+        dependency.uri,
+        throwing ? throwingSource : safeSource,
+        ++version,
+      );
+      await client.diagnostics(mainFile.uri, throwing: throwing, since: since);
+      (throwing ? appeared : cleared).add(elapsed.elapsedMilliseconds);
+    }
+
+    for (var cycle = 0; cycle < 3; cycle++) {
+      await verifyEdit(throwing: true);
+      await verifyEdit(throwing: false);
+    }
     if (await dependency.readAsString() != safeSource) {
       throw StateError('Overlay test unexpectedly changed disk contents');
     }
     stdout.writeln(
       'LSP consumer: safe → unsaved throwing dependency → safe diagnostics match.',
     );
+    stdout.writeln('LSP plugin readiness: ${startup.elapsedMilliseconds} ms.');
+    stdout.writeln('LSP diagnostic appearance after edits: $appeared ms.');
+    stdout.writeln('LSP diagnostic clearing after edits: $cleared ms.');
   } finally {
     await client?.close();
     await directory.delete(recursive: true);
