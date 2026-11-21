@@ -1146,15 +1146,7 @@ final class InferredThrowAnalyzer {
       );
     }
     if (executable is ConstructorElement &&
-        executable.library.uri.toString() == 'dart:core' &&
-        const {
-          'Object',
-          'Exception',
-          'FormatException',
-          'StateError',
-          'UnsupportedError',
-          'UnimplementedError',
-        }.contains(executable.enclosingElement.name)) {
+        ThrowSourceCatalog.isPureCoreConstructor(executable)) {
       return ThrowSummary.noObviousThrow(elementKey);
     }
     if (executable is PropertyAccessorElement && executable.isOriginVariable) {

@@ -50,6 +50,7 @@ Future<void> main() async {
             'directNativeFutureIgnore',
             'handledTypedFutureError',
             'createJsonDecoder',
+            'createCompilerPragma',
             'caughtJsonReviver',
             'nullComparison',
             'storedConstantListIndex',
@@ -205,6 +206,7 @@ const _effects = {
   'failedAssertionCondition': ('synchronous', 'int'),
   'failedAssertionMessage': ('synchronous', 'String'),
   'failedAssertionInitializer': ('synchronous', 'AssertionError'),
+  'pragmaNameCheck': ('synchronous', 'TypeError'),
   'freshCompleterNull': ('synchronous', 'TypeError'),
   'widenedCompleterNull': ('synchronous', 'TypeError'),
   'cascadedCompleterRepeat': ('synchronous', 'StateError'),
@@ -391,6 +393,8 @@ const _observations = {
   'failed_assertion_message': 'String',
   'skipped_assertion_message': 'none',
   'failed_assertion_initializer': 'AssertionError',
+  'create_compiler_pragma': 'none',
+  'pragma_name_check': 'TypeError',
   'fresh_completer_null': 'TypeError',
   'widened_completer_null': 'TypeError',
   'cascaded_completer_repeat': 'StateError',
@@ -561,6 +565,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:convert' as codec;
 
+pragma createCompilerPragma() => const pragma('dart_exception_lint:fixture');
+void pragmaNameCheck(dynamic name) { pragma(name); }
 void freshCompleterNull() { Completer<int>().complete(); }
 void widenedCompleterNull() {
   final Completer<num?> completer = Completer<int>();
@@ -1109,6 +1115,8 @@ Future<void> main() async {
     'failed_assertion_message': capture(failedAssertionMessage),
     'skipped_assertion_message': capture(skippedAssertionMessage),
     'failed_assertion_initializer': capture(failedAssertionInitializer),
+    'create_compiler_pragma': capture(createCompilerPragma),
+    'pragma_name_check': capture(() => pragmaNameCheck(42)),
     'fresh_completer_null': capture(freshCompleterNull),
     'widened_completer_null': capture(widenedCompleterNull),
     'cascaded_completer_repeat': capture(cascadedCompleterRepeat),

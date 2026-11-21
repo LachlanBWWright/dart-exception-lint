@@ -426,26 +426,30 @@ final class ThrowSourceCatalog {
     return null;
   }
 
+  /// These SDK constructors only initialize fields. Argument checks belong
+  /// to the call site.
+  static bool isPureCoreConstructor(ConstructorElement element) =>
+      element.library.isInSdk &&
+      element.library.uri.toString() == 'dart:core' &&
+      const {'', 'new', null}.contains(element.name) &&
+      const {
+        'Object',
+        'Exception',
+        'FormatException',
+        'StateError',
+        'UnsupportedError',
+        'UnimplementedError',
+        'pragma',
+      }.contains(element.enclosingElement.name);
+
   static ThrowSource? _matchInstanceCreation(
     InstanceCreationExpression node, {
     required String? libraryUri,
     required String? className,
     required String? constructorName,
   }) {
-    // Audited core constructors only initialize fields; allocation failure is
-    // outside the Dart-exception contract. Argument checks remain separate.
-    if (libraryUri == 'dart:core' &&
-        (constructorName == null ||
-            constructorName.isEmpty ||
-            constructorName == 'new') &&
-        const {
-          'Object',
-          'Exception',
-          'FormatException',
-          'StateError',
-          'UnsupportedError',
-          'UnimplementedError',
-        }.contains(className)) {
+    final constructor = node.constructorName.element;
+    if (constructor != null && isPureCoreConstructor(constructor)) {
       return ThrowSource(
         kind: ThrowSourceKind.inferredCall,
         confidence: ThrowConfidence.noObviousThrow,
