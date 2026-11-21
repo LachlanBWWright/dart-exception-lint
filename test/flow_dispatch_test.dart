@@ -519,6 +519,35 @@ void falsePattern(String value) {
     );
   });
 
+  test(
+    'List.add uses the allocation type of a proven literal receiver',
+    () async {
+      await _verify(
+        '''
+void growable(String value) {
+  final items = <String>[];
+  if (value.isNotEmpty) items.add(value[0]);
+}
+void constant() { const items = <String>[]; items.add('value'); }
+void narrower() { final List<num> items = <int>[]; items.add(1.5); }
+void unknown(List<String> other) {
+  var items = <String>[];
+  items = other;
+  items.add('value');
+}
+''',
+        (summaries, _) {
+          expect(summaries['growable']!.hasAnyThrowSource, isFalse);
+          expect(summaries['constant']!.exceptionTypes.toSet(), {
+            'UnsupportedError',
+          });
+          expect(summaries['narrower']!.exceptionTypes.toSet(), {'TypeError'});
+          expect(summaries['unknown']!.hasUnknownEffects, isTrue);
+        },
+      );
+    },
+  );
+
   test('index assignment models the read and write that can execute', () async {
     await _verify(
       '''

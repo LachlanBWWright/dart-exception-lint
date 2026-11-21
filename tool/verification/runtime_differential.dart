@@ -170,6 +170,8 @@ const _effects = {
   'resolvedConstructorRedirect': ('synchronous', 'String'),
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'secondStringIndex': ('synchronous', 'RangeError'),
+  'constantListAdd': ('synchronous', 'UnsupportedError'),
+  'narrowListAdd': ('synchronous', 'TypeError'),
   'stoppedStatementGuard': ('synchronous', 'int'),
   'groupedStatementCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
@@ -301,6 +303,9 @@ const _observations = {
   'guarded_string_index': 'none',
   'rebound_string_index': 'RangeError',
   'second_string_index': 'RangeError',
+  'growable_list_add': 'none',
+  'constant_list_add': 'UnsupportedError',
+  'narrow_list_add': 'TypeError',
   'stopped_statement_guard': '42',
   'grouped_statement_case': '42',
   'skipped_guard': 'none',
@@ -458,6 +463,9 @@ void reboundStringIndex(String value) {
 void secondStringIndex(String value) {
   if (value.isNotEmpty) value[1];
 }
+void growableListAdd() { final items = <String>[]; items.add('value'); }
+void constantListAdd() { const items = <String>[]; items.add('value'); }
+void narrowListAdd() { final List<num> items = <int>[]; items.add(1.5); }
 void stoppedStatementGuard() {
   switch (false) {
     case _ when stopEvaluation(): throwString();
@@ -721,7 +729,7 @@ Future<void> futureHandlerCaught() async {
   } on String {}
 }
 
-String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is AssertionError ? 'AssertionError' : error is String ? 'String' : '$error';
+String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is AssertionError ? 'AssertionError' : error is UnsupportedError ? 'UnsupportedError' : error is String ? 'String' : '$error';
 String capture(void Function() operation) {
   try { operation(); return 'none'; } catch (error) { return label(error); }
 }
@@ -767,6 +775,9 @@ Future<void> main() async {
     'guarded_string_index': capture(() { guardedStringIndex(''); guardedStringIndex('A'); }),
     'rebound_string_index': capture(() => reboundStringIndex('A')),
     'second_string_index': capture(() => secondStringIndex('A')),
+    'growable_list_add': capture(growableListAdd),
+    'constant_list_add': capture(constantListAdd),
+    'narrow_list_add': capture(narrowListAdd),
     'stopped_statement_guard': capture(stoppedStatementGuard),
     'grouped_statement_case': capture(groupedStatementCase),
     'skipped_guard': capture(skippedGuard),

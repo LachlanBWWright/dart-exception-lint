@@ -9,6 +9,7 @@ import '../engine/numeric_checks.dart';
 import '../engine/numeric_parse_checks.dart';
 import '../engine/statement_completion.dart';
 import '../engine/string_bounds.dart';
+import '../engine/list_literals.dart';
 
 final class ThrowSourceCatalog {
   const ThrowSourceCatalog._();
@@ -422,6 +423,29 @@ final class ThrowSourceCatalog {
     required ExceptionAnalysisOptions options,
   }) {
     final name = callableName ?? node.methodName.name;
+    if (name == 'add' &&
+        libraryUri == 'dart:core' &&
+        enclosingClassName == 'List') {
+      final literal = literalListAddReceiver(node);
+      final value = node.argumentList.arguments.firstOrNull?.argumentExpression;
+      if (literal != null && value != null) {
+        final exceptions = [
+          if (literal.isConst && options.treatCollectionStateAsThrowing)
+            'UnsupportedError',
+          if (!literalListAccepts(literal, value) &&
+              options.treatAsCastsAsThrowing)
+            'TypeError',
+        ];
+        return ThrowSource(
+          kind: ThrowSourceKind.collectionStateCall,
+          confidence: exceptions.isEmpty
+              ? ThrowConfidence.noObviousThrow
+              : ThrowConfidence.possibleThrow,
+          displayName: 'List.add',
+          exceptionTypes: exceptions,
+        );
+      }
+    }
     if (libraryUri == 'dart:core' &&
         enclosingClassName == 'Object' &&
         node.target is SuperExpression &&

@@ -18,6 +18,7 @@ import 'throw_source_catalog.dart';
 import 'throw_summary.dart';
 import 'exception_annotations.dart';
 import '../engine/invocation_targets.dart';
+import '../engine/list_literals.dart';
 import '../engine/runtime_checks.dart';
 import '../engine/numeric_checks.dart';
 import '../engine/exception_effect.dart';
@@ -1706,6 +1707,10 @@ final class InferredThrowAnalyzer {
         declared.isStatic ||
         declared.enclosingElement is! InterfaceElement ||
         declared.enclosingElement is ExtensionTypeElement) {
+      return baseSummary;
+    }
+    if (callSite is MethodInvocation &&
+        literalListAddReceiver(callSite) != null) {
       return baseSummary;
     }
 
