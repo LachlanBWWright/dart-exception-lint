@@ -507,12 +507,12 @@ final class InferredThrowAnalyzer {
     AstNode call, {
     required int depth,
   }) {
-    if (executable.library.isInSdk) return null;
+    if (executable.library.isInSdk || depth > options.maxCallDepth) return null;
     final forwarded = forwardedFutureArgument(
       call,
       maxDepth: options.maxCallDepth - depth + 1,
     );
-    if (forwarded != null && depth <= options.maxCallDepth) {
+    if (forwarded != null) {
       final target = switch (forwarded) {
         MethodInvocation(:final methodName) => methodName.element,
         InstanceCreationExpression(:final constructorName) =>
@@ -602,9 +602,6 @@ final class InferredThrowAnalyzer {
     final callableKey =
         ResolvedCallable.tryCreate(executable)?.elementKey ??
         '${executable.library.uri}:${executable.firstFragment.offset}';
-    if (depth > options.maxCallDepth) {
-      return _unknownCallbackContext(executable, callableKey, 'max_call_depth');
-    }
     // Reusing existing contexts remains possible at the limit, but fresh
     // callback identities must not grow the index after the budget is full.
     if (_callbackContexts.analyzers.length >= _CallbackContexts.maxContexts &&
@@ -1111,6 +1108,14 @@ final class InferredThrowAnalyzer {
     required int depth,
     required Set<String> activeKeys,
   }) {
+    if (depth > options.maxCallDepth) {
+      return _unknownExecutableSummary(
+        executable,
+        elementKey,
+        'max_call_depth',
+        kind: ThrowSourceKind.truncation,
+      );
+    }
     if (executable is ConstructorElement &&
         executable.library.uri.toString() == 'dart:core' &&
         const {
@@ -1188,15 +1193,6 @@ final class InferredThrowAnalyzer {
             : 'initializer_not_resolved',
       );
     }
-    if (depth > options.maxCallDepth) {
-      return _unknownExecutableSummary(
-        executable,
-        elementKey,
-        'max_call_depth',
-        kind: ThrowSourceKind.truncation,
-      );
-    }
-
     final declaration = _findDeclaration(executable);
     final body = declaration == null ? null : _bodyForDeclaration(declaration);
     final constructorClass = executable is ConstructorElement
@@ -1734,7 +1730,8 @@ final class InferredThrowAnalyzer {
         : null;
     if (receiverElement == null) return baseSummary;
 
-    final candidateLimit = options.maxDispatchCandidates < 0
+    final depthLimited = depth > options.maxCallDepth;
+    final candidateLimit = depthLimited || options.maxDispatchCandidates < 0
         ? 0
         : options.maxDispatchCandidates;
     final candidates = <ExecutableElement>[];
@@ -1799,6 +1796,12 @@ final class InferredThrowAnalyzer {
     final dispatchSources = <ThrowSource>[
       ...baseSummary.sources,
       for (final summary in candidateSummaries) ...summary.sources,
+      if (dispatchWasTruncated)
+        ..._unknownSourcesForType(
+          declared.returnType,
+          kind: ThrowSourceKind.truncation,
+          displayName: 'additional virtual targets',
+        ),
       if (incompleteAbstractDispatch)
         ThrowSource(
           kind: ThrowSourceKind.unresolvedCall,
@@ -1825,7 +1828,7 @@ final class InferredThrowAnalyzer {
           !dispatchWasTruncated &&
           !incompleteAbstractDispatch,
       truncationReason: dispatchWasTruncated
-          ? 'max_dispatch_candidates'
+          ? (depthLimited ? 'max_call_depth' : 'max_dispatch_candidates')
           : incompleteAbstractDispatch
           ? 'open_dispatch_incomplete'
           : baseSummary.truncationReason,

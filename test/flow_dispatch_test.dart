@@ -590,6 +590,23 @@ void entry(Base input) => input.run();
     },
   );
 
+  test('the call depth budget also bounds lazy getter initializers', () async {
+    await _verify(
+      '''
+final String first = second;
+final String second = throw 'initializer failure';
+String entry() => first;
+''',
+      (summaries, _) {
+        final entry = summaries['entry']!;
+        expect(entry.hasUnknownEffects, isTrue);
+        expect(entry.truncationReason, 'max_call_depth');
+        expect(entry.exceptionTypes, isEmpty);
+      },
+      options: const ExceptionAnalysisOptions(maxCallDepth: 0),
+    );
+  });
+
   test(
     'forwarding proof accepts immediate async adoption and rejects delayed, mutation, virtual, cyclic, dynamic and side effect bodies',
     () async {
