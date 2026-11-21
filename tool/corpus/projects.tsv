@@ -18,8 +18,8 @@ dart_flutter	https://github.com/flutter/flutter.git	flutter	53d381d9067f16b1d413
 flutter_packages	https://github.com/flutter/packages.git	flutter	10cde9a3b14d04f4f8ab8892e1dadcbad885fa48
 flutter_samples	https://github.com/flutter/samples.git	flutter	a05867daaad66d9b89609b5eeb766acb0ac4e76c
 flutterfire	https://github.com/firebase/flutterfire.git	flutter	0a41f05f82b344b5966055d27999ee68346475ff
-riverpod	https://github.com/rrousselGit/riverpod.git	dart	90c5a0bb144c3d782475c0d525cb2f6e45eef1c8	packages/riverpod
-freezed	https://github.com/rrousselGit/freezed.git	dart	154a1e779c7a0fe3474fadab2fbb15a00a7de90f	packages/freezed
+riverpod	https://github.com/rrousselGit/riverpod.git	flutter	90c5a0bb144c3d782475c0d525cb2f6e45eef1c8	packages/riverpod
+freezed	https://github.com/rrousselGit/freezed.git	flutter	154a1e779c7a0fe3474fadab2fbb15a00a7de90f	packages/freezed
 bloc	https://github.com/felangel/bloc.git	dart	b9be1e252ee24ffbe9f2fb629edc7624b2cfbf05	packages/bloc
 equatable	https://github.com/felangel/equatable.git	dart	832990678125b10103b26500ce8ce7188d775925
 hydrated_bloc	https://github.com/felangel/hydrated_bloc.git	dart	bb69309d683ff7d0b724300f643917880e4880b9
