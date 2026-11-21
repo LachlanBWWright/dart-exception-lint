@@ -43,6 +43,23 @@ host. They describe these specific runs. The evaluator now uses package source
 and test directories for all Flutter rows so a separately configured example
 cannot finish before the package under evaluation publishes its results.
 
+## Reviewed source sites
+
+- In `dart_path`, the nonempty check guards `path.codeUnitAt(0)` and `path[0]`
+  on the same String. The focused rerun confirms that both bounds diagnostics
+  disappear. The `InternalStyle.isSeparator` dispatch still reports
+  uncertainty. [Pinned source](https://github.com/dart-lang/path/blob/7e3d5d87220133ad9cc99f82e85a826011a62859/lib/src/parsed_path.dart#L51-L57)
+- In the same parser, `start` begins at zero or one and is updated to `i + 1`
+  inside the bounded loop. The final `substring(start)` also checks
+  `start < path.length`. The runtime-source rule still reports this call.
+  Proving its bounds requires following the value through the loop. [Pinned source](https://github.com/dart-lang/path/blob/7e3d5d87220133ad9cc99f82e85a826011a62859/lib/src/parsed_path.dart#L60-L72)
+- The `flutter_hooks` ticker assertion explicitly throws a `FlutterError`.
+  The scoped run reports the expected `no_manual_throw` diagnostic on that
+  statement. [Pinned source](https://github.com/rrousselGit/flutter_hooks/blob/6f7344fc09f3800c1a9944d06ae56d5324e084e3/packages/flutter_hooks/lib/src/animation.dart#L178-L187)
+- The `provider` delegate initializer uses postfix `!` on `element` before
+  starting its listener. The scoped run reports the expected
+  `no_null_assertion` diagnostic at that operator. [Pinned source](https://github.com/rrousselGit/provider/blob/3ed4c6d6b1700c08256f25a034bb93f943bd7236/packages/provider/lib/src/deferred_inherited_provider.dart#L98-L107)
+
 ## Earlier release-contract run
 
 The release-contract implementation batch exercised three pinned repositories
