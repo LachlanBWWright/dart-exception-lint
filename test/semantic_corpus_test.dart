@@ -10,6 +10,7 @@ void main() {
       expect(report['cases'], greaterThanOrEqualTo(20));
       expect(report['falsePositiveEffectLabels'], 0);
       expect(report['falseNegativeEffectLabels'], 0);
+      expect(report['checkedExceptionTypeCases'], greaterThanOrEqualTo(10));
     },
   );
 }

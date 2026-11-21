@@ -9,6 +9,9 @@
     "source": "void explicitSync() { throw 'failure'; }",
     "effects": [
       "synchronous:known"
+    ],
+    "exceptionTypes": [
+      "synchronous:String"
     ]
   },
   {
@@ -21,6 +24,9 @@
     "source": "void mismatchedCatch() { try { throw 'failure'; } on int {} }",
     "effects": [
       "synchronous:known"
+    ],
+    "exceptionTypes": [
+      "synchronous:String"
     ]
   },
   {
@@ -33,6 +39,9 @@
     "source": "void finallyReplacement() { try { throw 'failure'; } finally { throw 1; } }",
     "effects": [
       "synchronous:known"
+    ],
+    "exceptionTypes": [
+      "synchronous:int"
     ]
   },
   {
@@ -50,6 +59,9 @@
     "source": "Future<void> asyncBody() async { throw 'failure'; }",
     "effects": [
       "future:known"
+    ],
+    "exceptionTypes": [
+      "future:String"
     ]
   },
   {
@@ -57,6 +69,9 @@
     "source": "void asyncVoid() async { throw 'failure'; }",
     "effects": [
       "scheduled:known"
+    ],
+    "exceptionTypes": [
+      "scheduled:String"
     ]
   },
   {
@@ -64,6 +79,9 @@
     "source": "Iterable<int> syncGenerator() sync* { throw 'failure'; }",
     "effects": [
       "deferred:known"
+    ],
+    "exceptionTypes": [
+      "deferred:String"
     ]
   },
   {
@@ -71,6 +89,9 @@
     "source": "Stream<int> asyncGenerator() async* { throw 'failure'; }",
     "effects": [
       "stream:known"
+    ],
+    "exceptionTypes": [
+      "stream:String"
     ]
   },
   {
@@ -127,6 +148,10 @@
     "source": "void scheduledTimer() { Timer.run(() { throw 'failure'; }); }",
     "effects": [
       "scheduled:known"
+    ],
+    "exceptionTypes": [
+      "scheduled:String",
+      "scheduled:*"
     ]
   },
   {
@@ -134,6 +159,9 @@
     "source": "Future<void> nativeFutureJoin() async { await Future.wait<void>([Future<void>.error('joined')]); }",
     "effects": [
       "future:known"
+    ],
+    "exceptionTypes": [
+      "future:String"
     ]
   },
   {
@@ -141,6 +169,9 @@
     "source": "Future<void> blockedFutureJoin() async { try { await Future.wait<void>([Future<void>.error('abandoned'), throw 1]); } on int {} }",
     "effects": [
       "scheduled:known"
+    ],
+    "exceptionTypes": [
+      "scheduled:String"
     ]
   },
   {
@@ -153,6 +184,9 @@
     "source": "Future<void> errorFromHandler() => Future<void>.error(1).catchError((Object _) => throw 'handler');",
     "effects": [
       "future:known"
+    ],
+    "exceptionTypes": [
+      "future:String"
     ]
   },
   {
@@ -160,6 +194,9 @@
     "source": "Future<Stream<int>> bufferedStream() async { try { return await Future<Stream<int>>.value(Stream<int>.error('buffered')); } on String { return const Stream<int>.empty(); } }",
     "effects": [
       "stream:known"
+    ],
+    "exceptionTypes": [
+      "stream:String"
     ]
   },
   {
@@ -167,6 +204,35 @@
     "source": "void optionalAssertion() { assert(false); }",
     "effects": [
       "synchronous:known"
+    ],
+    "exceptionTypes": [
+      "synchronous:AssertionError"
     ]
+  },
+  {
+    "name": "dynamicBoolean",
+    "source": "bool dynamicBoolean(dynamic value) => !value;",
+    "effects": [
+      "synchronous:known"
+    ],
+    "exceptionTypes": [
+      "synchronous:TypeError"
+    ]
+  },
+  {
+    "name": "blockedOperator",
+    "source": "dynamic blockedOperator(dynamic value) => value + (throw 'operand');",
+    "effects": [
+      "synchronous:known"
+    ],
+    "exceptionTypes": [
+      "synchronous:String"
+    ]
+  },
+  {
+    "name": "boundedSubstring",
+    "source": "void boundedSubstring(String text) { var start = 0; for (var i = start; i < text.length; i++) { if (text[i] == '/') { text.codeUnitAt(i); text.substring(start, i); start = i + 1; } } if (start < text.length) text.substring(start); }",
+    "effects": [],
+    "exceptionTypes": []
   }
 ]

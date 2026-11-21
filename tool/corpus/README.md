@@ -64,8 +64,11 @@ Dependency resolution and analysis both use `CORPUS_TIMEOUT`.
 Flutter rows use `flutter pub get` and `flutter analyze`. A missing Flutter
 executable appears as `flutter_unavailable` in the results.
 
-`semantic_cases.json` is a separate, reviewed local corpus with expected known
-and unknown effect-channel labels. Run it with:
+`semantic_cases.json` labels known and unknown effect channels in local
+fixtures. Cases with `exceptionTypes` also check the exact known types by
+channel. A `*` type indicates a source with no established exception type.
+
+Run the semantic gate with this command.
 
 ```bash
 dart run tool/verification/semantic_corpus.dart

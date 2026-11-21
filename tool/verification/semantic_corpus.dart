@@ -7,6 +7,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:dart_exception_lint/src/analysis/inferred_throw_analyzer.dart';
 import 'package:dart_exception_lint/src/config/exception_analysis_options.dart';
 import 'package:dart_exception_lint/src/config/throwing_api_manifest.dart';
+import 'package:dart_exception_lint/src/engine/exception_effect.dart';
 
 /// Independently labeled effect-presence cases. Metrics describe this corpus
 /// only; they are not estimates of precision/recall on external projects.
@@ -50,6 +51,7 @@ Future<Map<String, Object>> verifySemanticCorpus({
     var falsePositives = 0;
     var falseNegatives = 0;
     var unknownEffects = 0;
+    var checkedExceptionTypeCases = 0;
     final failures = <String>[];
     for (final item in cases) {
       final name = item['name'] as String;
@@ -59,14 +61,15 @@ Future<Map<String, Object>> verifySemanticCorpus({
       final summary = analyzer.summarizeExecutable(
         declaration.declaredFragment!.element,
       );
-      final actual = summary.effects
+      final effects = summary.effects.toList();
+      final actual = effects
           .map(
             (effect) =>
-                '${effect.channel.name}:${effect.certainty.name == 'unknown' ? 'unknown' : 'known'}',
+                '${effect.channel.name}:${effect.certainty == ExceptionCertainty.unknown ? 'unknown' : 'known'}',
           )
           .toSet();
-      unknownEffects += summary.effects
-          .where((effect) => effect.certainty.name == 'unknown')
+      unknownEffects += effects
+          .where((effect) => effect.certainty == ExceptionCertainty.unknown)
           .length;
       final expected = (item['effects'] as List).cast<String>().toSet();
       truePositives += actual.intersection(expected).length;
@@ -78,6 +81,27 @@ Future<Map<String, Object>> verifySemanticCorpus({
           '$name: expected $expected; actual $actual; sources: ${summary.sources.map((s) => "${s.displayName}/${s.channel}/${s.exceptionTypes}").join(", ")}',
         );
       }
+      final types = item['exceptionTypes'];
+      if (types is List) {
+        checkedExceptionTypeCases++;
+        final expectedTypes = types.cast<String>().toSet();
+        final actualTypes = <String>{
+          for (final effect in effects)
+            if (effect.certainty != ExceptionCertainty.unknown)
+              for (final type
+                  in effect.source.exceptionTypes.isEmpty
+                      ? const ['*']
+                      : effect.source.exceptionTypes)
+                '${effect.channel.name}:$type',
+        };
+        final unexpected = actualTypes.difference(expectedTypes);
+        final missing = expectedTypes.difference(actualTypes);
+        if (unexpected.isNotEmpty || missing.isNotEmpty) {
+          failures.add(
+            '$name: unexpected exception types $unexpected; missing $missing',
+          );
+        }
+      }
     }
     if (failures.isNotEmpty) throw StateError(failures.join('\n'));
     return {
@@ -86,6 +110,7 @@ Future<Map<String, Object>> verifySemanticCorpus({
       'falsePositiveEffectLabels': falsePositives,
       'falseNegativeEffectLabels': falseNegatives,
       'unknownEffects': unknownEffects,
+      'checkedExceptionTypeCases': checkedExceptionTypeCases,
     };
   } finally {
     await collection?.dispose();
