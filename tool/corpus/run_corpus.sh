@@ -12,6 +12,18 @@ packages_per_repo="${CORPUS_PACKAGES_PER_REPO:-1}"
 results="${CORPUS_RESULTS:-$repo_root/tool/corpus/results.tsv}"
 results_tmp=''
 diagnostic_names='catch_(runtime_throw_sources|async_error_sources|inferred_throwing_calls|unknown_dynamic_calls|throwing_third_party_calls)|no_null_assertion|no_manual_throw|invalid_exception_(analysis_config|contract)|unsupported_exception_analysis_environment'
+if [[ ! "$limit" =~ ^[0-9]+$ ]]; then
+  printf '%s\n' 'CORPUS_LIMIT must be a nonnegative integer.' >&2
+  exit 2
+fi
+limit="${limit#"${limit%%[!0]*}"}"
+if [[ "${#limit}" -ge 19 ]]; then limit=999999999999999999; fi
+limit="${limit:-0}"
+[[ '' =~ $project_filter ]]
+if [[ "$?" == 2 ]]; then
+  printf '%s\n' 'CORPUS_FILTER must be a valid regular expression.' >&2
+  exit 2
+fi
 mkdir -p "$corpus_root" || exit 1
 corpus_root="$(cd "$corpus_root" && pwd)" || exit 1
 plugin_root="$(mktemp -d "$corpus_root/plugin.XXXXXX")" || exit 1
@@ -173,9 +185,6 @@ while IFS=$'\t' read -r id url manager commit package_path; do
   fi
 
   checkout="$corpus_root/$id"
-  if [[ "$refresh" == 1 && -d "$checkout" ]]; then
-    rm -rf "$checkout"
-  fi
   if [[ -d "$checkout/.git" ]]; then
     if [[ -n "$(git -C "$checkout" status --porcelain)" ]]; then
       printf '%s\t%s\tdirty_checkout\t0\t0\t0\t0\t\t%s\n' "$id" "$url" "checkout preserved" >> "$results_tmp"
@@ -188,7 +197,8 @@ while IFS=$'\t' read -r id url manager commit package_path; do
       continue
     }
   fi
-  if ! GIT_NO_LAZY_FETCH=1 git -C "$checkout" cat-file -e "$commit^{commit}" 2>/dev/null &&
+  if { [[ "$refresh" == 1 ]] ||
+      ! GIT_NO_LAZY_FETCH=1 git -C "$checkout" cat-file -e "$commit^{commit}" 2>/dev/null; } &&
       ! timeout "$timeout_seconds" git -C "$checkout" fetch --depth 1 --quiet origin "$commit"; then
     printf '%s\t%s\tcheckout_failed\t0\t0\t0\t0\t\t%s\n' "$id" "$url" "git fetch pinned commit" >> "$results_tmp"
     continue
