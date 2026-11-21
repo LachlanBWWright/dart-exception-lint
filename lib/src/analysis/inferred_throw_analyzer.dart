@@ -2632,8 +2632,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   ) {
     // The language permits runtimes to disable assertions entirely.
     _conditionalDepth++;
-    _recordImplicitCast(condition, executable.library.typeProvider.boolType);
-    condition.accept(this);
+    _visitBoolean(condition);
     message?.accept(this);
     final source = ThrowSourceCatalog.matchAssertion(condition, message);
     if (source != null && !_isProtected(node, source)) {
@@ -2674,8 +2673,12 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     AstNode thenNode,
     AstNode? elseNode,
   ) {
-    subject.accept(this);
-    clause?.accept(this);
+    if (clause == null) {
+      _visitBoolean(subject);
+    } else {
+      subject.accept(this);
+      clause.accept(this);
+    }
     final selection = ifBranchSelection(subject, clause);
     if (selection.selects) {
       _visitWithCertainty(thenNode, conditional: selection.fallsThrough);
@@ -2706,6 +2709,9 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
           subject == null || simplePatternMatch(subject, node.pattern) != true,
     );
   }
+
+  @override
+  void visitWhenClause(WhenClause node) => _visitBoolean(node.expression);
 
   void _visitWithCertainty(AstNode? node, {required bool conditional}) {
     if (conditional) _conditionalDepth++;
@@ -2786,7 +2792,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     };
     initializer?.accept(this);
     final condition = parts.condition;
-    condition?.accept(this);
+    if (condition != null) _visitBoolean(condition);
     _visitWithCertainty(
       body,
       conditional: condition != null && _constantBoolean(condition) != true,
@@ -2798,7 +2804,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitWhileStatement(WhileStatement node) {
-    node.condition.accept(this);
+    _visitBoolean(node.condition);
     final condition = _constantBoolean(node.condition);
     if (condition != false) {
       _visitWithCertainty(node.body, conditional: condition != true);
@@ -2808,6 +2814,10 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitDoStatement(DoStatement node) {
     node.body.accept(this);
+    _recordImplicitCast(
+      node.condition,
+      executable.library.typeProvider.boolType,
+    );
     _visitWithCertainty(node.condition, conditional: true);
   }
 
@@ -2843,8 +2853,13 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitBinaryExpression(BinaryExpression node) {
-    node.leftOperand.accept(this);
     final operator = node.operator.lexeme;
+    final logical = operator == '&&' || operator == '||';
+    if (logical) {
+      _visitBoolean(node.leftOperand);
+    } else {
+      node.leftOperand.accept(this);
+    }
     final leftBoolean = _constantBoolean(node.leftOperand);
     if ((operator == '&&' && leftBoolean == false) ||
         (operator == '||' && leftBoolean == true)) {
@@ -2853,17 +2868,20 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     if (operator == '??' && isDefinitelyNonNull(node.leftOperand)) {
       return;
     }
-    final conditional =
-        operator == '&&' || operator == '||' || operator == '??';
+    final conditional = logical || operator == '??';
     if (conditional) _conditionalDepth++;
-    node.rightOperand.accept(this);
+    if (logical) {
+      _visitBoolean(node.rightOperand);
+    } else {
+      node.rightOperand.accept(this);
+    }
     if (conditional) _conditionalDepth--;
-    _recordCall(node);
+    if (!conditional) _recordCall(node);
   }
 
   @override
   void visitConditionalExpression(ConditionalExpression node) {
-    node.condition.accept(this);
+    _visitBoolean(node.condition);
     final constant = _constantBoolean(node.condition);
     if (constant == true) {
       node.thenExpression.accept(this);
@@ -2875,6 +2893,11 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
       node.elseExpression.accept(this);
       _conditionalDepth--;
     }
+  }
+
+  void _visitBoolean(Expression expression) {
+    _recordImplicitCast(expression, executable.library.typeProvider.boolType);
+    expression.accept(this);
   }
 
   void _recordImplicitCast(Expression expression, DartType? target) {
@@ -3003,6 +3026,10 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitPrefixExpression(PrefixExpression node) {
+    if (node.operator.lexeme == '!') {
+      _visitBoolean(node.operand);
+      return;
+    }
     for (final target in invocationTargets(node, executable.library)) {
       _recordInvocation(node, target);
     }

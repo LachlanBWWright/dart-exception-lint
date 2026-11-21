@@ -160,6 +160,39 @@ void mayBreak(bool skip) {
     );
   });
 
+  test('dynamic boolean operands have typed runtime checks', () async {
+    await _verify(
+      '''
+void branch(dynamic value) { if (value) {} }
+void loop(dynamic value) { for (; value;) { break; } }
+void doLoop(dynamic value) { do {} while (value); }
+bool negation(dynamic value) => !value;
+bool logical(dynamic value) => value && true;
+bool skipped(dynamic value) => false && value;
+void pattern(dynamic value) { if (value case _) {} }
+int guard(dynamic value) => switch (true) { _ when value => 1, _ => 0 };
+void caught(dynamic value) { try { if (value) {} } on TypeError {} }
+''',
+      (summaries, _) {
+        for (final name in [
+          'branch',
+          'loop',
+          'doLoop',
+          'negation',
+          'logical',
+          'guard',
+        ]) {
+          final summary = summaries[name]!;
+          expect(summary.exceptionTypes.toSet(), {'TypeError'}, reason: name);
+          expect(summary.hasUnknownEffects, isFalse, reason: name);
+        }
+        for (final name in ['skipped', 'pattern', 'caught']) {
+          expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
+        }
+      },
+    );
+  });
+
   test('collection evaluation keeps only reachable effects', () async {
     await _verify(
       '''

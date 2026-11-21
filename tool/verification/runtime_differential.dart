@@ -171,6 +171,7 @@ const _effects = {
   'resolvedConstructorRedirect': ('synchronous', 'String'),
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'secondStringIndex': ('synchronous', 'RangeError'),
+  'dynamicBooleanFailure': ('synchronous', 'TypeError'),
   'constantListAdd': ('synchronous', 'UnsupportedError'),
   'narrowListAdd': ('synchronous', 'TypeError'),
   'stoppedStatementGuard': ('synchronous', 'int'),
@@ -249,6 +250,7 @@ const _suppressedEffects = {
   'stoppedConstructorField': 'String',
   'stoppedSuperArgument': 'String',
   'guardedStringIndex': 'RangeError',
+  'caughtDynamicBoolean': 'TypeError',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
@@ -308,6 +310,8 @@ const _observations = {
   'guarded_string_index': 'none',
   'rebound_string_index': 'RangeError',
   'second_string_index': 'RangeError',
+  'dynamic_boolean_failure': 'TypeError',
+  'caught_dynamic_boolean': 'none',
   'growable_list_add': 'none',
   'constant_list_add': 'UnsupportedError',
   'narrow_list_add': 'TypeError',
@@ -473,6 +477,10 @@ void reboundStringIndex(String value) {
 }
 void secondStringIndex(String value) {
   if (value.isNotEmpty) value[1];
+}
+bool dynamicBooleanFailure(dynamic value) => !value;
+void caughtDynamicBoolean(dynamic value) {
+  try { if (value) {} } on TypeError {}
 }
 void growableListAdd() { final items = <String>[]; items.add('value'); }
 void constantListAdd() { const items = <String>[]; items.add('value'); }
@@ -788,6 +796,8 @@ Future<void> main() async {
     'guarded_string_index': capture(() { guardedStringIndex(''); guardedStringIndex('A'); }),
     'rebound_string_index': capture(() => reboundStringIndex('A')),
     'second_string_index': capture(() => secondStringIndex('A')),
+    'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),
+    'caught_dynamic_boolean': capture(() => caughtDynamicBoolean('not a bool')),
     'growable_list_add': capture(growableListAdd),
     'constant_list_add': capture(constantListAdd),
     'narrow_list_add': capture(narrowListAdd),
