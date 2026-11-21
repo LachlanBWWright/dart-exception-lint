@@ -2,7 +2,6 @@
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-manifest="$repo_root/tool/corpus/projects.tsv"
 corpus_root="${CORPUS_ROOT:-${TMPDIR:-/tmp}/dart-exception-lint-corpus}"
 limit="${CORPUS_LIMIT:-52}"
 project_filter="${CORPUS_FILTER:-.*}"
@@ -129,6 +128,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 cp -R "$repo_root"/. "$plugin_root"/ || exit 1
+manifest="$plugin_root/tool/corpus/projects.tsv"
 
 # Dart can finish analysis without ever loading an incompatible plugin.
 probe_root="$(mktemp -d "$corpus_root/probe.XXXXXX")" || exit 1
