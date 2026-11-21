@@ -1,5 +1,6 @@
 // ignore_for_file: implementation_imports
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -183,6 +184,8 @@ final class InferredThrowAnalyzer {
   // key entries by modification time so edits are picked up immediately.
   static final Map<String, _ParsedUnitCacheEntry> _sharedParsedUnits = {};
   static const _maxSharedParsedUnits = 512;
+  // Unit identity ties these offsets to a single parsed or resolved snapshot.
+  static final _declarationLocations = Expando<Map<int, AstNode?>>();
 
   /// Disk dependencies may change while the importing resolved AST survives.
   /// Never reuse a proof made against old dependency contents.
@@ -2022,9 +2025,10 @@ final class InferredThrowAnalyzer {
             : null);
     return unit == null
         ? null
-        : NodeLocator(
+        : _declarationLocation(
+            unit,
             fragment.nameOffset ?? fragment.offset,
-          ).searchWithin(unit)?.thisOrAncestorOfType<VariableDeclaration>();
+          )?.thisOrAncestorOfType<VariableDeclaration>();
   }
 
   AstNode? _findDeclaration(ExecutableElement executable) {
@@ -2047,9 +2051,10 @@ final class InferredThrowAnalyzer {
     final unit = _parsedUnits[path] ??= _parseSharedUnitSafely(path);
     // Body summaries use the analyzer's V1 visitors and parent accessors.
     // Locate the declaration in that same view, including accessor wrappers.
-    final declarationNode = NodeLocator(
+    final declarationNode = _declarationLocation(
+      unit,
       fragment.nameOffset ?? fragment.offset,
-    ).searchWithin(unit);
+    );
     if (declarationNode == null) {
       return null;
     }
@@ -2071,13 +2076,22 @@ final class InferredThrowAnalyzer {
       return null;
     }
     final unit = _parsedUnits[path] ??= _parseSharedUnitSafely(path);
-    final node = NodeLocator(
+    final node = _declarationLocation(
+      unit,
       fragment.nameOffset ?? fragment.offset,
-    ).searchWithin(unit);
+    );
     return node?.thisOrAncestorMatching(
           (candidate) => candidate is ClassDeclaration,
         )
         as ClassDeclaration?;
+  }
+
+  static AstNode? _declarationLocation(CompilationUnit unit, int offset) {
+    final locations = _declarationLocations[unit] ??= {};
+    return locations.putIfAbsent(
+      offset,
+      () => NodeLocator(offset).searchWithin(unit),
+    );
   }
 
   CompilationUnit _parseSharedUnit(String path) {
@@ -2087,25 +2101,31 @@ final class InferredThrowAnalyzer {
       return knownUnit;
     }
 
-    final stat = FileStat.statSync(path);
+    final file = File(path);
+    final stat = file.statSync();
     final modified = stat.modified;
-    final fingerprint = _bytesFingerprint(File(path).readAsBytesSync());
+    final bytes = file.readAsBytesSync();
+    final fingerprint = _bytesFingerprint(bytes);
+    if (!_resolvedPaths.contains(path)) {
+      _dependencyFingerprints[path] = fingerprint;
+    }
     final shared = _sharedParsedUnits[path];
     final parsedUnit =
         shared != null &&
             shared.modified == modified &&
-            shared.size == stat.size &&
+            shared.size == bytes.length &&
             shared.fingerprint == fingerprint &&
             shared.featureSetKey == _featureSetKey
         ? shared.unit
-        : parseFile(
+        : parseString(
+            content: utf8.decode(bytes),
             path: path,
             featureSet: _featureSet,
             throwIfDiagnostics: false,
           ).unit;
     _sharedParsedUnits[path] = _ParsedUnitCacheEntry(
       modified: modified,
-      size: stat.size,
+      size: bytes.length,
       fingerprint: fingerprint,
       featureSetKey: _featureSetKey,
       unit: parsedUnit,
@@ -2147,7 +2167,7 @@ final class InferredThrowAnalyzer {
     // existence check and parsing. Returning an empty unit makes the caller
     // conservatively treat the declaration as unavailable.
     if (!_resolvedPaths.contains(path)) {
-      _dependencyFingerprints[path] = _sourceFingerprint(path);
+      _dependencyFingerprints[path] = null;
     }
     try {
       return _parseSharedUnit(path);
