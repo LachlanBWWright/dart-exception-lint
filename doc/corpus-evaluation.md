@@ -217,6 +217,12 @@ The scoped `avoid_print.dart` check completed in 38 seconds with third-party
 body analysis disabled. With default analysis enabled, the same file reached
 the 220-second timeout after the declaration cache change.
 
+At `8cb0b75`, a separate run kept third-party analysis enabled and added
+analyzer exclusions for the other package sources. With the analyzer 6.2.0
+override, `avoid_print.dart` then completed in 145 seconds and emitted 35
+plugin diagnostics. The earlier file argument alone left the package-wide
+analysis workload active. The full rules scope remains unverified.
+
 ## Reviewed source sites
 
 - In `dart_path`, the nonempty check guards `path.codeUnitAt(0)` and `path[0]`
