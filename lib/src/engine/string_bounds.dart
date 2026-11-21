@@ -129,9 +129,18 @@ final class _StringWrites extends RecursiveAstVisitor<void> {
 
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
-    if (node.element == variable &&
-        node.inSetterContext() &&
-        (node.offset >= guardOffset || _nestedFunctions > 0)) {
+    if (node.element == variable && node.inSetterContext()) {
+      _write(node.offset);
+    }
+  }
+
+  @override
+  void visitAssignedVariablePattern(AssignedVariablePattern node) {
+    if (node.element == variable) _write(node.offset);
+  }
+
+  void _write(int offset) {
+    if (offset >= guardOffset || _nestedFunctions > 0) {
       mayChange = true;
     }
   }

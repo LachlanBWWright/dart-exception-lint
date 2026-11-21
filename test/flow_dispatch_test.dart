@@ -665,8 +665,15 @@ void guardedElse(String value) {
 void overwritten(String value) {
   if (value.isNotEmpty) { value = ''; value[0]; }
 }
+void patternWrite(String value) {
+  if (value.isNotEmpty) { (value,) = ('',); value[0]; }
+}
 void captured(String value) {
   void clear() { value = ''; }
+  if (value.isNotEmpty) { clear(); value[0]; }
+}
+void capturedPattern(String value) {
+  void clear() { (value,) = ('',); }
   if (value.isNotEmpty) { clear(); value[0]; }
 }
 void differentIndex(String value) {
@@ -686,7 +693,9 @@ void falsePattern(String value) {
         }
         for (final name in [
           'overwritten',
+          'patternWrite',
           'captured',
+          'capturedPattern',
           'differentIndex',
           'falsePattern',
         ]) {
