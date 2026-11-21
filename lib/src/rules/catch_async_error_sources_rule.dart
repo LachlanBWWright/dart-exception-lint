@@ -21,6 +21,7 @@ import '../engine/effect_containment.dart';
 import '../engine/statement_completion.dart';
 import '../engine/invocation_targets.dart';
 import '../engine/future_forwarding.dart';
+import '../engine/callback_models.dart';
 import '../diagnostics.dart';
 import '../utils/source_utils.dart';
 
@@ -395,12 +396,14 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     final initializer = node.initializer;
     final variable = node.declaredFragment?.element;
     if (variable != null && initializer != null) {
+      final element = _elementForInvocation(initializer);
       final source = ThrowSourceCatalog.matchResolvedInvocation(
         initializer,
-        _elementForInvocation(initializer),
+        element,
         options,
       );
-      if (source?.confidence == ThrowConfidence.noObviousThrow ||
+      if ((source?.confidence == ThrowConfidence.noObviousThrow &&
+              !_hasNativeCallbackEffects(initializer, element)) ||
           (initializer is SimpleIdentifier &&
               _safeFutureVariables.contains(initializer.element))) {
         _safeFutureVariables.add(variable);
@@ -440,7 +443,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     ThrowSource? source,
     InferredCallAnalysis? analysis,
   ) {
-    if (analysis != null || source != null) return false;
+    if (analysis != null) return false;
     final type = expression.staticType;
     if (type is! InterfaceType ||
         (!type.isDartAsyncFuture && !type.isDartAsyncFutureOr)) {
@@ -451,11 +454,27 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       return false;
     }
     final element = _elementForInvocation(expression);
+    if (source != null) {
+      // A native factory can be safe while the callback it runs is opaque.
+      return source.confidence == ThrowConfidence.noObviousThrow &&
+          _hasNativeCallbackEffects(expression, element);
+    }
     if (element is ExecutableElement) {
       final summary = analyzer.summarizeExecutable(element);
       if (summary.complete && !summary.hasAnyThrowSource) return false;
     }
     return true;
+  }
+
+  bool _hasNativeCallbackEffects(Expression expression, Element? element) {
+    return callbackExecutions(expression, element).isNotEmpty &&
+        analyzer.analyzeResolvedCall(
+              expression,
+              element: element,
+              treatUnknownAsReportable: true,
+              requireObservedAsyncError: true,
+            ) !=
+            null;
   }
 
   @override
@@ -520,35 +539,34 @@ final class _Visitor extends RecursiveAstVisitor<void> {
               )
             : null);
     if (storedEffect != null) _consumeStoredEffect(storedEffect);
-    if (analysis == null &&
-        (source == null || !source.confidence.isAsync) &&
-        storedEffect == null) {
+    final asyncSource = source?.confidence.isAsync == true ? source : null;
+    if (analysis == null && asyncSource == null && storedEffect == null) {
       return;
     }
     final exceptionSupertypes =
         analysis?.exceptionSupertypes ??
-        source?.exceptionSupertypes ??
+        asyncSource?.exceptionSupertypes ??
         storedEffect!.exceptionSupertypes;
     final displayName =
         analysis?.displayName ??
-        source?.displayName ??
+        asyncSource?.displayName ??
         storedEffect!.displayName;
     final exceptionTypes =
         analysis?.exceptionTypes ??
-        source?.exceptionTypes ??
+        asyncSource?.exceptionTypes ??
         storedEffect!.exceptionTypes;
     final protected = analysis != null
         ? analysis.isProtectedAt(node, requireAsyncProtection: true)
-        : source == null && storedEffect != null
+        : asyncSource == null && storedEffect != null
         ? storedEffect.isProtectedAt(node)
         : isProtectedByCatch(
             node,
             requireAsyncProtection: true,
-            channel: source?.channel,
+            channel: asyncSource?.channel,
             exceptionTypes: exceptionTypes,
             resolvedExceptionTypes:
                 analysis?.resolvedExceptionTypes ??
-                source?.resolvedExceptionTypes ??
+                asyncSource?.resolvedExceptionTypes ??
                 storedEffect!.resolvedExceptionTypes,
             exceptionSupertypes: exceptionSupertypes,
           );

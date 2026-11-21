@@ -1443,6 +1443,33 @@ Future<void> f() async {
     ]);
   }
 
+  Future<void> test_delayedFutureWithOpaqueCallback_remainsUnverified() async {
+    const code = r'''
+Future<void> f(void Function() computation) async {
+  await Future<void>.delayed(Duration.zero, computation);
+  final pending = Future<void>.delayed(Duration.zero, computation);
+  await pending;
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('await Future'),
+        'await Future<void>.delayed(Duration.zero, computation)'.length,
+      ),
+      lint(code.indexOf('await pending'), 'await pending'.length),
+    ]);
+  }
+
+  Future<void> test_delayedFutureWithSafeCallback_isVerified() async {
+    await assertNoDiagnostics(r'''
+Future<void> f() async {
+  await Future<int>.delayed(Duration.zero, () => 1);
+  final pending = Future<int>.delayed(Duration.zero, () => 2);
+  await pending;
+}
+''');
+  }
+
   Future<void> test_unverifiedFutureParameter_universalCatchHandles() async {
     await assertNoDiagnostics(
       'Future<void> f(Future<void> input) async { try { await input; } catch (_) {} }',

@@ -334,12 +334,7 @@ final class ThrowSourceCatalog {
         constructorName == 'value') {
       final argument =
           node.argumentList.arguments.firstOrNull?.argumentExpression;
-      final type = argument?.staticType;
-      final assimilatesFuture =
-          type is DynamicType ||
-          type is TypeParameterType ||
-          (type is InterfaceType &&
-              (type.isDartAsyncFuture || type.isDartAsyncFutureOr));
+      final assimilatesFuture = _canAssimilateFuture(argument);
       return ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
         confidence: assimilatesFuture
@@ -352,13 +347,13 @@ final class ThrowSourceCatalog {
 
     if (libraryUri == 'dart:async' &&
         className == 'Future' &&
-        constructorName == 'delayed') {
+        (constructorName == 'delayed' || constructorName == 'syncValue')) {
       // The optional computation and its returned Future have their own
       // effects. The constructor's null check happens synchronously.
-      return const ThrowSource(
+      return ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
         confidence: ThrowConfidence.noObviousThrow,
-        displayName: 'Future.delayed',
+        displayName: 'Future.$constructorName',
       );
     }
 
@@ -727,6 +722,13 @@ final class ThrowSourceCatalog {
             name == 'reduce' ||
             name == 'fold' ||
             name == 'toList')) {
+      if (name == 'toList' && _isKnownSafeNativeStream(node.realTarget)) {
+        return const ThrowSource(
+          kind: ThrowSourceKind.asyncOperation,
+          confidence: ThrowConfidence.noObviousThrow,
+          displayName: 'Stream.toList',
+        );
+      }
       return ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
         confidence: ThrowConfidence.asyncError,
@@ -1346,6 +1348,45 @@ final class ThrowSourceCatalog {
     );
   }
 
+  static bool _isKnownSafeNativeStream(Expression? expression) {
+    while (expression is ParenthesizedExpression) {
+      expression = expression.expression;
+    }
+    if (expression is InstanceCreationExpression) {
+      final constructor = expression.constructorName.element;
+      if (constructor == null ||
+          !constructor.library.isInSdk ||
+          constructor.library.uri.toString() != 'dart:async' ||
+          constructor.enclosingElement.name != 'Stream') {
+        return false;
+      }
+      return switch (constructor.name) {
+        'empty' || 'value' => true,
+        'fromFuture' =>
+          _knownFutureSource(
+                expression
+                    .argumentList
+                    .arguments
+                    .firstOrNull
+                    ?.argumentExpression,
+              )?.confidence ==
+              ThrowConfidence.noObviousThrow,
+        _ => false,
+      };
+    }
+    if (expression is MethodInvocation) {
+      final method = expression.methodName.element;
+      return method is MethodElement &&
+          method.library.isInSdk &&
+          method.library.uri.toString() == 'dart:async' &&
+          method.enclosingElement?.name == 'Future' &&
+          method.name == 'asStream' &&
+          _knownFutureSource(expression.realTarget)?.confidence ==
+              ThrowConfidence.noObviousThrow;
+    }
+    return false;
+  }
+
   static ThrowSource? _knownFutureSource(Expression? expression) {
     while (expression is ParenthesizedExpression) {
       expression = expression.expression;
@@ -1355,7 +1396,7 @@ final class ThrowSourceCatalog {
     if (constructor is! ConstructorElement ||
         constructor.library.uri.toString() != 'dart:async' ||
         constructor.enclosingElement.name != 'Future' ||
-        (constructor.name != 'error' && constructor.name != 'value')) {
+        !const {'error', 'value', 'syncValue'}.contains(constructor.name)) {
       return null;
     }
     final source = _matchInstanceCreation(
@@ -1369,6 +1410,47 @@ final class ThrowSourceCatalog {
       return null;
     }
     return source;
+  }
+
+  static bool _canAssimilateFuture(Expression? value) {
+    while (value is ParenthesizedExpression) {
+      value = value.expression;
+    }
+    if (value == null || value is Literal || value is FunctionExpression) {
+      return false;
+    }
+    final type = value.staticType;
+    if (type?.isDartCoreNull == true) return false;
+    if (type is InterfaceType) {
+      if (type.isDartAsyncFuture ||
+          type.isDartAsyncFutureOr ||
+          type.allSupertypes.any((parent) => parent.isDartAsyncFuture)) {
+        return true;
+      }
+      final element = type.element;
+      if (element.library.isInSdk &&
+          element.library.uri.toString() == 'dart:core' &&
+          const {
+            'String',
+            'bool',
+            'int',
+            'double',
+            'num',
+            'BigInt',
+          }.contains(element.name)) {
+        return false;
+      }
+      if (value is InstanceCreationExpression) {
+        final constructor = value.constructorName.element;
+        if (constructor?.isFactory == false ||
+            (constructor?.library.isInSdk == true && type.isDartAsyncStream)) {
+          return false;
+        }
+      }
+    }
+    // A value with a wider static type, such as Object, may be a Future at
+    // runtime even though its signature does not mention one.
+    return true;
   }
 
   static bool _knownFutureJoinInputs(MethodInvocation node) {

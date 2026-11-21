@@ -42,6 +42,7 @@ Future<void> main() async {
             'skippedDoCondition',
             'forwardCaught',
             'adoptCaught',
+            'synchronousValueFactory',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -393,9 +394,11 @@ const _observations = {
   'empty_future_delayed': 'ArgumentError',
   'optional_future_null': 'TypeError',
   'optional_future_error': 'String',
+  'future_through_object': 'String',
   'delayed_callback': 'String',
   'caught_empty_factories': 'none',
   'nullable_future_factories': 'none',
+  'synchronous_value_factory': 'none',
   'stream': 'String',
   'constructed_stream': 'String',
   'stream_to_list': 'String',
@@ -662,6 +665,7 @@ Future<void> futureFailure() async { throw 'future'; }
 Future<int> emptyFutureValue() => Future<int>.value();
 Future<int> emptyFutureDelayed() => Future<int>.delayed(Duration.zero, null);
 Future<int> optionalFutureValue(FutureOr<int>? input) => Future<int>.value(input);
+Future<Object> futureThroughObject(Object input) => Future<Object>.value(input);
 Future<int> delayedCallback() => Future<int>.delayed(Duration.zero, () => throw 'callback');
 void caughtEmptyFactories() {
   try { Future<int>.value(null); } on TypeError {}
@@ -672,6 +676,10 @@ Future<void> nullableFutureFactories() async {
   await Future<int?>.value(null);
   await Future<void>.delayed(Duration.zero);
   await Future<int?>.delayed(Duration.zero, null);
+}
+Future<void> synchronousValueFactory() async {
+  await Future<int>.syncValue(1);
+  await Future<int>.syncValue(2).asStream().toList();
 }
 Stream<int> streamFailure() async* { throw 'stream'; }
 Iterable<int> lazyFailure() sync* { throw 'lazy'; }
@@ -946,9 +954,11 @@ Future<void> main() async {
     'empty_future_delayed': capture(() => emptyFutureDelayed()),
     'optional_future_null': capture(() => optionalFutureValue(null)),
     'optional_future_error': await captureAsync(() async { await optionalFutureValue(Future<int>.error('input')); }),
+    'future_through_object': await captureAsync(() async { await futureThroughObject(Future<String>.error('input')); }),
     'delayed_callback': await captureAsync(() async { await delayedCallback(); }),
     'caught_empty_factories': capture(caughtEmptyFactories),
     'nullable_future_factories': await captureAsync(nullableFutureFactories),
+    'synchronous_value_factory': await captureAsync(synchronousValueFactory),
     'stream': await captureAsync(() async { await streamFailure().toList(); }),
     'constructed_stream': await captureAsync(() async { await constructedStream().toList(); }),
     'stream_to_list': await captureAsync(streamToList),

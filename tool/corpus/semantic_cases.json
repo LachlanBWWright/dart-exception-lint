@@ -246,5 +246,21 @@
       "synchronous:TypeError",
       "future:*"
     ]
+  },
+  {
+    "name": "safeNativeStreamList",
+    "source": "Future<void> safeNativeStreamList() async { await Stream<int>.empty().toList(); await Stream<int>.value(1).toList(); await Future<int>.syncValue(2).asStream().toList(); }",
+    "effects": [],
+    "exceptionTypes": []
+  },
+  {
+    "name": "futureThroughObject",
+    "source": "Future<Object> futureThroughObject(Object value) => Future<Object>.value(value);",
+    "effects": [
+      "future:known"
+    ],
+    "exceptionTypes": [
+      "future:*"
+    ]
   }
 ]
