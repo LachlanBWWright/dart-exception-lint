@@ -60,6 +60,8 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
+    registry.addSuperConstructorInvocation(this, visitor);
+    registry.addRedirectingConstructorInvocation(this, visitor);
     registry.addSimpleIdentifier(this, visitor);
     registry.addPropertyAccess(this, visitor);
     registry.addBinaryExpression(this, visitor);
@@ -112,6 +114,26 @@ final class _Visitor extends SimpleAstVisitor<void> {
       node,
       element: node.methodName.element,
       diagnosticTarget: node.methodName,
+    );
+  }
+
+  @override
+  void visitSuperConstructorInvocation(SuperConstructorInvocation node) {
+    _report(
+      node,
+      element: node.element,
+      diagnosticTarget: node.constructorName ?? node,
+    );
+  }
+
+  @override
+  void visitRedirectingConstructorInvocation(
+    RedirectingConstructorInvocation node,
+  ) {
+    _report(
+      node,
+      element: node.element,
+      diagnosticTarget: node.constructorName ?? node,
     );
   }
 

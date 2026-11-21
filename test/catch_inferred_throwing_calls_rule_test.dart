@@ -14,6 +14,14 @@ void main() {
 
 @reflectiveTest
 class CatchInferredThrowingCallsRuleTest extends AnalysisRuleTest {
+  Future<void> test_namedSuperConstructor_reportsResolvedEffect() async {
+    const code = '''
+class Base { Base.named() { throw 'super'; } }
+class Child extends Base { Child() : super.named(); }
+''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('named'), 5)]);
+  }
+
   Future<void> test_unqualifiedGetter_reportsOnlyEscapingRead() async {
     const code = '''
 int get risky => throw 'failure';

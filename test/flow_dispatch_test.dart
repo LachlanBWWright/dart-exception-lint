@@ -378,6 +378,59 @@ void unmatchedCase() {
     );
   });
 
+  test('constructors sequence fields, initializer lists, and calls', () async {
+    await _verify(
+      '''
+Never stop() => throw 3;
+class Base {
+  Base.named() { throw 'super'; }
+  Base.withInput(int input) { throw 'super'; }
+}
+class FieldStops extends Base {
+  final int first = stop();
+  final int second = throw 'later field';
+  FieldStops() : super.named() { throw true; }
+}
+class InitializerStops extends Base {
+  final int field;
+  InitializerStops() : field = stop(), super.named() { throw true; }
+}
+class SuperInputStops extends Base {
+  SuperInputStops() : super.withInput(stop()) { throw true; }
+}
+class SuperRuns extends Base { SuperRuns() : super.named(); }
+class Redirects {
+  Redirects.target(int input) { throw 'target'; }
+  Redirects() : this.target(1);
+  Redirects.blocked() : this.target(stop());
+}
+void stoppedField() { FieldStops(); }
+void stoppedInitializer() { InitializerStops(); }
+void stoppedSuperInput() { SuperInputStops(); }
+void canReachSuper() { SuperRuns(); }
+void canReachRedirect() { Redirects(); }
+void blockedRedirect() { Redirects.blocked(); }
+''',
+      (summaries, _) {
+        for (final name in [
+          'stoppedField',
+          'stoppedInitializer',
+          'stoppedSuperInput',
+          'blockedRedirect',
+        ]) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'int',
+          }, reason: name);
+        }
+        for (final name in ['canReachSuper', 'canReachRedirect']) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'String',
+          }, reason: name);
+        }
+      },
+    );
+  });
+
   test('assignment effects follow evaluation and short circuits', () async {
     await _verify(
       '''

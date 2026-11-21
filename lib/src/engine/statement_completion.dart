@@ -22,6 +22,7 @@ final class StatementCompletion {
 }
 
 final _completionCache = Expando<StatementCompletion>();
+final _constructorInputCompletion = Expando<bool>();
 
 StatementCompletion statementCompletion(Statement statement) =>
     _completionCache[statement] ??= StatementCompletion(_statement(statement));
@@ -257,7 +258,12 @@ bool isReachable(AstNode node) {
   AstNode? current = node;
   while (current != null) {
     final parent = current.parent;
-    if (parent is FunctionBody) return true;
+    if (parent is FunctionBody) {
+      final declaration = parent.parent;
+      return declaration is! ConstructorDeclaration ||
+          (_constructorInputCompletion[declaration] ??=
+              _constructorInputsCanComplete(declaration));
+    }
     if (parent != null && !_childCanExecute(parent, current)) return false;
     final statements = switch (parent) {
       Block(:final statements) || SwitchMember(:final statements) => statements,
@@ -285,8 +291,11 @@ bool isReachable(AstNode node) {
 bool _operationCanExecute(AstNode node) => switch (node) {
   Expression() when _selectorReceiver(node) != null =>
     _selectorInputsCanComplete(node, allowSkipping: false),
-  InstanceCreationExpression(:final argumentList) =>
-    _argumentsCanCompleteNormally(argumentList),
+  InstanceCreationExpression(:final argumentList) ||
+  SuperConstructorInvocation(:final argumentList) ||
+  RedirectingConstructorInvocation(
+    :final argumentList,
+  ) => _argumentsCanCompleteNormally(argumentList),
   ThrowExpression(:final expression) => expressionCanCompleteNormally(
     expression,
   ),
@@ -302,6 +311,52 @@ bool _argumentsCanCompleteNormally(ArgumentList arguments) =>
     arguments.arguments.every(
       (argument) => expressionCanCompleteNormally(argument.argumentExpression),
     );
+
+Iterable<Expression> constructorFieldInitializers(
+  ClassDeclaration owner,
+) sync* {
+  for (final field in owner.body.members.whereType<FieldDeclaration>()) {
+    if (field.isStatic || field.fields.lateKeyword != null) continue;
+    for (final variable in field.fields.variables) {
+      if (variable.initializer case final initializer?) yield initializer;
+    }
+  }
+}
+
+bool constructorInitializerCanCompleteNormally(
+  ConstructorInitializer initializer,
+) => switch (initializer) {
+  ConstructorFieldInitializer(:final expression) =>
+    expressionCanCompleteNormally(expression),
+  SuperConstructorInvocation(:final argumentList) ||
+  RedirectingConstructorInvocation(
+    :final argumentList,
+  ) => _argumentsCanCompleteNormally(argumentList),
+  _ => true,
+};
+
+bool _constructorInputsCanComplete(
+  ConstructorDeclaration declaration, {
+  ConstructorInitializer? before,
+}) {
+  final redirecting = declaration.initializers.any(
+    (initializer) => initializer is RedirectingConstructorInvocation,
+  );
+  if (declaration.factoryKeyword == null && !redirecting) {
+    final owner = declaration.thisOrAncestorOfType<ClassDeclaration>();
+    if (owner != null &&
+        !constructorFieldInitializers(
+          owner,
+        ).every(expressionCanCompleteNormally)) {
+      return false;
+    }
+  }
+  for (final initializer in declaration.initializers) {
+    if (identical(initializer, before)) break;
+    if (!constructorInitializerCanCompleteNormally(initializer)) return false;
+  }
+  return true;
+}
 
 enum _NullShorting { none, possible, definite }
 
@@ -655,6 +710,9 @@ bool _assignmentCanComplete(AssignmentExpression node) {
 }
 
 bool _childCanExecute(AstNode parent, AstNode child) {
+  if (parent is ConstructorDeclaration && child is ConstructorInitializer) {
+    return _constructorInputsCanComplete(parent, before: child);
+  }
   final assertion = switch (parent) {
     AssertStatement(:final condition, :final message) ||
     AssertInitializer(:final condition, :final message) => (condition, message),

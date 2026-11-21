@@ -1237,46 +1237,23 @@ final class InferredThrowAnalyzer {
       depth: depth,
       activeKeys: activeKeys,
     );
-    body?.accept(visitor);
-
-    // Constructor execution includes initializer-list expressions and the
-    // instance field initializers that run before its body. Include those
-    // effects in the constructor summary instead of treating the body as the
-    // complete execution surface.
     if (executable is ConstructorElement && !executable.isFactory) {
-      if (constructorClass != null) {
-        for (final field
-            in constructorClass.body.members.whereType<FieldDeclaration>()) {
-          if (field.isStatic || field.fields.lateKeyword != null) continue;
-          for (final variable in field.fields.variables) {
-            variable.initializer?.accept(visitor);
-          }
-        }
+      if (visitor._visitConstructorInputs(
+        executable,
+        declaration is ConstructorDeclaration ? declaration : null,
+        constructorClass,
+      )) {
+        body?.accept(visitor);
       }
-      if (declaration case final ConstructorDeclaration constructor) {
-        constructor.initializers.accept(visitor);
-      }
-      final explicitSuper =
-          declaration is ConstructorDeclaration &&
-          declaration.initializers.any(
-            (initializer) =>
-                initializer is SuperConstructorInvocation ||
-                initializer is RedirectingConstructorInvocation,
-          );
-      final implicitSuper =
-          executable.enclosingElement.supertype?.element.unnamedConstructor;
-      if (!explicitSuper && implicitSuper != null) {
+    } else {
+      body?.accept(visitor);
+      if (executable is ConstructorElement &&
+          executable.redirectedConstructor != null) {
         visitor._recordCall(
           declaration ?? constructorClass!,
-          element: implicitSuper,
+          element: executable.redirectedConstructor,
         );
       }
-    } else if (executable is ConstructorElement &&
-        executable.redirectedConstructor != null) {
-      visitor._recordCall(
-        declaration ?? constructorClass!,
-        element: executable.redirectedConstructor,
-      );
     }
 
     if (!_resolvedPaths.contains(
@@ -2179,6 +2156,8 @@ final class InferredThrowAnalyzer {
       return node is MethodInvocation ||
           node is FunctionExpressionInvocation ||
           node is InstanceCreationExpression ||
+          node is SuperConstructorInvocation ||
+          node is RedirectingConstructorInvocation ||
           (node is PropertyAccess && node.target?.staticType is DynamicType) ||
           (node is PrefixedIdentifier &&
               node.prefix.staticType is DynamicType) ||
@@ -2476,6 +2455,53 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   int _conditionalDepth = 0;
 
   bool get _isAsyncContext => executable.firstFragment.isAsynchronous;
+
+  bool _visitConstructorInputs(
+    ConstructorElement constructor,
+    ConstructorDeclaration? declaration,
+    ClassDeclaration? owner,
+  ) {
+    final initializers =
+        declaration?.initializers ?? const <ConstructorInitializer>[];
+    final redirecting = initializers.any(
+      (initializer) => initializer is RedirectingConstructorInvocation,
+    );
+    if (owner != null && !redirecting) {
+      for (final initializer in constructorFieldInitializers(owner)) {
+        initializer.accept(this);
+        if (!expressionCanCompleteNormally(initializer)) return false;
+      }
+    }
+    for (final initializer in initializers) {
+      initializer.accept(this);
+      if (!constructorInitializerCanCompleteNormally(initializer)) return false;
+    }
+    if (!redirecting &&
+        !initializers.any((node) => node is SuperConstructorInvocation)) {
+      final target =
+          constructor.superConstructor ??
+          constructor.enclosingElement.supertype?.element.unnamedConstructor;
+      final site = declaration ?? owner;
+      if (target != null && site != null) {
+        _recordInvocation(site, target);
+      }
+    }
+    return true;
+  }
+
+  @override
+  void visitSuperConstructorInvocation(SuperConstructorInvocation node) {
+    if (isReachable(node)) _recordInvocation(node, node.element);
+    super.visitSuperConstructorInvocation(node);
+  }
+
+  @override
+  void visitRedirectingConstructorInvocation(
+    RedirectingConstructorInvocation node,
+  ) {
+    if (isReachable(node)) _recordInvocation(node, node.element);
+    super.visitRedirectingConstructorInvocation(node);
+  }
 
   @override
   void visitPatternField(PatternField node) {

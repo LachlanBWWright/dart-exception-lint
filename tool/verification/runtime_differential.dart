@@ -164,6 +164,10 @@ const _effects = {
   'failedAssertionCondition': ('synchronous', 'int'),
   'failedAssertionMessage': ('synchronous', 'String'),
   'failedAssertionInitializer': ('synchronous', 'AssertionError'),
+  'stoppedConstructorField': ('synchronous', 'int'),
+  'stoppedSuperArgument': ('synchronous', 'int'),
+  'resolvedSuperCall': ('synchronous', 'String'),
+  'resolvedConstructorRedirect': ('synchronous', 'String'),
   'stoppedStatementGuard': ('synchronous', 'int'),
   'groupedStatementCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
@@ -235,6 +239,8 @@ const _suppressedEffects = {
   'stoppedGuardCase': 'String',
   'skippedAssertionMessage': 'String',
   'failedAssertionMessage': 'AssertionError',
+  'stoppedConstructorField': 'String',
+  'stoppedSuperArgument': 'String',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
@@ -285,6 +291,10 @@ const _observations = {
   'failed_assertion_message': 'String',
   'skipped_assertion_message': 'none',
   'failed_assertion_initializer': 'AssertionError',
+  'stopped_constructor_field': '42',
+  'stopped_super_argument': '42',
+  'resolved_super_call': 'String',
+  'resolved_constructor_redirect': 'String',
   'stopped_statement_guard': '42',
   'grouped_statement_case': '42',
   'skipped_guard': 'none',
@@ -412,6 +422,27 @@ void failedAssertionMessage() { assert(false, throwString()); }
 void skippedAssertionMessage() { assert(true, throwString()); }
 final class Checked { Checked() : assert(false); }
 void failedAssertionInitializer() { Checked(); }
+class ConstructorBase {
+  ConstructorBase.named(int value) { throwString(); }
+}
+final class FieldBlocksConstruction extends ConstructorBase {
+  final int value = stopEvaluation();
+  FieldBlocksConstruction() : super.named(0) { throw true; }
+}
+final class SuperArgumentBlocksBody extends ConstructorBase {
+  SuperArgumentBlocksBody() : super.named(stopEvaluation()) { throw true; }
+}
+final class CallsSuper extends ConstructorBase {
+  CallsSuper() : super.named(0);
+}
+final class ConstructorRedirect {
+  ConstructorRedirect() : this.target();
+  ConstructorRedirect.target() { throwString(); }
+}
+void stoppedConstructorField() { FieldBlocksConstruction(); }
+void stoppedSuperArgument() { SuperArgumentBlocksBody(); }
+void resolvedSuperCall() { CallsSuper(); }
+void resolvedConstructorRedirect() { ConstructorRedirect(); }
 void stoppedStatementGuard() {
   switch (false) {
     case _ when stopEvaluation(): throwString();
@@ -714,6 +745,10 @@ Future<void> main() async {
     'failed_assertion_message': capture(failedAssertionMessage),
     'skipped_assertion_message': capture(skippedAssertionMessage),
     'failed_assertion_initializer': capture(failedAssertionInitializer),
+    'stopped_constructor_field': capture(stoppedConstructorField),
+    'stopped_super_argument': capture(stoppedSuperArgument),
+    'resolved_super_call': capture(resolvedSuperCall),
+    'resolved_constructor_redirect': capture(resolvedConstructorRedirect),
     'stopped_statement_guard': capture(stoppedStatementGuard),
     'grouped_statement_case': capture(groupedStatementCase),
     'skipped_guard': capture(skippedGuard),
