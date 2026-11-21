@@ -709,6 +709,68 @@ void falsePattern(String value) {
     );
   });
 
+  test('substring start follows guards and bounded loop updates', () async {
+    await _verify(
+      '''
+void guarded(String text, int start) {
+  if (start >= 0 && start <= text.length) text.substring(start);
+}
+void loop(String text) {
+  var start = 0;
+  if (text.isNotEmpty) start = 1;
+  for (var i = start; i < text.length; i++) {
+    if (i == 2) start = i + 1;
+  }
+  if (start < text.length) text.substring(start);
+}
+void literal(String text) { text.substring(0); 'x'.substring(1); }
+void negative(String text, int start) {
+  if (start < text.length) text.substring(start);
+}
+void differentString(String text, String other, int start) {
+  if (start >= 0 && start <= other.length) text.substring(start);
+}
+void changed(String text, int start) {
+  if (start >= 0 && start <= text.length) { start = -1; text.substring(start); }
+}
+void changedCounter(String text) {
+  var start = 0;
+  for (var i = start; i < text.length; i++) {
+    i = -2;
+    start = i + 1;
+    break;
+  }
+  if (start < text.length) text.substring(start);
+}
+void badEnd(String text, int start) {
+  if (start >= 0 && start <= text.length) text.substring(start, start - 1);
+}
+''',
+      (summaries, _) {
+        for (final name in ['guarded', 'loop', 'literal']) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            isNot(contains('RangeError')),
+            reason: name,
+          );
+        }
+        for (final name in [
+          'negative',
+          'differentString',
+          'changed',
+          'changedCounter',
+          'badEnd',
+        ]) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            contains('RangeError'),
+            reason: name,
+          );
+        }
+      },
+    );
+  });
+
   test(
     'List.add uses the allocation type of a proven literal receiver',
     () async {

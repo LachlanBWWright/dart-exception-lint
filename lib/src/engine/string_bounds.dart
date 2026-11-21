@@ -10,16 +10,70 @@ bool isProvenStringZeroIndex(
 ) {
   if (index is! IntegerLiteral || index.value != 0) return false;
   if (receiver is SimpleStringLiteral) return receiver.value.isNotEmpty;
-  if (receiver is! SimpleIdentifier ||
-      receiver.staticType?.isDartCoreString != true) {
+  if (receiver.staticType?.isDartCoreString != true) return false;
+  final variable = _localVariable(receiver);
+  if (variable == null) return false;
+  return _guardedBranches(operation).any(
+    (branch) =>
+        _provesNonempty(branch.$1, variable, branch.$2) &&
+        _retainsValue(branch.$1, variable),
+  );
+}
+
+/// A single-argument substring permits an offset from zero through length.
+bool isProvenSubstringStart(
+  AstNode operation,
+  Expression receiver,
+  Expression start,
+) {
+  if (start case IntegerLiteral(value: final offset?)) {
+    return offset >= 0 &&
+        (offset == 0 ||
+            receiver is SimpleStringLiteral && offset <= receiver.value.length);
+  }
+  final receiverVariable = _localVariable(receiver);
+  final startVariable = _localVariable(start);
+  if (receiverVariable == null ||
+      startVariable == null ||
+      receiver.staticType?.isDartCoreString != true ||
+      start.staticType?.isDartCoreInt != true) {
     return false;
   }
-  final variable = receiver.element;
-  if (variable == null ||
-      (variable is! LocalVariableElement &&
-          variable is! FormalParameterElement)) {
-    return false;
+  for (final (condition, truth) in _guardedBranches(operation)) {
+    if (!_guardImplies(condition, truth, (lower, upper) {
+      return _localVariable(lower) == startVariable &&
+          _isStringLength(upper, receiver: receiverVariable);
+    })) {
+      continue;
+    }
+    if (!_retainsValue(condition, receiverVariable) ||
+        !_retainsValue(condition, startVariable)) {
+      continue;
+    }
+    if (_guardImplies(condition, truth, (lower, upper) {
+          return lower is IntegerLiteral &&
+              (lower.value ?? -1) >= 0 &&
+              _localVariable(upper) == startVariable;
+        }) ||
+        _localHasNonnegativeValues(startVariable, condition)) {
+      return true;
+    }
   }
+  return false;
+}
+
+LocalVariableElement? _declaredLocal(Expression expression) =>
+    switch (expression) {
+      SimpleIdentifier(element: final LocalVariableElement element) => element,
+      _ => null,
+    };
+
+VariableElement? _localVariable(Expression expression) => switch (expression) {
+  SimpleIdentifier(element: final FormalParameterElement element) => element,
+  _ => _declaredLocal(expression),
+};
+
+Iterable<(Expression, bool)> _guardedBranches(AstNode operation) sync* {
   var child = operation;
   for (var parent = child.parent; parent != null; parent = parent.parent) {
     if (parent is FunctionBody) break;
@@ -47,14 +101,176 @@ bool isProvenStringZeroIndex(
         (leftOperand, operator.lexeme == '&&'),
       _ => null,
     };
-    if (branch != null &&
-        _provesNonempty(branch.$1, variable, branch.$2) &&
-        _retainsValue(branch.$1, variable)) {
-      return true;
-    }
+    if (branch != null) yield branch;
     child = parent;
   }
-  return false;
+}
+
+bool _guardImplies(
+  Expression condition,
+  bool truth,
+  bool Function(Expression lower, Expression upper) accepts,
+) {
+  switch (condition) {
+    case ParenthesizedExpression(:final expression):
+      return _guardImplies(expression, truth, accepts);
+    case PrefixExpression(:final operator, :final operand)
+        when operator.lexeme == '!':
+      return _guardImplies(operand, !truth, accepts);
+    case BinaryExpression(
+          :final leftOperand,
+          :final rightOperand,
+          :final operator,
+        )
+        when truth && operator.lexeme == '&&' ||
+            !truth && operator.lexeme == '||':
+      return _guardImplies(leftOperand, truth, accepts) ||
+          _guardImplies(rightOperand, truth, accepts);
+    case BinaryExpression(
+          :final element,
+          :final leftOperand,
+          :final rightOperand,
+          :final operator,
+        )
+        when element?.library.uri.toString() == 'dart:core' &&
+            leftOperand.staticType?.isDartCoreInt == true &&
+            rightOperand.staticType?.isDartCoreInt == true:
+      return switch ((operator.lexeme, truth)) {
+        ('<' || '<=', true) ||
+        ('>' || '>=', false) => accepts(leftOperand, rightOperand),
+        ('>' || '>=', true) ||
+        ('<' || '<=', false) => accepts(rightOperand, leftOperand),
+        _ => false,
+      };
+    default:
+      return false;
+  }
+}
+
+bool _isStringLength(Expression expression, {Element? receiver}) {
+  final (target, getter) = switch (expression) {
+    PropertyAccess(:final realTarget, :final propertyName) => (
+      realTarget,
+      propertyName.element,
+    ),
+    PrefixedIdentifier(:final prefix, :final identifier) => (
+      prefix,
+      identifier.element,
+    ),
+    _ => (null, null),
+  };
+  return target != null &&
+      (receiver == null || _localVariable(target) == receiver) &&
+      getter is GetterElement &&
+      getter.library.uri.toString() == 'dart:core' &&
+      getter.enclosingElement.name == 'String' &&
+      getter.name == 'length';
+}
+
+bool _localHasNonnegativeValues(Element variable, Expression guard) {
+  if (variable is! LocalVariableElement) return false;
+  final body = guard.thisOrAncestorOfType<FunctionBody>();
+  if (body == null) return false;
+  final index = _IntegerWrites(variable);
+  body.accept(index);
+  if (!_nonnegativeLiteral(index.initializer)) return false;
+  // The initializer establishes the invariant. Every later assignment must
+  // preserve it, including assignments in a loop that starts from this value.
+  return index.writes.every((write) {
+    if (write is! AssignmentExpression || write.operator.lexeme != '=') {
+      return false;
+    }
+    final value = write.rightHandSide;
+    return _nonnegativeLiteral(value) ||
+        _boundedLoopSuccessor(value, variable, body);
+  });
+}
+
+bool _nonnegativeLiteral(Expression? expression) =>
+    expression is IntegerLiteral && (expression.value ?? -1) >= 0;
+
+bool _boundedLoopSuccessor(
+  Expression expression,
+  LocalVariableElement preserved,
+  FunctionBody body,
+) {
+  if (expression is! BinaryExpression ||
+      expression.operator.lexeme != '+' ||
+      expression.element?.library.uri.toString() != 'dart:core' ||
+      expression.leftOperand.staticType?.isDartCoreInt != true ||
+      expression.rightOperand is! IntegerLiteral ||
+      (expression.rightOperand as IntegerLiteral).value != 1) {
+    return false;
+  }
+  final counter = _declaredLocal(expression.leftOperand);
+  if (counter == null) return false;
+  final loop = expression.thisOrAncestorOfType<ForStatement>();
+  final parts = loop?.forLoopParts;
+  if (loop == null ||
+      parts is! ForPartsWithDeclarations ||
+      !identical(expression.thisOrAncestorOfType<FunctionBody>(), body) ||
+      expression.offset < loop.body.offset ||
+      expression.end > loop.body.end) {
+    return false;
+  }
+  final declaration = parts.variables.variables.singleOrNull;
+  final initial = declaration?.initializer;
+  final condition = parts.condition;
+  final update = parts.updaters.singleOrNull;
+  if (declaration?.declaredFragment?.element != counter ||
+      initial == null ||
+      !(_nonnegativeLiteral(initial) || _localVariable(initial) == preserved) ||
+      condition is! BinaryExpression ||
+      condition.element?.library.uri.toString() != 'dart:core' ||
+      condition.operator.lexeme != '<' ||
+      _localVariable(condition.leftOperand) != counter ||
+      !_isStringLength(condition.rightOperand) ||
+      !_incrementsCounter(update, counter)) {
+    return false;
+  }
+  final writes = _IntegerWrites(counter);
+  body.accept(writes);
+  // A strictly smaller String offset has room for one increment. The same
+  // bound holds when the condition succeeds again before the next iteration.
+  return identical(writes.writes.singleOrNull, update);
+}
+
+bool _incrementsCounter(Expression? expression, Element counter) =>
+    switch (expression) {
+      PrefixExpression(:final operand, :final operator) ||
+      PostfixExpression(
+        :final operand,
+        :final operator,
+      ) => operator.lexeme == '++' && _localVariable(operand) == counter,
+      _ => false,
+    };
+
+final class _IntegerWrites extends RecursiveAstVisitor<void> {
+  _IntegerWrites(this.variable);
+
+  final LocalVariableElement variable;
+  final writes = <AstNode>[];
+  Expression? initializer;
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    if (node.declaredFragment?.element == variable) {
+      initializer = node.initializer;
+    }
+    super.visitVariableDeclaration(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    if (node.element == variable && node.inSetterContext()) {
+      writes.add(node.parent!);
+    }
+  }
+
+  @override
+  void visitAssignedVariablePattern(AssignedVariablePattern node) {
+    if (node.element == variable) writes.add(node);
+  }
 }
 
 bool _provesNonempty(Expression condition, Element variable, bool truth) {

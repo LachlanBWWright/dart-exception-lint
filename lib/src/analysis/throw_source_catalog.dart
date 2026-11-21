@@ -732,16 +732,19 @@ final class ThrowSourceCatalog {
 
     if (libraryUri == 'dart:core' &&
         enclosingClassName == 'String' &&
-        name == 'codeUnitAt') {
+        (name == 'codeUnitAt' || name == 'substring')) {
       final receiver = node.realTarget;
-      final index = node.argumentList.arguments.firstOrNull?.argumentExpression;
+      final index =
+          node.argumentList.arguments.singleOrNull?.argumentExpression;
       if (receiver != null &&
           index != null &&
-          isProvenStringZeroIndex(node, receiver, index)) {
+          (name == 'codeUnitAt'
+              ? isProvenStringZeroIndex(node, receiver, index)
+              : isProvenSubstringStart(node, receiver, index))) {
         return const ThrowSource(
           kind: ThrowSourceKind.collectionStateCall,
           confidence: ThrowConfidence.noObviousThrow,
-          displayName: 'proven in-bounds String code unit',
+          displayName: 'proven in-bounds String operation',
         );
       }
     }

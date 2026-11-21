@@ -171,6 +171,7 @@ const _effects = {
   'resolvedConstructorRedirect': ('synchronous', 'String'),
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'secondStringIndex': ('synchronous', 'RangeError'),
+  'negativeSubstringStart': ('synchronous', 'RangeError'),
   'dynamicBooleanFailure': ('synchronous', 'TypeError'),
   'blockedCastFailure': ('synchronous', 'int'),
   'blockedCovarianceFailure': ('synchronous', 'int'),
@@ -252,6 +253,7 @@ const _suppressedEffects = {
   'stoppedConstructorField': 'String',
   'stoppedSuperArgument': 'String',
   'guardedStringIndex': 'RangeError',
+  'boundedSubstringStart': 'RangeError',
   'caughtDynamicBoolean': 'TypeError',
   'blockedCastFailure': 'TypeError',
   'blockedCovarianceFailure': 'TypeError',
@@ -314,6 +316,8 @@ const _observations = {
   'guarded_string_index': 'none',
   'rebound_string_index': 'RangeError',
   'second_string_index': 'RangeError',
+  'bounded_substring_start': 'none',
+  'negative_substring_start': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
   'caught_dynamic_boolean': 'none',
   'blocked_cast': '42',
@@ -483,6 +487,17 @@ void reboundStringIndex(String value) {
 }
 void secondStringIndex(String value) {
   if (value.isNotEmpty) value[1];
+}
+void boundedSubstringStart(String text) {
+  var start = 0;
+  if (text.isNotEmpty) start = 1;
+  for (var i = start; i < text.length; i++) {
+    if (i == 2) start = i + 1;
+  }
+  if (start < text.length) text.substring(start);
+}
+void negativeSubstringStart(String text, int start) {
+  if (start < text.length) text.substring(start);
 }
 bool dynamicBooleanFailure(dynamic value) => !value;
 void caughtDynamicBoolean(dynamic value) {
@@ -807,6 +822,8 @@ Future<void> main() async {
     'guarded_string_index': capture(() { guardedStringIndex(''); guardedStringIndex('A'); }),
     'rebound_string_index': capture(() => reboundStringIndex('A')),
     'second_string_index': capture(() => secondStringIndex('A')),
+    'bounded_substring_start': capture(() { boundedSubstringStart(''); boundedSubstringStart('word'); }),
+    'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),
     'caught_dynamic_boolean': capture(() => caughtDynamicBoolean('not a bool')),
     'blocked_cast': capture(blockedCastFailure),
