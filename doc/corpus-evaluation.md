@@ -6,6 +6,11 @@ The evaluator completed one package at each of 10 pinned revisions on Linux
 x64. Dependency resolution and plugin analysis succeeded for every package,
 and the evaluator restored their tracked files afterward.
 
+The evaluator applies plugin activation to each disposable worktree's analyzer
+options. It retains package includes and exclusions and adds exclusions for
+embedded packages. `CORPUS_REFRESH=1` fetches the pinned revision into the cache.
+Dirty cached checkouts are reported as `dirty_checkout`.
+
 | Repository | Diagnostics |
 | --- | ---: |
 | dart_http | 135 |
