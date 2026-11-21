@@ -1,5 +1,5 @@
 # id	url	manager	commit (HEAD observed 2026-10-04; fixed thereafter)	package path (optional)
-dart_sdk	https://github.com/dart-lang/sdk.git	dart	7ca61c210632aa1c96d85aa17e916fabfb955243
+dart_sdk	https://github.com/dart-lang/sdk.git	dart	7ca61c210632aa1c96d85aa17e916fabfb955243	pkg/meta
 dart_linter	https://github.com/dart-lang/linter.git	dart	4b53999c3af99229fa7b47ca52cf40a2a8d62b3a
 dart_test	https://github.com/dart-lang/test.git	dart	3be2f547208fc569964973d6f13ec1985c4a9fdd	pkgs/test
 dart_http	https://github.com/dart-lang/http.git	dart	47c57df399bf38927d2c9f047a1a5e3c049c0271	pkgs/http
@@ -14,10 +14,10 @@ dart_async	https://github.com/dart-lang/async.git	dart	d6a6a4dbe0c636e42d6cf4ede
 dart_ffi	https://github.com/dart-lang/ffi.git	dart	fb9345230221a7f069690e06cacdc00b031729cb
 dart_build	https://github.com/dart-lang/build.git	dart	4800d7e734f7d9a2704d7f1d525c7bd131bac5e5	build
 dart_json_serializable	https://github.com/google/json_serializable.dart.git	dart	f65cd713ddd22de091ba9b0bd2e86ebac8980b61	json_serializable
-dart_flutter	https://github.com/flutter/flutter.git	flutter	53d381d9067f16b1d4132f5b8f059a9cc5ddb9ec
-flutter_packages	https://github.com/flutter/packages.git	flutter	10cde9a3b14d04f4f8ab8892e1dadcbad885fa48
-flutter_samples	https://github.com/flutter/samples.git	flutter	a05867daaad66d9b89609b5eeb766acb0ac4e76c
-flutterfire	https://github.com/firebase/flutterfire.git	flutter	0a41f05f82b344b5966055d27999ee68346475ff
+dart_flutter	https://github.com/flutter/flutter.git	flutter	53d381d9067f16b1d4132f5b8f059a9cc5ddb9ec	packages/flutter_web_plugins
+flutter_packages	https://github.com/flutter/packages.git	flutter	10cde9a3b14d04f4f8ab8892e1dadcbad885fa48	packages/go_router
+flutter_samples	https://github.com/flutter/samples.git	flutter	a05867daaad66d9b89609b5eeb766acb0ac4e76c	animations
+flutterfire	https://github.com/firebase/flutterfire.git	flutter	0a41f05f82b344b5966055d27999ee68346475ff	packages/firebase_core/firebase_core
 riverpod	https://github.com/rrousselGit/riverpod.git	flutter	90c5a0bb144c3d782475c0d525cb2f6e45eef1c8	packages/riverpod
 freezed	https://github.com/rrousselGit/freezed.git	flutter	154a1e779c7a0fe3474fadab2fbb15a00a7de90f	packages/freezed
 bloc	https://github.com/felangel/bloc.git	dart	b9be1e252ee24ffbe9f2fb629edc7624b2cfbf05	packages/bloc
