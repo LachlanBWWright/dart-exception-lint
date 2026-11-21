@@ -87,6 +87,24 @@ host. These runs passed multiple source and test directories to one Flutter
 process. The evaluator now analyzes each directory in a separate process and
 requires an idle status from every observed plugin process.
 
+### Completed Flutter scopes
+
+At `992d445`, all four pinned packages below completed their source and test
+scopes. Every plugin process reported idle, and the evaluator recorded zero
+dependency failures and zero plugin failures.
+
+| Repository | Plugin diagnostics |
+| --- | ---: |
+| Riverpod | 50,910 |
+| `flutter_hooks` | 10,985 |
+| provider | 12,613 |
+| `window_manager` | 1,140 |
+
+Riverpod's workspace Lint plugin previously failed in `GenericName`. Isolating
+its activation removed the plugin error. Running the scopes separately and
+activating the evaluated plugin in Riverpod's test options resolved the
+partial-output issue that had left only 337 observed diagnostics.
+
 ## Reviewed source sites
 
 - In `dart_path`, the nonempty check guards `path.codeUnitAt(0)` and `path[0]`

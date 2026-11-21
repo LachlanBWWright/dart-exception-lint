@@ -112,12 +112,20 @@ on both Dart 3.14.1 backends, including covariant setter checks and typed
 Future handlers. Its 37 semantic cases reported zero unexpected or missing
 effect labels.
 
+The `4e628a0` snapshot passed all 21 gates on the four SDKs. Dart 3.11.0,
+3.12.0 and 3.13.5 each passed 603 tests, and Dart 3.14.1 passed 604.
+The later `d90af0d` snapshot passed 194 focused tests and the release and IDE
+smoke checks on Dart 3.11.0 and 3.14.1. Both matched 142 core and 132 numeric
+observations on the VM and Node.
+
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level
 accessor bodies. After the fixes, all three pinned Flutter runs emitted plugin
 diagnostics and reported zero plugin errors. A later protocol audit found that
 Flutter exited while another analysis process was still active in those runs. [Corpus evaluation](corpus-evaluation.md)
+At `992d445`, four pinned Flutter packages finished every scope with zero
+plugin failures and confirmed idle status from each process. [Corpus evaluation](corpus-evaluation.md)
 
 On Dart 3.14.1, the small installed LSP consumer measured 36.5 seconds to
 plugin readiness. Across three unsaved edit cycles, the caller diagnostic
