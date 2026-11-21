@@ -785,6 +785,15 @@ final class ThrowSourceCatalog {
             name == 'sync' ||
             name == 'microtask' ||
             name == 'delayed')) {
+      if ((name == 'wait' || name == 'any') && _knownFutureJoinInputs(node)) {
+        // Each input carries its own error through the join. The SDK call
+        // adds no error of its own for these literal, native inputs.
+        return ThrowSource(
+          kind: ThrowSourceKind.asyncOperation,
+          confidence: ThrowConfidence.noObviousThrow,
+          displayName: 'Future.$name',
+        );
+      }
       return ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
         confidence: ThrowConfidence.asyncError,
@@ -1152,6 +1161,21 @@ final class ThrowSourceCatalog {
   }
 
   static ThrowSource? _knownFutureStreamSource(Expression? expression) {
+    final source = _knownFutureSource(expression);
+    if (source == null) return null;
+    return ThrowSource(
+      kind: source.kind,
+      confidence: source.confidence,
+      displayName: source.displayName,
+      isAsync: source.isAsync,
+      channel: ExceptionChannel.stream,
+      exceptionTypes: source.exceptionTypes,
+      resolvedExceptionTypes: source.resolvedExceptionTypes,
+      exceptionSupertypes: source.exceptionSupertypes,
+    );
+  }
+
+  static ThrowSource? _knownFutureSource(Expression? expression) {
     while (expression is ParenthesizedExpression) {
       expression = expression.expression;
     }
@@ -1173,16 +1197,19 @@ final class ThrowSourceCatalog {
         source.isAsync && source.kind != ThrowSourceKind.futureError) {
       return null;
     }
-    return ThrowSource(
-      kind: source.kind,
-      confidence: source.confidence,
-      displayName: source.displayName,
-      isAsync: source.isAsync,
-      channel: ExceptionChannel.stream,
-      exceptionTypes: source.exceptionTypes,
-      resolvedExceptionTypes: source.resolvedExceptionTypes,
-      exceptionSupertypes: source.exceptionSupertypes,
-    );
+    return source;
+  }
+
+  static bool _knownFutureJoinInputs(MethodInvocation node) {
+    var input = node.argumentList.arguments.firstOrNull?.argumentExpression;
+    while (input is ParenthesizedExpression) {
+      input = input.expression;
+    }
+    return input is ListLiteral &&
+        input.elements.every(
+          (element) =>
+              element is Expression && _knownFutureSource(element) != null,
+        );
   }
 
   /// SDK models require an established library identity.

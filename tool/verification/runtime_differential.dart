@@ -178,6 +178,9 @@ const _effects = {
   'callbackAsyncVoid': ('scheduled', 'String'),
   'sdkIgnoredFuture': ('scheduled', 'String'),
   'waitCleanupFailure': ('scheduled', 'String'),
+  'waitKnownFailure': ('future', 'String'),
+  'anyKnownFailure': ('future', 'String'),
+  'discardedWaitFailure': ('scheduled', 'String'),
   'futureHandlerFailure': ('future', 'String'),
   'futureFilterFailure': ('future', 'String'),
   'streamHandlerFailure': ('stream', 'String'),
@@ -222,6 +225,7 @@ const _suppressedEffects = {
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
+  'waitKnownCaught': 'String',
   'futureAsStreamCaught': 'String',
   'blockedStreamTerminal': 'String',
   'groupedStatementCase': 'String',
@@ -298,6 +302,10 @@ const _observations = {
   'callback_async_void': 'none/String',
   'sdk_ignored_future': 'none/String',
   'wait_cleanup_failure': 'none/String',
+  'wait_known_failure': 'String',
+  'any_known_failure': 'String',
+  'discarded_wait_failure': 'none/String',
+  'wait_known_caught': 'none',
   'future_handler_failure': 'String',
   'future_filter_failure': 'String',
   'stream_handler_failure': 'String',
@@ -595,6 +603,18 @@ Future<void> waitCleanupFailure() async {
     );
   } catch (_) {}
 }
+Future<void> waitKnownFailure() async {
+  await Future.wait<int>([Future<int>.value(1), Future<int>.error('wait error')]);
+}
+Future<void> anyKnownFailure() async {
+  await Future.any<int>([Future<int>.error('any error')]);
+}
+void discardedWaitFailure() {
+  Future.wait<int>([Future<int>.error('unobserved wait')]);
+}
+Future<void> waitKnownCaught() async {
+  try { await Future.wait<int>([Future<int>.error('wait error')]); } on String {}
+}
 Future<void> futureHandlerFailure() =>
     Future<void>.error(42).catchError((Object _) => throw 'replacement');
 Future<void> futureFilterFailure() => Future<void>.error(42).catchError(
@@ -678,6 +698,10 @@ Future<void> main() async {
     'callback_async_void': await captureUnobserved(() async { callbackAsyncVoid(); }),
     'sdk_ignored_future': await captureUnobserved(() async { sdkIgnoredFuture(); }),
     'wait_cleanup_failure': await captureUnobserved(waitCleanupFailure),
+    'wait_known_failure': await captureAsync(waitKnownFailure),
+    'any_known_failure': await captureAsync(anyKnownFailure),
+    'discarded_wait_failure': await captureUnobserved(() async { discardedWaitFailure(); }),
+    'wait_known_caught': await captureAsync(waitKnownCaught),
     'future_handler_failure': await captureAsync(futureHandlerFailure),
     'future_filter_failure': await captureAsync(futureFilterFailure),
     'stream_handler_failure': await captureAsync(() async { await streamHandlerFailure().toList(); }),

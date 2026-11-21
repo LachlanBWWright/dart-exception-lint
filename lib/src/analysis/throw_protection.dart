@@ -222,6 +222,25 @@ AstNode? _forwardingFutureParent(AstNode node) {
       }
     }
   }
+  if (parent is ListLiteral) {
+    AstNode argument = parent;
+    while (argument.parent is ParenthesizedExpression) {
+      argument = argument.parent!;
+    }
+    final arguments = argument.parent;
+    final invocation = arguments?.parent;
+    if (arguments is ArgumentList &&
+        identical(arguments.arguments.firstOrNull, argument) &&
+        invocation is MethodInvocation) {
+      final method = invocation.methodName.element;
+      if (method?.library?.uri.toString() == 'dart:async' &&
+          method?.enclosingElement?.name == 'Future' &&
+          const {'wait', 'any'}.contains(method?.name) &&
+          isReachable(invocation)) {
+        return invocation;
+      }
+    }
+  }
   if (parent is PropertyAccess && identical(parent.realTarget, node)) {
     final element = parent.propertyName.element;
     if (element?.library?.uri.toString() == 'dart:async' &&
