@@ -215,11 +215,9 @@ final class _Visitor extends SimpleAstVisitor<void> {
   }
 
   void _reportInvocation(AstNode node, AstNode target, Element? element) {
-    final source = ThrowSourceCatalog.matchResolvedInvocation(
-      node,
-      element,
-      options,
-    );
+    final source =
+        ThrowSourceCatalog.matchAdditionalSynchronousCheck(node) ??
+        ThrowSourceCatalog.matchResolvedInvocation(node, element, options);
     if (source == null ||
         !source.confidence.isThrowing ||
         source.confidence.isAsync) {

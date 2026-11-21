@@ -608,16 +608,7 @@ final class ThrowSourceCatalog {
   static InstanceCreationExpression? nativeCompleterAllocation(
     MethodInvocation node,
   ) {
-    if (node.methodName.name != 'complete') {
-      return null;
-    }
-    final target = node.methodName.element;
-    if (target is! MethodElement ||
-        !target.library.isInSdk ||
-        target.library.uri.toString() != 'dart:async' ||
-        target.enclosingElement?.name != 'Completer') {
-      return null;
-    }
+    if (!_isNativeCompleterCompletion(node)) return null;
     final allocation = _nativeCreation(
       node.realTarget,
       'dart:async',
@@ -630,6 +621,65 @@ final class ThrowSourceCatalog {
         }.contains(allocation?.constructorName.element?.name)
         ? allocation
         : null;
+  }
+
+  static bool _isNativeCompleterCompletion(MethodInvocation node) {
+    final target = node.methodName.element;
+    return const {'complete', 'completeError'}.contains(node.methodName.name) &&
+        target is MethodElement &&
+        target.library.isInSdk &&
+        target.library.uri.toString() == 'dart:async' &&
+        target.enclosingElement?.name == 'Completer';
+  }
+
+  static ThrowConfidence? _completerStateCheck(
+    MethodInvocation node,
+    InstanceCreationExpression? allocation,
+  ) {
+    if (allocation == null) return ThrowConfidence.possibleThrow;
+    if (!node.isCascaded) return null;
+    final parent = node.parent;
+    if (parent is CascadeExpression) {
+      if (identical(parent.cascadeSections.firstOrNull, node)) return null;
+      for (final section in parent.cascadeSections) {
+        if (identical(section, node)) break;
+        if (section is MethodInvocation &&
+            section.isCascaded &&
+            identical(section.realTarget, node.realTarget) &&
+            _isNativeCompleterCompletion(section)) {
+          return ThrowConfidence.definiteThrow;
+        }
+      }
+    }
+    return ThrowConfidence.possibleThrow;
+  }
+
+  static ThrowSource _completerStateError(
+    String method,
+    ThrowConfidence confidence,
+  ) => ThrowSource(
+    kind: ThrowSourceKind.collectionStateCall,
+    confidence: confidence,
+    displayName: 'Completer.$method state check',
+    exceptionTypes: const ['StateError'],
+    evidence: const {EffectEvidence.sdkModel},
+  );
+
+  static ThrowSource? matchAdditionalSynchronousCheck(AstNode node) {
+    if (node is InstanceCreationExpression) {
+      return matchFutureFactoryNullCheck(node);
+    }
+    if (node is MethodInvocation &&
+        node.methodName.name == 'completeError' &&
+        _isNativeCompleterCompletion(node) &&
+        _completerStateCheck(node, nativeCompleterAllocation(node)) ==
+            ThrowConfidence.possibleThrow) {
+      return _completerStateError(
+        'completeError',
+        ThrowConfidence.possibleThrow,
+      );
+    }
+    return null;
   }
 
   static bool _futureValueRejectsNull(InstanceCreationExpression node) {
@@ -1248,6 +1298,11 @@ final class ThrowSourceCatalog {
 
     if (name == 'completeError' &&
         _isExpectedLibrary(libraryUri, 'dart:async')) {
+      if (_isNativeCompleterCompletion(node) &&
+          _completerStateCheck(node, nativeCompleterAllocation(node)) ==
+              ThrowConfidence.definiteThrow) {
+        return _completerStateError(name, ThrowConfidence.definiteThrow);
+      }
       return ThrowSource(
         kind: ThrowSourceKind.completerCompleteError,
         confidence: ThrowConfidence.asyncError,
@@ -1270,6 +1325,10 @@ final class ThrowSourceCatalog {
         enclosingClassName == 'Completer' &&
         _isExpectedLibrary(libraryUri, 'dart:async')) {
       final allocation = nativeCompleterAllocation(node);
+      final stateCheck = _completerStateCheck(node, allocation);
+      if (stateCheck == ThrowConfidence.definiteThrow) {
+        return _completerStateError(name, ThrowConfidence.definiteThrow);
+      }
       final type = allocation?.staticType;
       final library = allocation?.constructorName.element?.library;
       final valueType = type is InterfaceType
@@ -1283,13 +1342,8 @@ final class ThrowSourceCatalog {
             valueType,
           );
       final value = node.argumentList.arguments.firstOrNull?.argumentExpression;
-      final parent = node.parent;
-      final firstOperation =
-          !node.isCascaded ||
-          parent is CascadeExpression &&
-              identical(parent.cascadeSections.firstOrNull, node);
       final exceptions = [
-        if (allocation == null || !firstOperation) 'StateError',
+        if (stateCheck != null) 'StateError',
         if (options.treatAsCastsAsThrowing &&
             !acceptsNull &&
             (value == null || !isDefinitelyNonNull(value)))

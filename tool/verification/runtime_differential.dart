@@ -46,6 +46,7 @@ Future<void> main() async {
             'freshNullableCompleter',
             'caughtFreshCompleterNull',
             'freshCascadedCompleter',
+            'caughtRepeatedErrorCompletion',
             'directNativeFutureIgnore',
             'handledTypedFutureError',
             'createJsonDecoder',
@@ -207,6 +208,7 @@ const _effects = {
   'freshCompleterNull': ('synchronous', 'TypeError'),
   'widenedCompleterNull': ('synchronous', 'TypeError'),
   'cascadedCompleterRepeat': ('synchronous', 'StateError'),
+  'repeatedCompleterError': ('synchronous', 'StateError'),
   'unmatchedLiteralCatch': ('synchronous', 'String'),
   'stoppedConstructorField': ('synchronous', 'int'),
   'stoppedSuperArgument': ('synchronous', 'int'),
@@ -322,6 +324,7 @@ const _suppressedEffects = {
   'failedAssertionMessage': 'AssertionError',
   'freshCompleterNull': 'StateError',
   'cascadedCompleterRepeat': 'TypeError',
+  'repeatedCompleterError': 'String',
   'stoppedConstructorField': 'String',
   'stoppedSuperArgument': 'String',
   'guardedStringIndex': 'RangeError',
@@ -394,6 +397,8 @@ const _observations = {
   'fresh_nullable_completer': 'none',
   'caught_fresh_completer_null': 'none',
   'fresh_cascaded_completer': 'none',
+  'repeated_completer_error': 'StateError',
+  'caught_repeated_error_completion': 'none',
   'first_literal_catch': 'none',
   'unmatched_literal_catch': 'String',
   'stopped_constructor_field': '42',
@@ -561,7 +566,7 @@ void widenedCompleterNull() {
   final Completer<num?> completer = Completer<int>();
   completer.complete();
 }
-void cascadedCompleterRepeat() { Completer<void>.sync()..complete()..complete(); }
+void cascadedCompleterRepeat() { Completer<int>.sync()..complete(1)..complete(); }
 void freshNullableCompleter() {
   Completer<int?>().complete();
   Completer<void>.sync().complete();
@@ -570,6 +575,14 @@ void caughtFreshCompleterNull() {
   try { Completer<int>.sync().complete(); } on TypeError {}
 }
 void freshCascadedCompleter() { Completer<void>.sync()..complete(); }
+void repeatedCompleterError() {
+  Completer<void>.sync()..complete()..completeError('undelivered');
+}
+void caughtRepeatedErrorCompletion() {
+  try {
+    Completer<void>()..complete()..completeError('undelivered');
+  } on StateError {}
+}
 
 const disabledBranch = false;
 Never stopEvaluation() => throw 42;
@@ -1102,6 +1115,8 @@ Future<void> main() async {
     'fresh_nullable_completer': capture(freshNullableCompleter),
     'caught_fresh_completer_null': capture(caughtFreshCompleterNull),
     'fresh_cascaded_completer': capture(freshCascadedCompleter),
+    'repeated_completer_error': capture(repeatedCompleterError),
+    'caught_repeated_error_completion': capture(caughtRepeatedErrorCompletion),
     'first_literal_catch': capture(firstLiteralCatch),
     'unmatched_literal_catch': capture(unmatchedLiteralCatch),
     'stopped_constructor_field': capture(stoppedConstructorField),

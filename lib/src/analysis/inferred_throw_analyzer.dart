@@ -324,8 +324,7 @@ final class InferredThrowAnalyzer {
       baseSummary.elementKey,
       [
         ...baseSummary.sources,
-        if (node is InstanceCreationExpression)
-          ?ThrowSourceCatalog.matchFutureFactoryNullCheck(node),
+        ?ThrowSourceCatalog.matchAdditionalSynchronousCheck(node),
         ..._callbackSources(node, element, 0, {}),
       ],
       dependencyElementKeys: baseSummary.dependencyElementKeys,
@@ -1397,6 +1396,9 @@ final class InferredThrowAnalyzer {
         complete: true,
       );
     }
+    final additionalCheck = ThrowSourceCatalog.matchAdditionalSynchronousCheck(
+      node,
+    );
     final directSource = ThrowSourceCatalog.matchResolvedInvocation(
       node,
       resolvedElement,
@@ -1420,13 +1422,11 @@ final class InferredThrowAnalyzer {
           discardedFuture ||
           channel == ExceptionChannel.stream && isReturnedStreamPayload(node) ||
           directSource.channel == ExceptionChannel.scheduled;
-      final nullCheck = node is InstanceCreationExpression
-          ? ThrowSourceCatalog.matchFutureFactoryNullCheck(node)
-          : null;
-      if (shouldKeep || nullCheck != null) {
+      if (shouldKeep ||
+          node is InstanceCreationExpression && additionalCheck != null) {
         final summary = ThrowSummary.merge(
           directSource.displayName,
-          [if (shouldKeep) directSource, ?nullCheck, ...callbackSources],
+          [if (shouldKeep) directSource, ?additionalCheck, ...callbackSources],
           dependencyElementKeys: const [],
           complete: true,
         );
@@ -1498,6 +1498,7 @@ final class InferredThrowAnalyzer {
             _callbackBindings.containsKey(resolvedElement.baseElement));
     final propagatedSources = <ThrowSource>[
       ...callbackSources,
+      ?additionalCheck,
       if (boundCallback) ...RuntimeChecks.boundCallbackChecks(node, resolved),
       if (boundCallback && !dispatchSummary.complete)
         _unverifiedCallbackScheduling,
