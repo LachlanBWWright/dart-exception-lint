@@ -128,7 +128,7 @@ final class ThrowSourceCatalog {
             type.allSupertypes.any((type) => type.isDartCoreList));
     final sdkString = type is InterfaceType && type.isDartCoreString;
     if (!sdkList && !sdkString) return null;
-    if (sdkString && sdkRead && isProvenStringZeroIndex(node, target, index)) {
+    if (sdkString && sdkRead && isProvenStringIndex(node, target, index)) {
       return const ThrowSource(
         kind: ThrowSourceKind.indexAccess,
         confidence: ThrowConfidence.noObviousThrow,
@@ -734,13 +734,29 @@ final class ThrowSourceCatalog {
         enclosingClassName == 'String' &&
         (name == 'codeUnitAt' || name == 'substring')) {
       final receiver = node.realTarget;
-      final index =
-          node.argumentList.arguments.singleOrNull?.argumentExpression;
       if (receiver != null &&
-          index != null &&
-          (name == 'codeUnitAt'
-              ? isProvenStringZeroIndex(node, receiver, index)
-              : isProvenSubstringStart(node, receiver, index))) {
+          switch (node.argumentList.arguments) {
+            [final index] =>
+              name == 'codeUnitAt'
+                  ? isProvenStringIndex(
+                      node,
+                      receiver,
+                      index.argumentExpression,
+                    )
+                  : isProvenSubstringStart(
+                      node,
+                      receiver,
+                      index.argumentExpression,
+                    ),
+            [final start, final end] when name == 'substring' =>
+              isProvenSubstringRange(
+                node,
+                receiver,
+                start.argumentExpression,
+                end.argumentExpression,
+              ),
+            _ => false,
+          }) {
         return const ThrowSource(
           kind: ThrowSourceKind.collectionStateCall,
           confidence: ThrowConfidence.noObviousThrow,

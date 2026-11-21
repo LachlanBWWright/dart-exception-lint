@@ -771,6 +771,105 @@ void badEnd(String text, int start) {
     );
   });
 
+  test('String reads follow bounded loop counters on the same value', () async {
+    await _verify(
+      '''
+void bounded(String text) {
+  var start = 0;
+  for (var i = start; i < text.length; i++) {
+    text[i]; text.codeUnitAt(i); start = i + 1;
+  }
+}
+void literal() { 'ab'[1]; 'ab'.codeUnitAt(1); }
+void changedString(String text) {
+  for (var i = 0; i < text.length; i++) { text = ''; text[i]; }
+}
+void differentString(String text, String other) {
+  for (var i = 0; i < other.length; i++) { text[i]; }
+}
+void changedCounter(String text) {
+  for (var i = 0; i < text.length; i++) { (i,) = (-1,); text.codeUnitAt(i); }
+}
+void negativeSeed(String text) {
+  for (var i = -1; i < text.length; i++) { text[i]; }
+}
+''',
+      (summaries, _) {
+        for (final name in ['bounded', 'literal']) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            isNot(contains('RangeError')),
+            reason: name,
+          );
+        }
+        for (final name in [
+          'changedString',
+          'differentString',
+          'changedCounter',
+          'negativeSeed',
+        ]) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            contains('RangeError'),
+            reason: name,
+          );
+        }
+      },
+    );
+  });
+
+  test('substring ranges preserve a start before a bounded counter', () async {
+    await _verify(
+      '''
+void bounded(String text) {
+  var start = 0;
+  if (text.isNotEmpty) start = 1;
+  for (var i = start; i < text.length; i++) {
+    if (text[i] == '/') {
+      text.substring(start, i);
+      start = i + 1;
+    }
+  }
+}
+void literal() { 'ab'.substring(1, 2); }
+void reversedLiteral() { 'ab'.substring(2, 1); }
+void afterUpdate(String text) {
+  var start = 0;
+  for (var i = start; i < text.length; i++) {
+    start = i + 1;
+    text.substring(start, i);
+  }
+}
+void repeated(String text) {
+  var start = 0;
+  for (var i = start; i < text.length; i++) {
+    var remaining = 2;
+    while (remaining-- > 0) {
+      text.substring(start, i);
+      start = i + 1;
+    }
+  }
+}
+''',
+      (summaries, _) {
+        for (final name in ['bounded', 'literal']) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            isNot(contains('RangeError')),
+            reason: name,
+          );
+        }
+        for (final name in ['reversedLiteral', 'afterUpdate', 'repeated']) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            contains('RangeError'),
+            reason: name,
+          );
+        }
+      },
+    );
+  });
+
   test(
     'List.add uses the allocation type of a proven literal receiver',
     () async {

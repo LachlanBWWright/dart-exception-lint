@@ -172,6 +172,7 @@ const _effects = {
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'secondStringIndex': ('synchronous', 'RangeError'),
   'negativeSubstringStart': ('synchronous', 'RangeError'),
+  'reversedSubstringRange': ('synchronous', 'RangeError'),
   'dynamicBooleanFailure': ('synchronous', 'TypeError'),
   'blockedCastFailure': ('synchronous', 'int'),
   'blockedCovarianceFailure': ('synchronous', 'int'),
@@ -318,6 +319,7 @@ const _observations = {
   'second_string_index': 'RangeError',
   'bounded_substring_start': 'none',
   'negative_substring_start': 'RangeError',
+  'reversed_substring_range': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
   'caught_dynamic_boolean': 'none',
   'blocked_cast': '42',
@@ -492,12 +494,23 @@ void boundedSubstringStart(String text) {
   var start = 0;
   if (text.isNotEmpty) start = 1;
   for (var i = start; i < text.length; i++) {
-    if (i == 2) start = i + 1;
+    if (text[i] == 'r') {
+      text.codeUnitAt(i);
+      text.substring(start, i);
+      start = i + 1;
+    }
   }
   if (start < text.length) text.substring(start);
 }
 void negativeSubstringStart(String text, int start) {
   if (start < text.length) text.substring(start);
+}
+void reversedSubstringRange(String text) {
+  var start = 0;
+  for (var i = start; i < text.length; i++) {
+    start = i + 1;
+    text.substring(start, i);
+  }
 }
 bool dynamicBooleanFailure(dynamic value) => !value;
 void caughtDynamicBoolean(dynamic value) {
@@ -824,6 +837,7 @@ Future<void> main() async {
     'second_string_index': capture(() => secondStringIndex('A')),
     'bounded_substring_start': capture(() { boundedSubstringStart(''); boundedSubstringStart('word'); }),
     'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
+    'reversed_substring_range': capture(() => reversedSubstringRange('word')),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),
     'caught_dynamic_boolean': capture(() => caughtDynamicBoolean('not a bool')),
     'blocked_cast': capture(blockedCastFailure),

@@ -2,22 +2,39 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 
-/// Proves that a String read at zero follows a nonempty check on the same value.
-bool isProvenStringZeroIndex(
+/// Proves that an offset is below the length of the same String value.
+bool isProvenStringIndex(
   AstNode operation,
   Expression receiver,
   Expression index,
 ) {
-  if (index is! IntegerLiteral || index.value != 0) return false;
-  if (receiver is SimpleStringLiteral) return receiver.value.isNotEmpty;
+  if (receiver is SimpleStringLiteral && index is IntegerLiteral) {
+    final offset = index.value ?? -1;
+    return offset >= 0 && offset < receiver.value.length;
+  }
   if (receiver.staticType?.isDartCoreString != true) return false;
   final variable = _localVariable(receiver);
   if (variable == null) return false;
-  return _guardedBranches(operation).any(
-    (branch) =>
-        _provesNonempty(branch.$1, variable, branch.$2) &&
-        _retainsValue(branch.$1, variable),
+  if (index is IntegerLiteral && index.value == 0) {
+    return _guardedBranches(operation).any(
+      (branch) =>
+          _provesNonempty(branch.$1, variable, branch.$2) &&
+          _retainsValue(branch.$1, variable),
+    );
+  }
+  final counter = _declaredLocal(index);
+  final body = operation.thisOrAncestorOfType<FunctionBody>();
+  if (counter == null || body == null) return false;
+  final proof = _boundedStringCounter(
+    operation,
+    counter,
+    body,
+    receiver: variable,
   );
+  if (proof == null || !_retainsValue(proof.condition, variable)) return false;
+  final seed = _localVariable(proof.initializer);
+  return _nonnegativeLiteral(proof.initializer) ||
+      seed != null && _localHasNonnegativeValues(seed, operation);
 }
 
 /// A single-argument substring permits an offset from zero through length.
@@ -60,6 +77,66 @@ bool isProvenSubstringStart(
     }
   }
   return false;
+}
+
+/// A substring range requires a nonnegative start no greater than its end.
+bool isProvenSubstringRange(
+  AstNode operation,
+  Expression receiver,
+  Expression start,
+  Expression end,
+) {
+  if (receiver is SimpleStringLiteral &&
+      start is IntegerLiteral &&
+      end is IntegerLiteral) {
+    final lower = start.value ?? -1;
+    final upper = end.value ?? -1;
+    return lower >= 0 && lower <= upper && upper <= receiver.value.length;
+  }
+  final variable = _localVariable(receiver);
+  final lower = _declaredLocal(start);
+  final counter = _declaredLocal(end);
+  final body = operation.thisOrAncestorOfType<FunctionBody>();
+  if (variable == null || lower == null || counter == null || body == null) {
+    return false;
+  }
+  final proof = _boundedStringCounter(
+    operation,
+    counter,
+    body,
+    receiver: variable,
+  );
+  if (proof == null ||
+      _declaredLocal(proof.initializer) != lower ||
+      !_retainsValue(proof.condition, variable)) {
+    return false;
+  }
+  final startWrites = _nonnegativeLocal(lower, body);
+  final use = operation.thisOrAncestorOfType<Statement>();
+  final block = use?.parent;
+  if (startWrites == null || use == null || block is! Block) return false;
+  // A block reached only through if statements executes at most once per
+  // iteration. A write after the range therefore affects the next iteration.
+  for (AstNode? node = block; node != proof.loop; node = node?.parent) {
+    if (node is! Block && node is! IfStatement) return false;
+  }
+  for (final write in startWrites.writes) {
+    if (!identical(write.thisOrAncestorOfType<FunctionBody>(), body)) {
+      return false;
+    }
+    if (write.offset < proof.loop.offset || write.end > proof.loop.end) {
+      continue;
+    }
+    final statement = write.parent;
+    if (write is! AssignmentExpression ||
+        statement is! ExpressionStatement ||
+        statement.parent != block ||
+        statement.offset < use.end ||
+        _successorCounter(write.rightHandSide) != counter) {
+      return false;
+    }
+  }
+  return true;
 }
 
 LocalVariableElement? _declaredLocal(Expression expression) =>
@@ -167,16 +244,22 @@ bool _isStringLength(Expression expression, {Element? receiver}) {
       getter.name == 'length';
 }
 
-bool _localHasNonnegativeValues(Element variable, Expression guard) {
+bool _localHasNonnegativeValues(Element variable, AstNode use) {
   if (variable is! LocalVariableElement) return false;
-  final body = guard.thisOrAncestorOfType<FunctionBody>();
-  if (body == null) return false;
+  final body = use.thisOrAncestorOfType<FunctionBody>();
+  return body != null && _nonnegativeLocal(variable, body) != null;
+}
+
+_IntegerWrites? _nonnegativeLocal(
+  LocalVariableElement variable,
+  FunctionBody body,
+) {
   final index = _IntegerWrites(variable);
   body.accept(index);
-  if (!_nonnegativeLiteral(index.initializer)) return false;
+  if (!_nonnegativeLiteral(index.initializer)) return null;
   // The initializer establishes the invariant. Every later assignment must
   // preserve it, including assignments in a loop that starts from this value.
-  return index.writes.every((write) {
+  final preservesInvariant = index.writes.every((write) {
     if (write is! AssignmentExpression || write.operator.lexeme != '=') {
       return false;
     }
@@ -184,6 +267,7 @@ bool _localHasNonnegativeValues(Element variable, Expression guard) {
     return _nonnegativeLiteral(value) ||
         _boundedLoopSuccessor(value, variable, body);
   });
+  return preservesInvariant ? index : null;
 }
 
 bool _nonnegativeLiteral(Expression? expression) =>
@@ -194,24 +278,42 @@ bool _boundedLoopSuccessor(
   LocalVariableElement preserved,
   FunctionBody body,
 ) {
+  final counter = _successorCounter(expression);
+  if (counter == null) return false;
+  final proof = _boundedStringCounter(expression, counter, body);
+  return proof != null &&
+      (_nonnegativeLiteral(proof.initializer) ||
+          _localVariable(proof.initializer) == preserved);
+}
+
+LocalVariableElement? _successorCounter(Expression expression) {
   if (expression is! BinaryExpression ||
       expression.operator.lexeme != '+' ||
       expression.element?.library.uri.toString() != 'dart:core' ||
       expression.leftOperand.staticType?.isDartCoreInt != true ||
       expression.rightOperand is! IntegerLiteral ||
       (expression.rightOperand as IntegerLiteral).value != 1) {
-    return false;
+    return null;
   }
-  final counter = _declaredLocal(expression.leftOperand);
-  if (counter == null) return false;
-  final loop = expression.thisOrAncestorOfType<ForStatement>();
+  return _declaredLocal(expression.leftOperand);
+}
+
+({ForStatement loop, Expression initializer, BinaryExpression condition})?
+_boundedStringCounter(
+  AstNode use,
+  LocalVariableElement counter,
+  FunctionBody body, {
+  Element? receiver,
+}) {
+  final loop = use.thisOrAncestorOfType<ForStatement>();
   final parts = loop?.forLoopParts;
   if (loop == null ||
       parts is! ForPartsWithDeclarations ||
-      !identical(expression.thisOrAncestorOfType<FunctionBody>(), body) ||
-      expression.offset < loop.body.offset ||
-      expression.end > loop.body.end) {
-    return false;
+      !identical(loop.thisOrAncestorOfType<FunctionBody>(), body) ||
+      !identical(use.thisOrAncestorOfType<FunctionBody>(), body) ||
+      use.offset < loop.body.offset ||
+      use.end > loop.body.end) {
+    return null;
   }
   final declaration = parts.variables.variables.singleOrNull;
   final initial = declaration?.initializer;
@@ -219,20 +321,21 @@ bool _boundedLoopSuccessor(
   final update = parts.updaters.singleOrNull;
   if (declaration?.declaredFragment?.element != counter ||
       initial == null ||
-      !(_nonnegativeLiteral(initial) || _localVariable(initial) == preserved) ||
       condition is! BinaryExpression ||
       condition.element?.library.uri.toString() != 'dart:core' ||
       condition.operator.lexeme != '<' ||
       _localVariable(condition.leftOperand) != counter ||
-      !_isStringLength(condition.rightOperand) ||
+      !_isStringLength(condition.rightOperand, receiver: receiver) ||
       !_incrementsCounter(update, counter)) {
-    return false;
+    return null;
   }
   final writes = _IntegerWrites(counter);
   body.accept(writes);
   // A strictly smaller String offset has room for one increment. The same
   // bound holds when the condition succeeds again before the next iteration.
-  return identical(writes.writes.singleOrNull, update);
+  return identical(writes.writes.singleOrNull, update)
+      ? (loop: loop, initializer: initial, condition: condition)
+      : null;
 }
 
 bool _incrementsCounter(Expression? expression, Element counter) =>
