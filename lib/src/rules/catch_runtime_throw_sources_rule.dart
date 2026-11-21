@@ -6,7 +6,6 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/dart/element/type.dart';
 
-import '../analysis/throw_protection.dart';
 import '../analysis/exception_type_labels.dart';
 import '../analysis/diagnostic_emission_guard.dart';
 import '../analysis/throw_source_catalog.dart';
@@ -45,7 +44,7 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
       return;
     }
 
-    final visitor = _Visitor(this, options);
+    final visitor = _Visitor(this, options, context.typeProvider.boolType);
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
@@ -55,6 +54,15 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     registry.addNullAssertPattern(this, visitor);
     registry.addRelationalPattern(this, visitor);
     registry.addBinaryExpression(this, visitor);
+    registry.addPrefixExpression(this, visitor);
+    registry.addIfStatement(this, visitor);
+    registry.addIfElement(this, visitor);
+    registry.addConditionalExpression(this, visitor);
+    registry.addWhileStatement(this, visitor);
+    registry.addDoStatement(this, visitor);
+    registry.addForPartsWithDeclarations(this, visitor);
+    registry.addForPartsWithExpression(this, visitor);
+    registry.addWhenClause(this, visitor);
     registry.addSimpleIdentifier(this, visitor);
     registry.addAssertStatement(this, visitor);
     registry.addAssertInitializer(this, visitor);
@@ -69,10 +77,11 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
 }
 
 final class _Visitor extends SimpleAstVisitor<void> {
-  _Visitor(this.rule, this.options);
+  _Visitor(this.rule, this.options, this.boolType);
 
   final AnalysisRule rule;
   final ExceptionAnalysisOptions options;
+  final DartType boolType;
   final DiagnosticEmissionGuard _emissions = DiagnosticEmissionGuard();
 
   @override
@@ -222,6 +231,11 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitBinaryExpression(BinaryExpression node) {
+    if (node.operator.lexeme == '&&' || node.operator.lexeme == '||') {
+      _recordBooleanCheck(node.leftOperand);
+      _recordBooleanCheck(node.rightOperand);
+      return;
+    }
     final source = ThrowSourceCatalog.matchBinaryExpression(node, options);
     if (source == null || !source.confidence.isThrowing) return;
     _report(
@@ -231,6 +245,48 @@ final class _Visitor extends SimpleAstVisitor<void> {
       source.exceptionTypes,
       source: source,
     );
+  }
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) {
+    if (node.operator.lexeme == '!') _recordBooleanCheck(node.operand);
+  }
+
+  @override
+  void visitIfStatement(IfStatement node) {
+    if (node.caseClause == null) _recordBooleanCheck(node.expression);
+  }
+
+  @override
+  void visitIfElement(IfElement node) {
+    if (node.caseClause == null) _recordBooleanCheck(node.expression);
+  }
+
+  @override
+  void visitConditionalExpression(ConditionalExpression node) =>
+      _recordBooleanCheck(node.condition);
+
+  @override
+  void visitWhileStatement(WhileStatement node) =>
+      _recordBooleanCheck(node.condition);
+
+  @override
+  void visitDoStatement(DoStatement node) =>
+      _recordBooleanCheck(node.condition);
+
+  @override
+  void visitForPartsWithDeclarations(ForPartsWithDeclarations node) =>
+      _recordBooleanCheck(node.condition);
+
+  @override
+  void visitForPartsWithExpression(ForPartsWithExpression node) =>
+      _recordBooleanCheck(node.condition);
+
+  @override
+  void visitWhenClause(WhenClause node) => _recordBooleanCheck(node.expression);
+
+  void _recordBooleanCheck(Expression? expression) {
+    if (expression != null) _recordImplicitCast(expression, boolType);
   }
 
   @override
@@ -262,30 +318,29 @@ final class _Visitor extends SimpleAstVisitor<void> {
     Expression condition,
     Expression? message,
   ) {
-    final source = ThrowSourceCatalog.matchAssertion(condition, message);
-    if (source == null) return;
-    _report(
-      node,
+    final effects = residualEffects(node, [
+      if (options.treatAsCastsAsThrowing)
+        ?RuntimeChecks.implicitCast(condition, boolType),
+      ?ThrowSourceCatalog.matchAssertion(condition, message),
+    ]).toList();
+    if (effects.isEmpty) return;
+    _emit(
       condition,
-      source.displayName,
-      source.exceptionTypes,
-      source: source,
+      effects.length == 1 ? effects.single.displayName : 'assertion condition',
+      {for (final effect in effects) ...effect.exceptionTypes}.toList(),
     );
   }
 
   void _recordImplicitCast(Expression expression, DartType? target) {
     if (!options.treatAsCastsAsThrowing) return;
     final source = RuntimeChecks.implicitCast(expression, target);
-    if (source != null &&
-        !isProtectedByCatch(
-          expression,
-          exceptionTypes: source.exceptionTypes,
-        )) {
+    if (source != null) {
       _report(
         expression,
         expression,
         source.displayName,
         source.exceptionTypes,
+        source: source,
       );
     }
   }
@@ -394,6 +449,14 @@ final class _Visitor extends SimpleAstVisitor<void> {
         );
     if (isEffectContained(node, effect)) return;
 
+    _emit(diagnosticTarget, displayName, exceptionTypes);
+  }
+
+  void _emit(
+    AstNode diagnosticTarget,
+    String displayName,
+    List<String> exceptionTypes,
+  ) {
     if (_emissions.claim(diagnosticTarget)) {
       rule.reportAtNode(
         diagnosticTarget,

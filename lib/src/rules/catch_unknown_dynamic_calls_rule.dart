@@ -78,10 +78,6 @@ class CatchUnknownDynamicCallsRule extends AnalysisRule {
     registry.addForStatement(this, visitor);
     registry.addSpreadElement(this, visitor);
     registry.addYieldStatement(this, visitor);
-    registry.addIfStatement(this, visitor);
-    registry.addWhileStatement(this, visitor);
-    registry.addDoStatement(this, visitor);
-    registry.addConditionalExpression(this, visitor);
   }
 }
 
@@ -243,48 +239,6 @@ final class _Visitor extends SimpleAstVisitor<void> {
       rule.reportAtNode(
         node.expression,
         arguments: ['dynamic yield*', 'dynamic_yield'],
-      );
-    }
-  }
-
-  @override
-  void visitIfStatement(IfStatement node) {
-    _reportDynamicBoolean(node, node.expression, 'dynamic condition');
-    super.visitIfStatement(node);
-  }
-
-  @override
-  void visitWhileStatement(WhileStatement node) {
-    _reportDynamicBoolean(node, node.condition, 'dynamic condition');
-    super.visitWhileStatement(node);
-  }
-
-  @override
-  void visitDoStatement(DoStatement node) {
-    _reportDynamicBoolean(node, node.condition, 'dynamic condition');
-    super.visitDoStatement(node);
-  }
-
-  @override
-  void visitConditionalExpression(ConditionalExpression node) {
-    _reportDynamicBoolean(node, node.condition, 'dynamic condition');
-    super.visitConditionalExpression(node);
-  }
-
-  void _reportDynamicBoolean(
-    AstNode reportNode,
-    Expression expression,
-    String displayName,
-  ) {
-    if (!options.treatDynamicInvocationAsThrowing ||
-        expression.staticType is! DynamicType ||
-        isProtectedByCatch(reportNode)) {
-      return;
-    }
-    if (_emissions.claim(expression)) {
-      rule.reportAtNode(
-        expression,
-        arguments: [displayName, 'dynamic_condition'],
       );
     }
   }

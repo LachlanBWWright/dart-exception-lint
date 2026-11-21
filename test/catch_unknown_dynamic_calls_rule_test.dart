@@ -365,31 +365,22 @@ Iterable<dynamic> f(dynamic values) sync* {
     ]);
   }
 
-  Future<void> test_dynamicControlConditions_report() async {
-    const code = r'''
+  Future<void> test_dynamicControlConditions_areLanguageChecks() async {
+    await assertNoDiagnostics(r'''
 void f(dynamic value) {
   if (value) {}
+  if (value case String _) {}
   while (value) {}
   do {} while (value);
   value ? 'yes' : 'no';
+  value && true;
+  value || true;
+  value ?? false;
+  !value;
+  value!;
   switch (value) { case true: break; }
 }
-''';
-    final bodyStart = code.indexOf('{');
-    final ifOffset = code.indexOf('value', bodyStart);
-    final whileOffset = code.indexOf('value', code.indexOf('while'));
-    final doOffset = code.indexOf('value', code.indexOf('do'));
-    final conditionalOffset = code.indexOf(
-      'value',
-      code.indexOf(';', doOffset) + 1,
-    );
-
-    await assertDiagnostics(code, [
-      lint(ifOffset, 'value'.length),
-      lint(whileOffset, 'value'.length),
-      lint(doOffset, 'value'.length),
-      lint(conditionalOffset, 'value'.length),
-    ]);
+''');
   }
 
   Future<void> test_dynamicAwait_insideTryCatch_notReported() async {

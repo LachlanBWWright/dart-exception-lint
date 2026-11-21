@@ -5,7 +5,7 @@
 - `no_null_assertion`: bans expression and pattern null assertions.
 - `no_manual_throw`: bans manual `throw`, `rethrow`, and explicit SDK error producers, including known callable aliases, `.call`, and `Function.apply` forwarding.
 - `catch_throwing_third_party_calls`: flags manifest-configured third-party APIs outside `try`/`catch`.
-- `catch_runtime_throw_sources`: flags direct runtime throw sources such as parse/decode calls, assertions, range checks, serialization, typed-data bounds checks, numeric operations, and collection-state APIs.
+- `catch_runtime_throw_sources`: flags direct runtime throw sources such as parse/decode calls, assertions, implicit type checks (including dynamic Boolean conditions), range checks, numeric operations, and collection-state APIs.
 - `catch_async_error_sources`: flags async error producers and awaited failing futures without handling.
 - `catch_inferred_throwing_calls`: follows available source and reports calls whose implementation is inferred as throwing.
 - `catch_unknown_dynamic_calls`: flags dynamic, unresolved, and otherwise unknown call boundaries.

@@ -312,6 +312,54 @@ void f(bool condition) {
     ]);
   }
 
+  Future<void> test_dynamicBooleanOperands_reportWhereEvaluated() async {
+    const code = r'''
+// ignore_for_file: dead_code
+void f(dynamic first, dynamic second, dynamic third, dynamic fourth,
+    dynamic fifth, dynamic sixth, dynamic seventh, dynamic eighth,
+    dynamic ninth, dynamic skipped) {
+  if (first) {}
+  <int>[if (second) 1];
+  third ? 1 : 0;
+  while (fourth) { break; }
+  do {} while (fifth);
+  for (var i = 0; sixth; i++) {}
+  !seventh;
+  true && eighth;
+  if (1 case int _ when ninth) {}
+  false && skipped;
+  true || skipped;
+  if (skipped case String _) {}
+}
+''';
+    await assertDiagnostics(code, [
+      for (final name in [
+        'first',
+        'second',
+        'third',
+        'fourth',
+        'fifth',
+        'sixth',
+        'seventh',
+        'eighth',
+        'ninth',
+      ])
+        lint(code.lastIndexOf(name), name.length),
+    ]);
+  }
+
+  Future<void> test_dynamicBooleanOperands_followTypedCatches() async {
+    const code = r'''
+void f(dynamic caught, dynamic escapes) {
+  try { if (caught) {} } on TypeError {}
+  try { assert(escapes); } on TypeError {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('escapes'), 'escapes'.length),
+    ]);
+  }
+
   Future<void> test_argumentChecks_report() async {
     const code = r'''
 void f(Object? value) {

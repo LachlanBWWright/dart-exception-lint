@@ -58,12 +58,14 @@ Iterable<Element?> invocationTargets(
         yield null;
       }
     case PrefixExpression():
+      if (node.operator.lexeme == '!') return;
       if (node.readElement is ExecutableElement) yield node.readElement;
       if (node.element != null || node.operand.staticType is DynamicType) {
         yield node.element;
       }
       if (node.writeElement is ExecutableElement) yield node.writeElement;
     case PostfixExpression():
+      if (node.operator.lexeme == '!') return;
       if (node.readElement is ExecutableElement) yield node.readElement;
       if (node.element != null || node.operand.staticType is DynamicType) {
         yield node.element;

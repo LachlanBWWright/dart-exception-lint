@@ -2178,10 +2178,13 @@ final class InferredThrowAnalyzer {
           (node is PrefixedIdentifier &&
               node.prefix.staticType is DynamicType) ||
           (node is BinaryExpression &&
+              !const {'&&', '||', '??'}.contains(node.operator.lexeme) &&
               node.leftOperand.staticType is DynamicType) ||
           (node is PrefixExpression &&
+              node.operator.lexeme != '!' &&
               node.operand.staticType is DynamicType) ||
           (node is PostfixExpression &&
+              node.operator.lexeme != '!' &&
               node.operand.staticType is DynamicType) ||
           (node is AssignmentExpression &&
               (node.readType is DynamicType ||
