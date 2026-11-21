@@ -39,6 +39,9 @@ The injected analyzer options exclude nested packages that have their own
 `pubspec.yaml`. These packages can have separate dependencies and can be
 selected explicitly by a manifest entry. Dependency resolution also skips
 separately configured examples.
+Ancestor analyzer options in the disposable worktree retain their settings and
+includes after plugin activation is removed. This keeps workspace-level lints
+from interrupting the selected plugin's evaluation.
 Warnings remain visible in analyzer logs. A failed dependency resolution skips
 analysis for that package. Diagnostic counts use the rule code at the end of
 analyzer output lines. The project row reports the first failed package and

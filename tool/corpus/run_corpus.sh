@@ -169,6 +169,21 @@ while IFS=$'\t' read -r id url manager commit package_path; do
     package_dir="$(dirname "$pubspec")"
     [[ "$package_dir" == "$evaluation/.dart_tool"* ]] && continue
     ((package_count += 1))
+    workspace_options=()
+    directory="$package_dir"
+    while [[ "$directory" == "$evaluation/"* ]]; do
+      directory="$(dirname -- "$directory")"
+      ancestor_options="$directory/analysis_options.yaml"
+      if [[ -f "$ancestor_options" && ! -L "$ancestor_options" ]]; then
+        workspace_options+=("$ancestor_options")
+      fi
+    done
+    if [[ "${#workspace_options[@]}" != 0 ]] && ! (
+      cd "$plugin_root" && timeout "$timeout_seconds" dart run tool/corpus/isolate_workspace_plugins.dart "${workspace_options[@]}"
+    ) >"$corpus_root/$id.$package_count.workspace.log" 2>&1; then
+      if [[ "$package_status" == ok ]]; then package_status=configuration_failed; fi
+      continue
+    fi
     options="$package_dir/analysis_options.yaml"
     backup="$plugin_root/corpus-package.options.backup"
     had_options=0
