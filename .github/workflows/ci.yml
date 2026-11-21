@@ -28,8 +28,10 @@ jobs:
         run: dart run tool/verification/check_syntax_inventory.dart
       - name: Verify SDK declaration inventory
         run: dart run tool/verification/sdk_inventory.dart
-      - name: Validate external corpus manifest
-        run: dart run tool/corpus/validate_manifest.dart
+      - name: Validate external corpus manifest and runner syntax
+        run: |
+          dart run tool/corpus/validate_manifest.dart
+          bash -n tool/corpus/run_corpus.sh
       - name: Run tests
         run: dart test --timeout 4x
       - name: Verify labeled semantic corpus
