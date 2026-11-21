@@ -55,7 +55,6 @@ bool isProtectedByCatch(
       )) {
     return true;
   }
-
   // Each entry is an independently possible thrown type. Ancestors belong to
   // metadata, rather than becoming additional exceptions that must be caught.
   final remainingTypes = exceptionTypes.toSet();
@@ -277,6 +276,60 @@ AstNode? _forwardingFutureParent(AstNode node) {
 /// The first consumer after expressions known to forward an async value.
 AstNode? asyncValueConsumer(AstNode node) =>
     asyncValueRoute(node, ExceptionChannel.synchronous).consumer;
+
+/// An await of a final local before intervening code or suspension can run.
+AwaitExpression? immediateAwaitOfStoredFuture(
+  AstNode? consumer,
+  AstNode producer,
+) {
+  if (consumer is! VariableDeclaration ||
+      producer is AssignmentExpression ||
+      producer is PrefixExpression ||
+      producer is PostfixExpression) {
+    return null;
+  }
+  Expression? initializer = consumer.initializer;
+  while (initializer is ParenthesizedExpression) {
+    initializer = initializer.expression;
+  }
+  if (!identical(initializer, producer)) return null;
+  final element = consumer.declaredFragment?.element;
+  if (element is! LocalVariableElement || !element.isFinal || element.isLate) {
+    return null;
+  }
+  final type = element.type;
+  if (type is! InterfaceType || !type.isDartAsyncFuture) return null;
+  final group = consumer.parent;
+  final declaration = group?.parent;
+  final block = declaration?.parent;
+  if (group is! VariableDeclarationList ||
+      group.variables.length != 1 ||
+      declaration is! VariableDeclarationStatement ||
+      block is! Block) {
+    return null;
+  }
+  final index = block.statements.indexOf(declaration);
+  if (index < 0 || index + 1 >= block.statements.length) return null;
+  var next = block.statements[index + 1];
+  while (next is Block || next is TryStatement) {
+    final body = next is TryStatement ? next.body : next as Block;
+    if (body.statements.isEmpty) return null;
+    next = body.statements.first;
+  }
+  final awaitExpression = switch (next) {
+    ExpressionStatement(expression: final AwaitExpression expression) ||
+    ReturnStatement(expression: final AwaitExpression expression) => expression,
+    _ => null,
+  };
+  if (awaitExpression == null) return null;
+  Expression operand = awaitExpression.expression;
+  while (operand is ParenthesizedExpression) {
+    operand = operand.expression;
+  }
+  return operand is SimpleIdentifier && operand.element == element
+      ? awaitExpression
+      : null;
+}
 
 /// Tracks SDK conversions that change how a value delivers its errors.
 ({AstNode? consumer, ExceptionChannel channel}) asyncValueRoute(

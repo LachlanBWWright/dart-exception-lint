@@ -2470,6 +2470,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   final Set<String> activeKeys;
   final List<ThrowSource> sources = [];
   final Set<String> dependencies = {};
+  final Set<AwaitExpression> _verifiedImmediateAwaits = {};
   bool complete = true;
   String? truncationReason;
   int _conditionalDepth = 0;
@@ -2881,7 +2882,9 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitAwaitExpression(AwaitExpression node) {
-    _recordForwardedFuture(node.expression);
+    if (!_verifiedImmediateAwaits.contains(node)) {
+      _recordForwardedFuture(node.expression);
+    }
     super.visitAwaitExpression(node);
   }
 
@@ -3020,14 +3023,20 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
       _recordInvocation(node, element ?? _elementForNode(node));
 
   void _recordInvocation(AstNode node, Element? element) {
+    final consumer = asyncValueConsumer(node);
+    final storedAwait = immediateAwaitOfStoredFuture(consumer, node);
     final summary = analyzer.inferCallFromBody(
       node,
       currentExecutable: executable,
       resolvedElement: element,
       depth: depth,
       activeKeys: activeKeys,
-      isAsyncObserved: _isAsyncObserved(node),
+      isAsyncObserved:
+          storedAwait != null || _isAsyncObserved(node, consumer: consumer),
     );
+    if (storedAwait != null && summary.complete) {
+      _verifiedImmediateAwaits.add(storedAwait);
+    }
     if (summary.sources.isEmpty) {
       return;
     }
@@ -3086,7 +3095,18 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   }
 
   bool _isProtected(AstNode node, ThrowSource source) {
-    return isEffectContained(node, source, respectExceptionBoundary: false);
+    if (isEffectContained(node, source, respectExceptionBoundary: false)) {
+      return true;
+    }
+    if (ExceptionEffect.fromSource(source).channel != ExceptionChannel.future) {
+      return false;
+    }
+    final awaitSite = immediateAwaitOfStoredFuture(
+      asyncValueConsumer(node),
+      node,
+    );
+    return awaitSite != null &&
+        isEffectContained(awaitSite, source, respectExceptionBoundary: false);
   }
 
   ThrowSource _normalize(
@@ -3099,6 +3119,9 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
       ExceptionEffect.fromSource(source).channel,
     );
     final sourceChannel = route.channel;
+    final storedAwait = sourceChannel == ExceptionChannel.future
+        ? immediateAwaitOfStoredFuture(route.consumer, node)
+        : null;
     final bodyChannel = _isAsyncContext
         ? (executable.returnType is VoidType
               ? ExceptionChannel.scheduled
@@ -3115,9 +3138,10 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     final unverifiedUnobservedFuture =
         sourceChannel == ExceptionChannel.future &&
         ((source.confidence == ThrowConfidence.unknown &&
+                storedAwait == null &&
                 !_isAsyncObserved(node, channel: sourceChannel)) ||
             route.consumer is ExpressionStatement);
-    final consumer = route.consumer;
+    final consumer = storedAwait ?? route.consumer;
     final consumesIterator =
         sourceChannel == ExceptionChannel.deferred &&
             deferredExecutionSite(node) != null ||
@@ -3180,8 +3204,12 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     );
   }
 
-  bool _isAsyncObserved(AstNode node, {ExceptionChannel? channel}) {
-    final parent = asyncValueConsumer(node);
+  bool _isAsyncObserved(
+    AstNode node, {
+    ExceptionChannel? channel,
+    AstNode? consumer,
+  }) {
+    final parent = consumer ?? asyncValueConsumer(node);
     return (channel != ExceptionChannel.future &&
             (parent is ForEachParts ||
                 parent is SpreadElement ||

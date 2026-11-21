@@ -804,6 +804,37 @@ Future<void> contained() async {
       );
     },
   );
+  test(
+    'immediate local awaits preserve types and protect at the await',
+    () async {
+      await _verify(
+        '''
+Future<void> load() async { throw 'future failure'; }
+Future<void> beforeFuture() { throw 3; }
+Future<void> escaped() async { final pending = load(); await pending; }
+Future<void> caught() async {
+  final pending = (load());
+  try { await (pending); } on String {}
+}
+Future<void> beforeAwait() async {
+  final pending = beforeFuture();
+  try { await pending; } on int {}
+}
+Future<void> unknown(Future<void> input) async {
+  final pending = input;
+  try { await pending; } on String {}
+}
+''',
+        (summaries, _) {
+          expect(summaries['escaped']!.exceptionTypes.toSet(), {'String'});
+          expect(summaries['escaped']!.hasUnknownEffects, isFalse);
+          expect(summaries['caught']!.hasAnyThrowSource, isFalse);
+          expect(summaries['beforeAwait']!.exceptionTypes.toSet(), {'int'});
+          expect(summaries['unknown']!.hasUnknownEffects, isTrue);
+        },
+      );
+    },
+  );
 }
 
 extension on ThrowSummary {

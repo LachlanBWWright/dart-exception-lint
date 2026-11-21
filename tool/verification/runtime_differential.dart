@@ -182,6 +182,8 @@ const _effects = {
   'anyKnownFailure': ('future', 'String'),
   'discardedWaitFailure': ('scheduled', 'String'),
   'blockedWaitFailure': ('scheduled', 'String'),
+  'immediateStoredFailure': ('future', 'String'),
+  'beforeStoredAwaitFailure': ('future', 'String'),
   'futureHandlerFailure': ('future', 'String'),
   'futureFilterFailure': ('future', 'String'),
   'streamHandlerFailure': ('stream', 'String'),
@@ -227,6 +229,7 @@ const _suppressedEffects = {
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
   'waitKnownCaught': 'String',
+  'immediateStoredCaught': 'String',
   'futureAsStreamCaught': 'String',
   'blockedStreamTerminal': 'String',
   'groupedStatementCase': 'String',
@@ -307,6 +310,9 @@ const _observations = {
   'any_known_failure': 'String',
   'discarded_wait_failure': 'none/String',
   'blocked_wait_failure': 'none/String',
+  'immediate_stored_failure': 'String',
+  'immediate_stored_caught': 'none',
+  'before_stored_await_failure': 'String',
   'wait_known_caught': 'none',
   'future_handler_failure': 'String',
   'future_filter_failure': 'String',
@@ -619,6 +625,19 @@ Future<void> blockedWaitFailure() async {
     await Future.wait<int>([Future<int>.error('unattached future'), stopEvaluation()]);
   } on int {}
 }
+Future<void> immediateStoredFailure() async {
+  final pending = Future<void>.error('stored future');
+  await pending;
+}
+Future<void> immediateStoredCaught() async {
+  final pending = Future<void>.error('stored future');
+  try { await pending; } on String {}
+}
+Future<void> beforeFuture() => throw 'before future creation';
+Future<void> beforeStoredAwaitFailure() async {
+  final pending = beforeFuture();
+  try { await pending; } on String {}
+}
 Future<void> waitKnownCaught() async {
   try { await Future.wait<int>([Future<int>.error('wait error')]); } on String {}
 }
@@ -709,6 +728,9 @@ Future<void> main() async {
     'any_known_failure': await captureAsync(anyKnownFailure),
     'discarded_wait_failure': await captureUnobserved(() async { discardedWaitFailure(); }),
     'blocked_wait_failure': await captureUnobserved(blockedWaitFailure),
+    'immediate_stored_failure': await captureAsync(immediateStoredFailure),
+    'immediate_stored_caught': await captureAsync(immediateStoredCaught),
+    'before_stored_await_failure': await captureAsync(beforeStoredAwaitFailure),
     'wait_known_caught': await captureAsync(waitKnownCaught),
     'future_handler_failure': await captureAsync(futureHandlerFailure),
     'future_filter_failure': await captureAsync(futureFilterFailure),
