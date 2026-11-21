@@ -24,6 +24,27 @@ The HTTP manifest entry selects `pkgs/http`. The startup probe confirmed
 that the installed plugin emitted `no_manual_throw`. The table records
 diagnostic volume. The separate semantic corpus carries expected effect labels.
 
+### Scoped follow-up runs
+
+Each counter below covers the selected package's own files. Dependency
+resolution skipped nested examples, and existing analyzer warnings were kept
+visible. All five runs completed with zero dependency and plugin failures.
+
+| Repository | Plugin diagnostics |
+| --- | ---: |
+| Equatable | 2,892 |
+| Fpdart | 3,019 |
+| GetIt | 10,541 |
+| RxDart | 23,778 |
+| `dart_path` | 11,610 |
+
+The earlier full-package RxDart analysis reached its 660-second timeout. An
+Analysis Server CPU profile showed repeated dependency hashing and source-key
+construction during rule execution. At `93e1bec`, the same pinned package
+completed plugin analysis in about 183 seconds with a fresh analyzer state.
+Its pinned package root contains 83 library files. The `dart_path` result
+was verified separately at `d6d4dcd`.
+
 ## Flutter 3.50.1 and bundled Dart 3.14.0
 
 Three pinned Flutter packages completed dependency resolution and plugin
@@ -51,8 +72,9 @@ cannot finish before the package under evaluation publishes its results.
   uncertainty. [Pinned source](https://github.com/dart-lang/path/blob/7e3d5d87220133ad9cc99f82e85a826011a62859/lib/src/parsed_path.dart#L51-L57)
 - In the same parser, `start` begins at zero or one and is updated to `i + 1`
   inside the bounded loop. The final `substring(start)` also checks
-  `start < path.length`. The runtime-source rule still reports this call.
-  Proving its bounds requires following the value through the loop. [Pinned source](https://github.com/dart-lang/path/blob/7e3d5d87220133ad9cc99f82e85a826011a62859/lib/src/parsed_path.dart#L60-L72)
+  `start < path.length`. The evaluator confirms that this final bounds
+  diagnostic disappears. The code-unit read, indexed read and two-argument
+  substring inside the loop still report bounds effects. [Pinned source](https://github.com/dart-lang/path/blob/7e3d5d87220133ad9cc99f82e85a826011a62859/lib/src/parsed_path.dart#L60-L72)
 - The `flutter_hooks` ticker assertion explicitly throws a `FlutterError`.
   The scoped run reports the expected `no_manual_throw` diagnostic on that
   statement. [Pinned source](https://github.com/rrousselGit/flutter_hooks/blob/6f7344fc09f3800c1a9944d06ae56d5324e084e3/packages/flutter_hooks/lib/src/animation.dart#L178-L187)
