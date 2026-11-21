@@ -64,6 +64,35 @@ final class ThrowSourceCatalog {
     if (node is MethodInvocation && isSdkIterableTraversal(element)) {
       return _matchIterableTraversal(node, element.name!, options);
     }
+    if (node is InstanceCreationExpression) {
+      final count = nonpositiveGenerationCount(node);
+      if (count != null) {
+        final fails =
+            count < 0 &&
+            element.enclosingElement?.name == 'List' &&
+            options.treatCollectionStateAsThrowing;
+        final fixedLength = node.argumentList.arguments
+            .whereType<NamedArgument>()
+            .any(
+              (argument) =>
+                  argument.name.lexeme == 'growable' &&
+                  constantBooleanValue(argument.argumentExpression) == false,
+            );
+        return ThrowSource(
+          kind: ThrowSourceKind.collectionStateCall,
+          confidence: fails
+              ? ThrowConfidence.definiteThrow
+              : ThrowConfidence.noObviousThrow,
+          displayName: '${element.enclosingElement?.name}.generate',
+          exceptionTypes: !fails
+              ? const []
+              : fixedLength
+              ? const ['RangeError']
+              : const ['ArgumentError', 'RangeError'],
+          evidence: const {EffectEvidence.sdkModel},
+        );
+      }
+    }
     final jsonDecoding = jsonDecodingInvocation(node, element);
     if (jsonDecoding != null) {
       return ThrowSource(
@@ -161,14 +190,13 @@ final class ThrowSourceCatalog {
     String name,
     ExceptionAnalysisOptions options,
   ) {
-    var count = node.argumentList.arguments.firstOrNull?.argumentExpression;
-    while (count is ParenthesizedExpression) {
-      count = count.expression;
-    }
+    final count = integerLiteralValue(
+      node.argumentList.arguments.firstOrNull?.argumentExpression,
+    );
     final mayRejectCount =
         options.treatCollectionStateAsThrowing &&
         (name == 'skip' || name == 'take') &&
-        !(count is IntegerLiteral && (count.value ?? -1) >= 0);
+        (count == null || count < 0);
     return ThrowSource(
       kind: ThrowSourceKind.collectionStateCall,
       confidence: mayRejectCount
@@ -178,6 +206,24 @@ final class ThrowSourceCatalog {
       exceptionTypes: mayRejectCount ? const ['RangeError'] : const [],
       evidence: const {EffectEvidence.sdkModel},
     );
+  }
+
+  static int? nonpositiveGenerationCount(InstanceCreationExpression node) {
+    final constructor = node.constructorName.element;
+    if (constructor == null ||
+        constructor.name != 'generate' ||
+        !constructor.library.isInSdk ||
+        constructor.library.uri.toString() != 'dart:core' ||
+        !const {
+          'Iterable',
+          'List',
+        }.contains(constructor.enclosingElement.name)) {
+      return null;
+    }
+    final count = integerLiteralValue(
+      node.argumentList.arguments.firstOrNull?.argumentExpression,
+    );
+    return count != null && count <= 0 ? count : null;
   }
 
   static ThrowSource? matchIndexAccess(

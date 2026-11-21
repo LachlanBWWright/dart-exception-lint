@@ -92,6 +92,8 @@ Future<void> main() async {
             'lateLocalAssigned',
             'lateLocalMutableInitializer',
             'safeLiteralListGetters',
+            'zeroListGeneration',
+            'negativeIterableGeneration',
             'growableListClear',
             'caughtEmptyListLast',
             'safeListTraversal',
@@ -150,8 +152,9 @@ Future<void> main() async {
     Future<void> verify(
       String executable,
       List<String> arguments,
-      String platform,
-    ) async {
+      String platform, {
+      Map<String, String> backendExpectations = const {},
+    }) async {
       final result = await Process.run(
         executable,
         arguments,
@@ -167,10 +170,11 @@ Future<void> main() async {
       }
       final observed =
           jsonDecode((result.stdout as String).trim()) as Map<String, dynamic>;
+      final expected = {...expectedObservations, ...backendExpectations};
       final differences = [
-        for (final key in {...expectedObservations.keys, ...observed.keys})
-          if (observed[key] != expectedObservations[key])
-            '$key observed ${observed[key]}, expected ${expectedObservations[key]}',
+        for (final key in {...expected.keys, ...observed.keys})
+          if (observed[key] != expected[key])
+            '$key observed ${observed[key]}, expected ${expected[key]}',
       ];
       if (differences.isNotEmpty) {
         throw StateError('$platform: ${differences.join(', ')}');
@@ -202,11 +206,16 @@ Future<void> main() async {
     await compile('js', javascript);
     // dart2js targets a browser global. Node provides the same timers and
     // microtasks after exposing its global object as `self`.
-    await verify('node', [
-      '-e',
-      'globalThis.self = globalThis; require(process.argv[1]);',
-      javascript,
-    ], 'Dart JavaScript (Node)');
+    await verify(
+      'node',
+      [
+        '-e',
+        'globalThis.self = globalThis; require(process.argv[1]);',
+        javascript,
+      ],
+      'Dart JavaScript (Node)',
+      backendExpectations: const {'negative_list_generation': 'ArgumentError'},
+    );
 
     await compile('wasm', '${directory.path}/main.wasm');
     final wasmLauncher = await File('${directory.path}/run.mjs').writeAsString(
@@ -329,6 +338,9 @@ const _effects = {
   'lateFinalRecursiveInitializer': ('synchronous', 'LateInitializationError'),
   'multipleListSingle': ('synchronous', 'StateError'),
   'resizedListFirst': ('synchronous', 'StateError'),
+  'negativeListGeneration': ('synchronous', 'ArgumentError'),
+  'negativeFixedListGeneration': ('synchronous', 'RangeError'),
+  'positiveListGeneration': ('synchronous', 'String'),
   'negativeListTraversal': ('synchronous', 'RangeError'),
   'deferredListPredicate': ('deferred', 'String'),
   'ordinaryEquality': ('synchronous', 'String'),
@@ -433,6 +445,7 @@ const _suppressedEffects = {
   'failedAssertionMessage': 'AssertionError',
   'freshCompleterNull': 'StateError',
   'cascadedCompleterRepeat': 'TypeError',
+  'negativeListGeneration': 'String',
   'repeatedCompleterError': 'String',
   'stoppedConstructorField': 'String',
   'stoppedSuperArgument': 'String',
@@ -542,6 +555,11 @@ const _observations = {
   'caught_empty_list_last': 'none',
   'multiple_list_single': 'StateError',
   'resized_list_first': 'StateError',
+  'zero_list_generation': 'none',
+  'negative_iterable_generation': 'none',
+  'negative_list_generation': 'RangeError',
+  'negative_fixed_list_generation': 'RangeError',
+  'positive_list_generation': 'String',
   'safe_list_traversal': 'none',
   'caught_list_traversal_range': 'none',
   'negative_list_traversal': 'RangeError',
@@ -827,6 +845,14 @@ void growableListClear() { final list = [1]; list.clear(); }
 void caughtEmptyListLast() { try { (<int>[]).last; } on StateError {} }
 int multipleListSingle() => [1, 2].single;
 int resizedListFirst() { final list = [1]; list.clear(); return list.first; }
+void zeroListGeneration() { List<int>.generate(0, (_) => throw 'not invoked'); }
+Iterable<int> negativeIterableGeneration() =>
+    Iterable<int>.generate(-1, (_) => throw 'not invoked');
+void negativeListGeneration() { List<int>.generate((-1), (_) => throw 'not invoked'); }
+void negativeFixedListGeneration() {
+  List<int>.generate(-1, (_) => throw 'not invoked', growable: false);
+}
+void positiveListGeneration() { List<int>.generate(1, (_) => throw 'generator'); }
 void safeListTraversal() { final list = [1]; list.skip(1); list.take((2)); }
 void caughtListTraversalRange() { try { [1].take(-1); } on RangeError {} }
 void negativeListTraversal() { [1].skip(-1); }
@@ -1264,6 +1290,11 @@ Future<void> main() async {
     'caught_empty_list_last': capture(caughtEmptyListLast),
     'multiple_list_single': capture(multipleListSingle),
     'resized_list_first': capture(resizedListFirst),
+    'zero_list_generation': capture(zeroListGeneration),
+    'negative_iterable_generation': capture(() => negativeIterableGeneration().toList()),
+    'negative_list_generation': capture(negativeListGeneration),
+    'negative_fixed_list_generation': capture(negativeFixedListGeneration),
+    'positive_list_generation': capture(positiveListGeneration),
     'safe_list_traversal': capture(safeListTraversal),
     'caught_list_traversal_range': capture(caughtListTraversalRange),
     'negative_list_traversal': capture(negativeListTraversal),

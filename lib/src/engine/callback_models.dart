@@ -104,7 +104,9 @@ Iterable<CallbackExecution> callbackExecutions(
         );
         if (callback != null) yield callback;
       } else if (name == 'generate' &&
-          (owner == 'List' || owner == 'Iterable')) {
+          (owner == 'List' || owner == 'Iterable') &&
+          !(node is InstanceCreationExpression &&
+              ThrowSourceCatalog.nonpositiveGenerationCount(node) != null)) {
         final callback = at(
           1,
           owner == 'List'

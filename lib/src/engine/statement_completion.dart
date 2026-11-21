@@ -1083,6 +1083,24 @@ bool isNullComparison(BinaryExpression node) =>
     (node.operator.lexeme == '==' || node.operator.lexeme == '!=') &&
     (_isNull(node.leftOperand) || _isNull(node.rightOperand));
 
+int? integerLiteralValue(Expression? expression) {
+  var sign = 1;
+  while (true) {
+    switch (expression) {
+      case ParenthesizedExpression(expression: final inner):
+        expression = inner;
+      case PrefixExpression(:final operator, :final operand)
+          when operator.lexeme == '-':
+        sign = -sign;
+        expression = operand;
+      case IntegerLiteral(value: final value?) when value >= 0:
+        return sign * value;
+      default:
+        return null;
+    }
+  }
+}
+
 bool? constantBooleanValue(Expression expression) => switch (expression) {
   BooleanLiteral(:final value) => value,
   ParenthesizedExpression(:final expression) => constantBooleanValue(
