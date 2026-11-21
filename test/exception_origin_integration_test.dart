@@ -51,18 +51,32 @@ class DangerousClient {
 String _decode(String input) => jsonDecode(input) as String;
 ''',
       mainSource: '''
+import 'dart:convert' as codec;
 import 'package:third_party_stub/third_party_stub.dart';
 
 void f() {
   DangerousClient().fetch();
 }
+
+void containedJson(String input) {
+  try { codec.jsonDecode(input); } on FormatException {}
+  try { codec.json.decode(input); } on FormatException {}
+  try { const codec.JsonDecoder().convert(input); } on FormatException {}
+}
+void createJsonDecoder() { const codec.JsonDecoder(); }
 ''',
     );
 
     expect(result.exitCode, 0, reason: result.stderr.toString());
-    expect(result.stdout, contains('lib/main.dart:4:21'));
+    expect(result.stdout, contains('lib/main.dart:5:21'));
     expect(result.stdout, contains('catch_inferred_throwing_calls'));
     expect(result.stdout, contains('third_party_stub/DangerousClient.fetch'));
+    final mainDiagnostics = result.stdout
+        .toString()
+        .split('\n')
+        .where((line) => line.contains(' - lib/main.dart:'))
+        .join('\n');
+    expect(_countCode(mainDiagnostics, 'catch_runtime_throw_sources'), 0);
   });
 
   test('infers awaited async errors from third-party bodies', () async {

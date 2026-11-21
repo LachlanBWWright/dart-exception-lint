@@ -463,9 +463,8 @@ final class ThrowSourceCatalog {
         _isExpectedLibrary(libraryUri, 'dart:convert')) {
       return const ThrowSource(
         kind: ThrowSourceKind.decodeCall,
-        confidence: ThrowConfidence.possibleThrow,
+        confidence: ThrowConfidence.noObviousThrow,
         displayName: 'JsonDecoder',
-        exceptionTypes: ['FormatException'],
       );
     }
 
@@ -698,23 +697,27 @@ final class ThrowSourceCatalog {
     }
 
     if (name == 'jsonDecode' &&
-        targetSource == null &&
+        enclosingClassName == null &&
         _isExpectedLibrary(libraryUri, 'dart:convert')) {
-      return const ThrowSource(
-        kind: ThrowSourceKind.decodeCall,
-        confidence: ThrowConfidence.possibleThrow,
-        displayName: 'jsonDecode',
-      );
+      return _jsonDecodingSource('jsonDecode', _jsonReviver(node));
+    }
+
+    if (name == 'decode' &&
+        enclosingClassName == 'JsonCodec' &&
+        _isExpectedLibrary(libraryUri, 'dart:convert') &&
+        _isDefaultJsonCodec(node.realTarget)) {
+      return _jsonDecodingSource('JsonCodec.decode', _jsonReviver(node));
     }
 
     if (name == 'convert' &&
-        targetSource == 'JsonDecoder' &&
+        enclosingClassName == 'JsonDecoder' &&
         _isExpectedLibrary(libraryUri, 'dart:convert')) {
-      return const ThrowSource(
-        kind: ThrowSourceKind.decodeCall,
-        confidence: ThrowConfidence.possibleThrow,
-        displayName: 'JsonDecoder.convert',
-      );
+      final creation = _nativeJsonDecoderCreation(node.realTarget);
+      if (creation != null) {
+        final reviver =
+            creation.argumentList.arguments.firstOrNull?.argumentExpression;
+        return _jsonDecodingSource('JsonDecoder.convert', reviver);
+      }
     }
 
     if (name == 'convert' &&
@@ -1396,6 +1399,57 @@ final class ThrowSourceCatalog {
       resolvedExceptionTypes: source.resolvedExceptionTypes,
       exceptionSupertypes: source.exceptionSupertypes,
     );
+  }
+
+  static ThrowSource _jsonDecodingSource(String name, Expression? reviver) =>
+      ThrowSource(
+        kind: ThrowSourceKind.decodeCall,
+        confidence: ThrowConfidence.possibleThrow,
+        displayName: name,
+        exceptionTypes:
+            reviver == null || reviver.staticType?.isDartCoreNull == true
+            ? const ['FormatException']
+            : const [],
+      );
+
+  static Expression? _jsonReviver(MethodInvocation node) => node
+      .argumentList
+      .arguments
+      .whereType<NamedArgument>()
+      .where((argument) => argument.name.lexeme == 'reviver')
+      .firstOrNull
+      ?.argumentExpression;
+
+  static bool _isDefaultJsonCodec(Expression? receiver) {
+    while (receiver is ParenthesizedExpression) {
+      receiver = receiver.expression;
+    }
+    final element = switch (receiver) {
+      SimpleIdentifier() => receiver.element,
+      PrefixedIdentifier() => receiver.identifier.element,
+      _ => null,
+    };
+    return element is GetterElement &&
+        element.library.isInSdk &&
+        element.library.uri.toString() == 'dart:convert' &&
+        element.variable.isConst &&
+        element.name == 'json';
+  }
+
+  static InstanceCreationExpression? _nativeJsonDecoderCreation(
+    Expression? receiver,
+  ) {
+    while (receiver is ParenthesizedExpression) {
+      receiver = receiver.expression;
+    }
+    if (receiver is! InstanceCreationExpression) return null;
+    final constructor = receiver.constructorName.element;
+    return constructor != null &&
+            constructor.library.isInSdk &&
+            constructor.library.uri.toString() == 'dart:convert' &&
+            constructor.enclosingElement.name == 'JsonDecoder'
+        ? receiver
+        : null;
   }
 
   static bool _isKnownSafeNativeStream(Expression? expression) {

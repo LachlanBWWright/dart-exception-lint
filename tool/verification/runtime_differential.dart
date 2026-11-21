@@ -45,6 +45,7 @@ Future<void> main() async {
             'synchronousValueFactory',
             'directNativeFutureIgnore',
             'handledTypedFutureError',
+            'createJsonDecoder',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -175,6 +176,9 @@ const _effects = {
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'secondStringIndex': ('synchronous', 'RangeError'),
   'negativeSubstringStart': ('synchronous', 'RangeError'),
+  'decodePrefixedJson': ('synchronous', 'FormatException'),
+  'decodeDefaultJsonCodec': ('synchronous', 'FormatException'),
+  'convertJsonDecoder': ('synchronous', 'FormatException'),
   'reversedSubstringRange': ('synchronous', 'RangeError'),
   'dynamicBooleanFailure': ('synchronous', 'TypeError'),
   'blockedCastFailure': ('synchronous', 'int'),
@@ -270,6 +274,7 @@ const _suppressedEffects = {
   'stoppedSuperArgument': 'String',
   'guardedStringIndex': 'RangeError',
   'boundedSubstringStart': 'RangeError',
+  'containedJsonDecode': 'FormatException',
   'nativeStringEquality': 'String',
   'caughtDynamicBoolean': 'TypeError',
   'blockedCastFailure': 'TypeError',
@@ -339,6 +344,11 @@ const _observations = {
   'rebound_string_index': 'RangeError',
   'second_string_index': 'RangeError',
   'bounded_substring_start': 'none',
+  'create_json_decoder': 'none',
+  'decode_prefixed_json': 'FormatException',
+  'decode_default_json_codec': 'FormatException',
+  'convert_json_decoder': 'FormatException',
+  'contained_json_decode': 'none',
   'native_string_equality': 'none',
   'negative_substring_start': 'RangeError',
   'reversed_substring_range': 'RangeError',
@@ -461,6 +471,7 @@ const _observations = {
 const _fixture = r'''
 import 'dart:async';
 import 'dart:convert';
+import 'dart:convert' as codec;
 
 const disabledBranch = false;
 Never stopEvaluation() => throw 42;
@@ -551,6 +562,15 @@ final class EqualityTrap {
 bool nativeStringEquality(String left, Object? right) => left == right || left != right;
 void negativeSubstringStart(String text, int start) {
   if (start < text.length) text.substring(start);
+}
+void createJsonDecoder() { const codec.JsonDecoder(); }
+void decodePrefixedJson(String text) { codec.jsonDecode(text); }
+void decodeDefaultJsonCodec(String text) { codec.json.decode(text); }
+void convertJsonDecoder(String text) { const codec.JsonDecoder().convert(text); }
+void containedJsonDecode(String text) {
+  try { codec.jsonDecode(text); } on FormatException {}
+  try { codec.json.decode(text); } on FormatException {}
+  try { const codec.JsonDecoder().convert(text); } on FormatException {}
 }
 void reversedSubstringRange(String text) {
   var start = 0;
@@ -873,6 +893,7 @@ String label(Object error) => switch (error) {
   TypeError() => 'TypeError',
   RangeError() => 'RangeError',
   ArgumentError() => 'ArgumentError',
+  FormatException() => 'FormatException',
   AssertionError() => 'AssertionError',
   UnsupportedError() => 'UnsupportedError',
   String() => 'String',
@@ -926,6 +947,11 @@ Future<void> main() async {
     'rebound_string_index': capture(() => reboundStringIndex('A')),
     'second_string_index': capture(() => secondStringIndex('A')),
     'bounded_substring_start': capture(() { boundedSubstringStart(''); boundedSubstringStart('word'); }),
+    'create_json_decoder': capture(createJsonDecoder),
+    'decode_prefixed_json': capture(() => decodePrefixedJson('{')),
+    'decode_default_json_codec': capture(() => decodeDefaultJsonCodec('{')),
+    'convert_json_decoder': capture(() => convertJsonDecoder('{')),
+    'contained_json_decode': capture(() => containedJsonDecode('{')),
     'native_string_equality': capture(() => nativeStringEquality('value', EqualityTrap())),
     'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
     'reversed_substring_range': capture(() => reversedSubstringRange('word')),
