@@ -49,6 +49,9 @@ Future<void> main() async {
             'caughtJsonReviver',
             'nullComparison',
             'storedConstantListIndex',
+            'lateLocalInitialized',
+            'lateLocalAssigned',
+            'lateLocalMutableInitializer',
             'safeLiteralListGetters',
             'growableListClear',
             'caughtEmptyListLast',
@@ -205,6 +208,8 @@ const _effects = {
   'resolvedConstructorRedirect': ('synchronous', 'String'),
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'resizedLiteralListIndex': ('synchronous', 'RangeError'),
+  'lateLocalConditional': ('synchronous', 'LateInitializationError'),
+  'lateFinalRecursiveInitializer': ('synchronous', 'LateInitializationError'),
   'multipleListSingle': ('synchronous', 'StateError'),
   'resizedListFirst': ('synchronous', 'StateError'),
   'negativeListTraversal': ('synchronous', 'RangeError'),
@@ -398,6 +403,11 @@ const _observations = {
   'ordinary_equality': 'String',
   'stored_constant_list_index': 'none',
   'resized_literal_list_index': 'RangeError',
+  'late_local_initialized': 'none',
+  'late_local_assigned': 'none',
+  'late_local_conditional': 'LateInitializationError',
+  'late_local_mutable_initializer': 'none',
+  'late_final_recursive_initializer': 'LateInitializationError',
   'safe_literal_list_getters': 'none',
   'caught_empty_list_last': 'none',
   'multiple_list_single': 'StateError',
@@ -623,6 +633,31 @@ bool nullComparison(dynamic input) => input == null || null != input;
 bool ordinaryEquality(EqualityTrap input, Object other) => input == other;
 int storedConstantListIndex() { const list = [1, 2]; return list[1]; }
 int resizedLiteralListIndex() { final list = [1, 2]; list.clear(); return list[1]; }
+int lateLocalInitialized() { late int value = 2; final copy = value; return copy; }
+int lateLocalAssigned(bool flag) {
+  late int value;
+  value = 1;
+  if (flag) { return value; }
+  return value;
+}
+int lateLocalConditional(bool flag) {
+  late int value;
+  if (flag) value = 1;
+  final copy = value;
+  return copy;
+}
+int produceLateValue() => 1;
+int lateLocalMutableInitializer() {
+  late int value = produceLateValue();
+  return value;
+}
+int lateFinalRecursiveInitializer() {
+  late int Function() obtain;
+  late final int value = obtain();
+  var entries = 0;
+  obtain = () => ++entries > 1 ? 42 : value;
+  return value;
+}
 void safeLiteralListGetters() {
   const list = [1];
   list.first;
@@ -987,6 +1022,8 @@ String label(Object error) => switch (error) {
   ArgumentError() => 'ArgumentError',
   FormatException() => 'FormatException',
   StateError() => 'StateError',
+  Error() when error.toString().startsWith('LateInitializationError:') =>
+    'LateInitializationError',
   AssertionError() => 'AssertionError',
   UnsupportedError() => 'UnsupportedError',
   String() => 'String',
@@ -1053,6 +1090,11 @@ Future<void> main() async {
     'ordinary_equality': capture(() => ordinaryEquality(EqualityTrap(), Object())),
     'stored_constant_list_index': capture(storedConstantListIndex),
     'resized_literal_list_index': capture(resizedLiteralListIndex),
+    'late_local_initialized': capture(lateLocalInitialized),
+    'late_local_assigned': capture(() => lateLocalAssigned(true)),
+    'late_local_conditional': capture(() => lateLocalConditional(false)),
+    'late_local_mutable_initializer': capture(lateLocalMutableInitializer),
+    'late_final_recursive_initializer': capture(lateFinalRecursiveInitializer),
     'safe_literal_list_getters': capture(safeLiteralListGetters),
     'caught_empty_list_last': capture(caughtEmptyListLast),
     'multiple_list_single': capture(multipleListSingle),

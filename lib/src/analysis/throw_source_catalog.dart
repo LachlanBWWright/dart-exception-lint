@@ -306,7 +306,7 @@ final class ThrowSourceCatalog {
       return null;
     }
     if (variable is LocalVariableElement &&
-        node.parent is VariableDeclaration) {
+        isInitializedLateLocalRead(node, variable)) {
       return null;
     }
     return ThrowSource(

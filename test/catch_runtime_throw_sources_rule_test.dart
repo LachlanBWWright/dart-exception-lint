@@ -326,6 +326,40 @@ String readOption() { final copy = Settings.option; return copy; }
     ]);
   }
 
+  Future<void> test_lateLocalRead_tracksUnconditionalWrites() async {
+    const code = r'''
+int initialized() {
+  late int value = 2;
+  final copy = value;
+  return copy;
+}
+int produce() => 3;
+int lazyMutable() {
+  late int value = produce();
+  return value;
+}
+int assigned(bool flag) {
+  late int value;
+  value = 1;
+  if (flag) return value;
+  return value;
+}
+int conditional(bool flag) {
+  late int value;
+  if (flag) value = 1;
+  final copy = value;
+  return copy;
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.lastIndexOf('value;'),
+        'value'.length,
+        messageContainsAll: ['LateInitializationError'],
+      ),
+    ]);
+  }
+
   Future<void> test_integerDivision_reports() async {
     const code = r'''
 void f(int value) {

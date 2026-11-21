@@ -2,6 +2,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/ast/utilities.dart';
 
 /// Structural completion facts, independent of exception-source inference.
 /// Unknown expressions/statements retain normal completion. A missing normal
@@ -26,6 +28,56 @@ final _constructorInputCompletion = Expando<bool>();
 
 StatementCompletion statementCompletion(Statement statement) =>
     _completionCache[statement] ??= StatementCompletion(_statement(statement));
+
+VariableDeclaration? localVariableDeclaration(
+  SimpleIdentifier reference,
+  LocalVariableElement variable,
+) {
+  final fragment = variable.firstFragment;
+  final declaration = NodeLocator(
+    fragment.nameOffset ?? fragment.offset,
+  ).searchWithin(reference.root)?.thisOrAncestorOfType<VariableDeclaration>();
+  return declaration?.declaredFragment?.element == variable
+      ? declaration
+      : null;
+}
+
+/// Finds a value established by initialization or an earlier unconditional
+/// write. A nontrivial late final initializer can reenter before it writes.
+bool isInitializedLateLocalRead(
+  SimpleIdentifier read,
+  LocalVariableElement variable,
+) {
+  final initializer = localVariableDeclaration(read, variable)?.initializer;
+  if (initializer != null && !variable.isFinal ||
+      initializer is IntegerLiteral ||
+      initializer is DoubleLiteral ||
+      initializer is BooleanLiteral ||
+      initializer is SimpleStringLiteral ||
+      initializer is NullLiteral) {
+    return true;
+  }
+  AstNode child = read;
+  var parent = child.parent;
+  while (parent != null && parent is! FunctionBody) {
+    if (child is Statement && parent is Block) {
+      for (final statement in parent.statements) {
+        if (identical(statement, child)) break;
+        if (statement case ExpressionStatement(
+          expression: AssignmentExpression(
+            operator: final operator,
+            leftHandSide: SimpleIdentifier(element: final target),
+          ),
+        ) when operator.lexeme == '=' && target == variable) {
+          return true;
+        }
+      }
+    }
+    child = parent;
+    parent = child.parent;
+  }
+  return false;
+}
 
 Set<CompletionTransfer> _sequence(Iterable<Statement> statements) {
   var result = <CompletionTransfer>{_normal};
