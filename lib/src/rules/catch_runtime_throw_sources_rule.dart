@@ -427,7 +427,11 @@ final class _Visitor extends SimpleAstVisitor<void> {
   @override
   void visitAssignmentExpression(AssignmentExpression node) {
     _recordImplicitCast(node.rightHandSide, node.writeType);
-    final source = ThrowSourceCatalog.matchAssignmentExpression(node, options);
+    final source =
+        ThrowSourceCatalog.matchAssignmentExpression(node, options) ??
+        (options.treatAsCastsAsThrowing
+            ? RuntimeChecks.assignmentCovarianceCheck(node)
+            : null);
     if (source != null && source.confidence.isThrowing) {
       _report(
         node,

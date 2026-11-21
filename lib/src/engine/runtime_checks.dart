@@ -46,6 +46,11 @@ final class RuntimeChecks {
     AstNode node,
     ExecutableElement target,
   ) sync* {
+    if (node is AssignmentExpression && target is SetterElement) {
+      final source = assignmentCovarianceCheck(node, target);
+      if (source != null) yield source;
+      return;
+    }
     final arguments = switch (node) {
       MethodInvocation(:final argumentList) => argumentList.arguments,
       FunctionExpressionInvocation(:final argumentList) =>
@@ -68,6 +73,38 @@ final class RuntimeChecks {
       final source = covarianceCheck(argument.argumentExpression, parameter);
       if (source != null) yield source;
     }
+  }
+
+  static ThrowSource? assignmentCovarianceCheck(
+    AssignmentExpression node, [
+    SetterElement? target,
+  ]) {
+    final setter = target ?? node.writeElement;
+    if (setter is! SetterElement ||
+        !const {'=', '??='}.contains(node.operator.lexeme) ||
+        !assignmentWriteCanExecute(node)) {
+      return null;
+    }
+    final parameter = setter.formalParameters.singleOrNull;
+    if (parameter == null) return null;
+    final value = node.rightHandSide;
+    final actualType = value.staticType;
+    Expression? receiver = switch (node.leftHandSide) {
+      PropertyAccess(:final realTarget) => realTarget,
+      PrefixedIdentifier(:final prefix) => prefix,
+      _ => null,
+    };
+    while (receiver is ParenthesizedExpression) {
+      receiver = receiver.expression;
+    }
+    if (receiver is InstanceCreationExpression &&
+        receiver.constructorName.element?.isFactory == false &&
+        actualType != null &&
+        actualType is! DynamicType &&
+        setter.library.typeSystem.isSubtypeOf(actualType, parameter.type)) {
+      return null;
+    }
+    return covarianceCheck(value, parameter);
   }
 
   /// Substituting a callback body must preserve the invocation's argument

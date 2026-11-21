@@ -1791,7 +1791,8 @@ final class InferredThrowAnalyzer {
           key,
           [
             ...summary.sources,
-            ...RuntimeChecks.dispatchChecks(callSite, candidate),
+            if (options.treatAsCastsAsThrowing)
+              ...RuntimeChecks.dispatchChecks(callSite, candidate),
           ],
           dependencyElementKeys: summary.dependencyElementKeys,
           complete: summary.complete,
@@ -3020,6 +3021,12 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     final canSkipWrite =
         node.operator.lexeme == '??=' && node.readType?.isDartCoreNull != true;
     _recordImplicitCast(node.rightHandSide, node.writeType);
+    final check = analyzer.options.treatAsCastsAsThrowing
+        ? RuntimeChecks.assignmentCovarianceCheck(node)
+        : null;
+    if (check != null && !_isProtected(node, check)) {
+      sources.add(_normalize(check, node, conditional: canSkipWrite));
+    }
     for (final target in invocationTargets(node, executable.library)) {
       _recordInvocation(
         node,

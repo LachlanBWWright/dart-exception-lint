@@ -178,6 +178,9 @@ const _effects = {
   'dynamicBooleanFailure': ('synchronous', 'TypeError'),
   'blockedCastFailure': ('synchronous', 'int'),
   'blockedCovarianceFailure': ('synchronous', 'int'),
+  'covariantSetterFailure': ('synchronous', 'TypeError'),
+  'narrowedOverrideSetterFailure': ('synchronous', 'TypeError'),
+  'blockedCovariantSetter': ('synchronous', 'int'),
   'constantListAdd': ('synchronous', 'UnsupportedError'),
   'narrowListAdd': ('synchronous', 'TypeError'),
   'stoppedStatementGuard': ('synchronous', 'int'),
@@ -267,6 +270,8 @@ const _suppressedEffects = {
   'caughtDynamicBoolean': 'TypeError',
   'blockedCastFailure': 'TypeError',
   'blockedCovarianceFailure': 'TypeError',
+  'blockedCovariantSetter': 'TypeError',
+  'exactGenericSetter': 'TypeError',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
@@ -335,6 +340,10 @@ const _observations = {
   'caught_dynamic_boolean': 'none',
   'blocked_cast': '42',
   'blocked_covariance': '42',
+  'covariant_setter': 'TypeError',
+  'narrowed_override_setter': 'TypeError',
+  'blocked_covariant_setter': '42',
+  'exact_generic_setter': 'none',
   'growable_list_add': 'none',
   'constant_list_add': 'UnsupportedError',
   'narrow_list_add': 'TypeError',
@@ -549,6 +558,13 @@ class CheckedParameter<T> { void accept(T value, int other) {} }
 void blockedCovarianceFailure(CheckedParameter<num> target) {
   target.accept(1.5, stopEvaluation());
 }
+class Box<T> { Box(this.value); T value; }
+void covariantSetterFailure(Box<num> box) { box.value = 1.5; }
+class ParentSetter { set value(num input) {} }
+class NarrowSetter extends ParentSetter { set value(covariant int input) {} }
+void narrowedOverrideSetterFailure(ParentSetter target) { target.value = 1.5; }
+void blockedCovariantSetter(Box<num> box) { box.value = stopEvaluation(); }
+void exactGenericSetter() { Box<num>(0).value = 1.5; }
 void growableListAdd() { final items = <String>[]; items.add('value'); }
 void constantListAdd() { const items = <String>[]; items.add('value'); }
 void narrowListAdd() { final List<num> items = <int>[]; items.add(1.5); }
@@ -903,6 +919,10 @@ Future<void> main() async {
     'caught_dynamic_boolean': capture(() => caughtDynamicBoolean('not a bool')),
     'blocked_cast': capture(blockedCastFailure),
     'blocked_covariance': capture(() => blockedCovarianceFailure(CheckedParameter<int>())),
+    'covariant_setter': capture(() => covariantSetterFailure(Box<int>(0))),
+    'narrowed_override_setter': capture(() => narrowedOverrideSetterFailure(NarrowSetter())),
+    'blocked_covariant_setter': capture(() => blockedCovariantSetter(Box<int>(0))),
+    'exact_generic_setter': capture(exactGenericSetter),
     'growable_list_add': capture(growableListAdd),
     'constant_list_add': capture(constantListAdd),
     'narrow_list_add': capture(narrowListAdd),

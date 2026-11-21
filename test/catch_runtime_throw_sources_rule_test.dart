@@ -395,6 +395,22 @@ void f(int? maybe) {
     ]);
   }
 
+  Future<void> test_genericSetterChecks_reportWhereWriteCanRun() async {
+    const code = r'''
+class Box<T> { Box(this.value); T value; }
+Never stop() => throw 'input';
+void f(Box<num> target) {
+  target.value = 1.5;
+  try { target.value = 2.5; } on TypeError {}
+  Box<num>(0).value = 3.5;
+  target.value = stop();
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('target.value = 1.5'), 'target.value = 1.5'.length),
+    ]);
+  }
+
   Future<void> test_boundsAndSubstringOperations_report() async {
     const code = r'''
 void f(List<int> values, String text) {
