@@ -535,6 +535,39 @@ void closedLeaf(Closed root) { root.run(); }
   );
 
   test(
+    'mutually recursive overrides share the caller recursion guard',
+    () async {
+      await _verify(
+        '''
+abstract class First { void first(Second other, bool fail); }
+abstract class Second { void second(First other, bool fail); }
+class FirstImpl extends First {
+  @override
+  void first(Second other, bool fail) => other.second(this, fail);
+}
+class SecondImpl extends Second {
+  @override
+  void second(First other, bool fail) {
+    if (fail) throw 'recursive failure';
+    other.first(this, fail);
+  }
+}
+void entry(First first, Second second, bool fail) => first.first(second, fail);
+''',
+        (summaries, _) {
+          final entry = summaries['entry']!;
+          expect(entry.exceptionTypes, contains('String'));
+          expect(entry.hasUnknownEffects, isTrue);
+          expect(
+            entry.dependencyElementKeys.map((key) => key.split(':').last),
+            unorderedEquals(['first', 'first', 'second', 'second']),
+          );
+        },
+      );
+    },
+  );
+
+  test(
     'forwarding proof accepts immediate async adoption and rejects delayed, mutation, virtual, cyclic, dynamic and side effect bodies',
     () async {
       await _verify(

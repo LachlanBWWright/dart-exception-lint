@@ -535,7 +535,7 @@ final class InferredThrowAnalyzer {
                 dependencyElementKeys: const [],
                 complete: true,
               );
-        return _summaryForDispatch(target, input, forwarded);
+        return _summaryForDispatch(target, input, forwarded, depth: depth + 1);
       }
     }
     final parameters = executable.baseElement.formalParameters;
@@ -1449,32 +1449,22 @@ final class InferredThrowAnalyzer {
         callable?.elementKey ??
         '${resolved.library.uri}::${resolved.runtimeType}:${resolved.firstFragment.offset}:${resolved.displayName}';
 
-    _summaryElements[dependencyKey] = resolved.baseElement;
     final currentKey =
         ResolvedCallable.tryCreate(currentExecutable)?.elementKey ??
         '${currentExecutable.library.uri}::${currentExecutable.runtimeType}:${currentExecutable.firstFragment.offset}:${currentExecutable.displayName}';
-    (_directDependencies[currentKey] ??= {}).add(dependencyKey);
-    _directDependencies.putIfAbsent(dependencyKey, () => {});
-    final specialized = _specializedSummary(resolved, node, depth: depth + 1);
-    if (activeKeys.contains(dependencyKey)) {
-      _recursiveKeys.addAll(activeKeys);
-      return specialized ??
-          _summaryCache[dependencyKey] ??
-          ThrowSummary.noObviousThrow(dependencyKey);
-    }
-
-    final nextActiveKeys = {...activeKeys, dependencyKey};
+    _recordDependency(currentKey, dependencyKey, resolved);
+    final invokedDepth = depth + 1;
     final summary =
-        specialized ??
-        _summaryCache[dependencyKey] ??
-        _summarizeWithContracts(
-          resolved.baseElement,
-          elementKey: dependencyKey,
-          depth: depth + 1,
-          activeKeys: nextActiveKeys,
-        );
-    if (specialized == null) _summaryCache[dependencyKey] = summary;
-    final dispatchSummary = _summaryForDispatch(resolved, summary, node);
+        _specializedSummary(resolved, node, depth: invokedDepth) ??
+        _summarizeDependency(resolved, dependencyKey, invokedDepth, activeKeys);
+    final dispatchSummary = _summaryForDispatch(
+      resolved,
+      summary,
+      node,
+      depth: invokedDepth,
+      activeKeys: activeKeys,
+      callerKey: currentKey,
+    );
 
     // Propagate each source separately. Collapsing types and channels at a
     // call site can let a catch for one effect hide another independent effect.
@@ -1533,7 +1523,10 @@ final class InferredThrowAnalyzer {
     return ThrowSummary.merge(
       dependencyKey,
       propagatedSources,
-      dependencyElementKeys: [dependencyKey, ...summary.dependencyElementKeys],
+      dependencyElementKeys: [
+        dependencyKey,
+        ...dispatchSummary.dependencyElementKeys,
+      ],
       complete: dispatchSummary.complete,
       truncationReason: dispatchSummary.truncationReason,
     );
@@ -1587,6 +1580,8 @@ final class InferredThrowAnalyzer {
                     activeKeys: {...activeKeys, key},
                   ),
                   expression,
+                  depth: depth + 1,
+                  activeKeys: activeKeys,
                 ),
         );
       }
@@ -1691,8 +1686,11 @@ final class InferredThrowAnalyzer {
   ThrowSummary _summaryForDispatch(
     ExecutableElement declared,
     ThrowSummary baseSummary,
-    AstNode callSite,
-  ) {
+    AstNode callSite, {
+    int depth = 0,
+    Set<String> activeKeys = const {},
+    String? callerKey,
+  }) {
     if ((declared is! MethodElement && declared is! PropertyAccessorElement) ||
         declared.isStatic ||
         declared.enclosingElement is! InterfaceElement ||
@@ -1762,15 +1760,8 @@ final class InferredThrowAnalyzer {
       final key =
           callable?.elementKey ??
           '${candidate.library.uri}::${candidate.runtimeType}:${candidate.firstFragment.offset}:${candidate.displayName}';
-      final summary =
-          _summaryCache[key] ??
-          _summarizeWithContracts(
-            candidate.baseElement,
-            elementKey: key,
-            depth: 1,
-            activeKeys: {baseSummary.elementKey, key},
-          );
-      _summaryCache[key] = summary;
+      if (callerKey != null) _recordDependency(callerKey, key, candidate);
+      final summary = _summarizeDependency(candidate, key, depth, activeKeys);
       candidateSummaries.add(
         ThrowSummary.merge(
           key,
@@ -1826,8 +1817,10 @@ final class InferredThrowAnalyzer {
       dispatchSources,
       dependencyElementKeys: [
         ...baseSummary.dependencyElementKeys,
-        for (final summary in candidateSummaries)
+        for (final summary in candidateSummaries) ...[
+          summary.elementKey,
           ...summary.dependencyElementKeys,
+        ],
       ],
       complete:
           baseSummary.complete &&
@@ -1840,6 +1833,37 @@ final class InferredThrowAnalyzer {
           ? 'open_dispatch_incomplete'
           : baseSummary.truncationReason,
     );
+  }
+
+  void _recordDependency(
+    String callerKey,
+    String dependencyKey,
+    ExecutableElement executable,
+  ) {
+    _summaryElements[dependencyKey] = executable.baseElement;
+    (_directDependencies[callerKey] ??= {}).add(dependencyKey);
+    _directDependencies.putIfAbsent(dependencyKey, () => {});
+  }
+
+  ThrowSummary _summarizeDependency(
+    ExecutableElement executable,
+    String key,
+    int depth,
+    Set<String> activeKeys,
+  ) {
+    if (activeKeys.contains(key)) {
+      _recursiveKeys.addAll(activeKeys);
+      return _summaryCache[key] ?? ThrowSummary.noObviousThrow(key);
+    }
+    if (_summaryCache[key] case final cached?) return cached;
+    final summary = _summarizeWithContracts(
+      executable.baseElement,
+      elementKey: key,
+      depth: depth,
+      activeKeys: {...activeKeys, key},
+    );
+    if (depth <= options.maxCallDepth) _summaryCache[key] = summary;
+    return summary;
   }
 
   static _DispatchIndex _collectKnownExecutables(
