@@ -205,6 +205,9 @@ The archived Dart Linter pin has compiler errors with its default analyzer
 resolution. A disposable override to analyzer 6.2.0, the package's declared
 minimum, cleared those errors in stock analysis. The plugin run over its
 rules directory still reached the 420-second timeout.
+The scoped `avoid_print.dart` check completed in 38 seconds with third-party
+body analysis disabled. With default analysis enabled, the same file reached
+the 220-second timeout after the declaration cache change.
 
 ## Reviewed source sites
 

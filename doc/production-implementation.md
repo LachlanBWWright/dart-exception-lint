@@ -142,6 +142,19 @@ JavaScript and Wasm observations on each SDK. Its installed stable consumer
 passed release and editor checks. Across three unsaved edits, diagnostics
 appeared in 12–23 ms and cleared in 27–89 ms after the plugin was ready.
 
+The `442dffa` snapshot passed all 21 gates and 622 tests on Dart 3.14.1.
+Its runtime gate matched 249 observations across the VM, JavaScript and
+Wasm. An installed Flutter and Chromium check also passed on the same code.
+
+The archived Dart Linter workload reached 150,000 declaration lookups and
+21,000 source fingerprints in about two minutes. At `8cb0b75`, declaration
+locations are cached against their parsed or resolved unit. Fallback parsing
+also uses the same file bytes for its fingerprint and the parsed source.
+The cache snapshot passed 49 focused tests and all three performance gates
+on Dart 3.11.0 and 3.14.1. The installed LSP checks on both SDKs picked up
+unsaved dependency edits. Diagnostics appeared in 6–33 ms and cleared in
+5–18 ms after startup.
+
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level
