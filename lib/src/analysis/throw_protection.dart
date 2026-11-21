@@ -102,13 +102,17 @@ bool isProtectedByCatch(
 
 bool _isAwaited(AstNode node, {ExceptionChannel? channel}) {
   if (node is ForStatement && node.awaitKeyword != null) return true;
-  if (channel == ExceptionChannel.stream) {
-    final route = asyncValueRoute(node, ExceptionChannel.stream);
+  if (channel != null &&
+      (channel == ExceptionChannel.future ||
+          channel == ExceptionChannel.stream)) {
+    final route = asyncValueRoute(node, channel);
     final consumer = route.consumer;
     final loop = consumer is ForEachParts ? consumer.parent : null;
     return route.channel == ExceptionChannel.future &&
-            consumer is AwaitExpression ||
-        loop is ForStatement && loop.awaitKeyword != null;
+            (node is AwaitExpression || consumer is AwaitExpression) ||
+        route.channel == ExceptionChannel.stream &&
+            loop is ForStatement &&
+            loop.awaitKeyword != null;
   }
   AstNode? current = node;
   while (current != null) {
@@ -174,6 +178,7 @@ AstNode? _forwardingFutureParent(AstNode node) {
               const {
                 'then',
                 'catchError',
+                'asStream',
                 'whenComplete',
                 'timeout',
                 'ignore',
@@ -238,9 +243,11 @@ AstNode? _forwardingFutureParent(AstNode node) {
       MethodInvocation(:final methodName) => methodName.element,
       _ => null,
     };
+    final owner = element?.enclosingElement?.name;
+    final name = element?.name;
     if (element?.library?.uri.toString() == 'dart:async' &&
-        element?.enclosingElement?.name == 'Future' &&
-        element?.name == 'value') {
+        (owner == 'Future' && name == 'value' ||
+            owner == 'Stream' && name == 'fromFuture')) {
       return invocation;
     }
   }
@@ -251,7 +258,7 @@ AstNode? _forwardingFutureParent(AstNode node) {
 AstNode? asyncValueConsumer(AstNode node) =>
     asyncValueRoute(node, ExceptionChannel.synchronous).consumer;
 
-/// Stream terminal operations deliver error events through a Future result.
+/// Tracks SDK conversions that change how a value delivers its errors.
 ({AstNode? consumer, ExceptionChannel channel}) asyncValueRoute(
   AstNode node,
   ExceptionChannel channel,
@@ -260,13 +267,39 @@ AstNode? asyncValueConsumer(AstNode node) =>
   while (true) {
     final forwarding = _forwardingFutureParent(current);
     if (forwarding == null) return (consumer: current.parent, channel: channel);
-    if (channel == ExceptionChannel.stream &&
-        _streamTerminalFuture(forwarding)) {
-      if (!isReachable(forwarding)) return (consumer: null, channel: channel);
-      channel = ExceptionChannel.future;
-    }
+    final projected = _channelAfterForwarding(channel, forwarding);
+    if (projected == null) return (consumer: null, channel: channel);
+    channel = projected;
     current = forwarding;
   }
+}
+
+ExceptionChannel? _channelAfterForwarding(
+  ExceptionChannel channel,
+  AstNode forwarding,
+) {
+  final projected = switch (channel) {
+    ExceptionChannel.stream when _streamTerminalFuture(forwarding) =>
+      ExceptionChannel.future,
+    ExceptionChannel.future when _futureToStream(forwarding) =>
+      ExceptionChannel.stream,
+    _ => channel,
+  };
+  return projected != channel && !isReachable(forwarding) ? null : projected;
+}
+
+bool _futureToStream(AstNode node) {
+  final element = switch (node) {
+    MethodInvocation(:final methodName) => methodName.element,
+    InstanceCreationExpression(:final constructorName) =>
+      constructorName.element,
+    _ => null,
+  };
+  if (element?.library?.uri.toString() != 'dart:async') return false;
+  final owner = element?.enclosingElement?.name;
+  final name = element?.name;
+  return owner == 'Future' && name == 'asStream' ||
+      owner == 'Stream' && name == 'fromFuture';
 }
 
 bool _streamTerminalFuture(AstNode node) {
@@ -478,21 +511,30 @@ bool _hasAsyncErrorHandler(AstNode node, ExceptionChannel? channel) {
   AstNode? current = node;
   while (current != null) {
     if (current is MethodInvocation &&
-        (channel != ExceptionChannel.stream ||
-            current.methodName.element?.enclosingElement?.name == 'Stream') &&
+        _handlerMatchesChannel(current, channel) &&
         hasUnconditionalAsyncErrorHandler(current)) {
       return true;
     }
     final forwarding = _forwardingFutureParent(current);
-    if (channel == ExceptionChannel.stream &&
-        forwarding != null &&
-        _streamTerminalFuture(forwarding)) {
-      if (!isReachable(forwarding)) return false;
-      channel = ExceptionChannel.future;
+    if (channel != null && forwarding != null) {
+      channel = _channelAfterForwarding(channel, forwarding);
+      if (channel == null) return false;
     }
     current = forwarding;
   }
   return false;
+}
+
+bool _handlerMatchesChannel(
+  MethodInvocation invocation,
+  ExceptionChannel? channel,
+) {
+  final owner = invocation.methodName.element?.enclosingElement?.name;
+  return switch (channel) {
+    ExceptionChannel.future => owner == 'Future',
+    ExceptionChannel.stream => owner == 'Stream',
+    _ => true,
+  };
 }
 
 /// Whether an SDK chain intercepts every incoming error. A filter that cannot

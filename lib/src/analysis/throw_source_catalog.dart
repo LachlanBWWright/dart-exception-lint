@@ -336,6 +336,14 @@ final class ThrowSourceCatalog {
       );
     }
 
+    if (libraryUri == 'dart:async' &&
+        className == 'Stream' &&
+        constructorName == 'fromFuture') {
+      return _knownFutureStreamSource(
+        node.argumentList.arguments.firstOrNull?.argumentExpression,
+      );
+    }
+
     if (className == 'Timer' && _isExpectedLibrary(libraryUri, 'dart:async')) {
       return const ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
@@ -785,9 +793,22 @@ final class ThrowSourceCatalog {
       );
     }
 
+    if (libraryUri == 'dart:async' &&
+        enclosingClassName == 'Future' &&
+        name == 'asStream') {
+      return _knownFutureStreamSource(node.realTarget) ??
+          const ThrowSource(
+            kind: ThrowSourceKind.asyncOperation,
+            confidence: ThrowConfidence.asyncError,
+            displayName: 'Future.asStream',
+            isAsync: true,
+            channel: ExceptionChannel.stream,
+          );
+    }
+
     if (_isExpectedLibrary(libraryUri, 'dart:async') &&
         enclosingClassName == 'Future' &&
-        const {'then', 'catchError', 'asStream'}.contains(name)) {
+        const {'then', 'catchError'}.contains(name)) {
       return ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
         confidence: ThrowConfidence.asyncError,
@@ -1128,6 +1149,40 @@ final class ThrowSourceCatalog {
     }
 
     return null;
+  }
+
+  static ThrowSource? _knownFutureStreamSource(Expression? expression) {
+    while (expression is ParenthesizedExpression) {
+      expression = expression.expression;
+    }
+    if (expression is! InstanceCreationExpression) return null;
+    final constructor = expression.constructorName.element?.baseElement;
+    if (constructor is! ConstructorElement ||
+        constructor.library.uri.toString() != 'dart:async' ||
+        constructor.enclosingElement.name != 'Future' ||
+        (constructor.name != 'error' && constructor.name != 'value')) {
+      return null;
+    }
+    final source = _matchInstanceCreation(
+      expression,
+      libraryUri: 'dart:async',
+      className: 'Future',
+      constructorName: constructor.name,
+    );
+    if (source == null ||
+        source.isAsync && source.kind != ThrowSourceKind.futureError) {
+      return null;
+    }
+    return ThrowSource(
+      kind: source.kind,
+      confidence: source.confidence,
+      displayName: source.displayName,
+      isAsync: source.isAsync,
+      channel: ExceptionChannel.stream,
+      exceptionTypes: source.exceptionTypes,
+      resolvedExceptionTypes: source.resolvedExceptionTypes,
+      exceptionSupertypes: source.exceptionSupertypes,
+    );
   }
 
   /// SDK models require an established library identity.

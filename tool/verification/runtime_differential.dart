@@ -189,6 +189,9 @@ const _effects = {
   'streamToList': ('future', 'String'),
   'streamToListDiscarded': ('scheduled', 'String'),
   'nestedStream': ('stream', 'String'),
+  'futureAsStream': ('stream', 'String'),
+  'streamFromFuture': ('stream', 'String'),
+  'futureAsStreamTerminal': ('future', 'String'),
   'blockedStreamTerminal': ('synchronous', 'int'),
   'lazyFailure': ('deferred', 'String'),
   'scheduledFailure': ('scheduled', 'String'),
@@ -215,6 +218,7 @@ const _suppressedEffects = {
   'stoppedGuardCase': 'String',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
+  'futureAsStreamCaught': 'String',
   'blockedStreamTerminal': 'String',
   'groupedStatementCase': 'String',
   'skippedGuard': 'String',
@@ -303,6 +307,10 @@ const _observations = {
   'stream_to_list_caught': 'none',
   'stream_to_list_discarded': 'none/String',
   'nested_stream': 'String',
+  'future_as_stream': 'String',
+  'stream_from_future': 'String',
+  'future_as_stream_terminal': 'String',
+  'future_as_stream_caught': 'none',
   'blocked_stream_terminal': '42',
   'lazy': 'String',
   'scheduled': 'String',
@@ -531,6 +539,16 @@ Future<Stream<int>> nestedStream() async {
     return await Future<Stream<int>>.value(Stream<int>.error('buffered error'));
   } on String { return const Stream<int>.empty(); }
 }
+Stream<int> futureAsStream() => Future<int>.error('buffered error').asStream();
+Stream<int> streamFromFuture() => Stream<int>.fromFuture(Future<int>.error('buffered error'));
+Future<void> futureAsStreamTerminal() async {
+  await Future<int>.error('buffered error').asStream().toList();
+}
+Future<void> futureAsStreamCaught() async {
+  try {
+    await for (final value in Future<int>.error('buffered error').asStream()) { value; }
+  } on String {}
+}
 void blockedStreamTerminal() {
   Stream<int>.error('buffered error').fold<int>(stopEvaluation(), (a, b) => a + b);
 }
@@ -653,6 +671,10 @@ Future<void> main() async {
     'stream_to_list_caught': await captureAsync(streamToListCaught),
     'stream_to_list_discarded': await captureUnobserved(streamToListDiscarded),
     'nested_stream': await captureAsync(() async { await (await nestedStream()).toList(); }),
+    'future_as_stream': await captureAsync(() async { await futureAsStream().toList(); }),
+    'stream_from_future': await captureAsync(() async { await streamFromFuture().toList(); }),
+    'future_as_stream_terminal': await captureAsync(futureAsStreamTerminal),
+    'future_as_stream_caught': await captureAsync(futureAsStreamCaught),
     'blocked_stream_terminal': capture(blockedStreamTerminal),
     'lazy': capture(() { lazyFailure().toList(); }),
     'scheduled': await scheduled.future.timeout(const Duration(seconds: 5)),
