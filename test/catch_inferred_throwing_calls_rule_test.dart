@@ -14,6 +14,17 @@ void main() {
 
 @reflectiveTest
 class CatchInferredThrowingCallsRuleTest extends AnalysisRuleTest {
+  Future<void> test_unqualifiedGetter_reportsOnlyEscapingRead() async {
+    const code = '''
+int get risky => throw 'failure';
+int escapes() => risky;
+int handled() {
+  try { return risky; } on String { return 0; }
+}
+''';
+    await assertDiagnostics(code, [lint(code.indexOf('risky;'), 5)]);
+  }
+
   Future<void> test_shortCircuitAndArgumentOrder_doNotLeakDeadSources() async {
     await assertNoDiagnostics(r'''
 // ignore_for_file: dead_code

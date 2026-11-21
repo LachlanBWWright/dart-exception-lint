@@ -48,6 +48,7 @@ class CatchInferredThrowingCallsRule extends AnalysisRule {
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
+    registry.addSimpleIdentifier(this, visitor);
     registry.addVariableDeclaration(this, visitor);
     registry.addPropertyAccess(this, visitor);
     registry.addPrefixedIdentifier(this, visitor);
@@ -110,6 +111,13 @@ final class _Visitor extends SimpleAstVisitor<void> {
       element: node.methodName.element,
       diagnosticTarget: node.methodName,
     );
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    if (unqualifiedGetter(node) case final getter?) {
+      _report(node, element: getter, diagnosticTarget: node);
+    }
   }
 
   @override

@@ -2942,12 +2942,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
-    if (node.inGetterContext() &&
-        node.element is GetterElement &&
-        !isAssignmentTarget(node) &&
-        node.parent is! PropertyAccess &&
-        node.parent is! PrefixedIdentifier) {
-      _recordCall(node);
+    if (unqualifiedGetter(node) case final getter?) {
+      _recordInvocation(node, getter);
     }
     final source = ThrowSourceCatalog.matchLateInitializationRead(
       node,

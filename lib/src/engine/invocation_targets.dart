@@ -9,6 +9,20 @@ bool isAssignmentTarget(AstNode node) {
   return parent is AssignmentExpression && identical(parent.leftHandSide, node);
 }
 
+GetterElement? unqualifiedGetter(SimpleIdentifier node) {
+  final element = node.element;
+  final parent = node.parent;
+  if (element is! GetterElement ||
+      !node.inGetterContext() ||
+      isAssignmentTarget(node) ||
+      parent is PrefixedIdentifier ||
+      parent is PropertyAccess ||
+      parent is MethodInvocation && identical(parent.methodName, node)) {
+    return null;
+  }
+  return element;
+}
+
 /// Executables called by syntax that does not look like a method invocation.
 /// Compound writes execute a read, an operator, and a write independently.
 Iterable<Element?> invocationTargets(
