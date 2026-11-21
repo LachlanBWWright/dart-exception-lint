@@ -80,6 +80,24 @@ still required; conservative unknown fallbacks do not complete semantic models.
 
 ## Verification evidence
 
+### Extended Dart and Flutter verification
+
+The `9edcc24` snapshot passed all 21 gates on each of Dart 3.11.0, 3.12.0,
+3.13.5 and 3.14.1. The first three SDKs passed 559 tests each, and Dart
+3.14.1 passed 560. The gates included the SDK inventories, VM and JavaScript
+probes, performance benchmarks, installed plugin and CLI checks, publish dry
+runs and the Analysis Server LSP check.
+
+The Flutter package runs exposed a recursive virtual dispatch overflow and an
+analyzer AST view mismatch. Regression tests cover mutually recursive
+overrides, propagation of their known effects, and resolution of top-level
+accessor bodies. After the fixes, all three pinned Flutter packages completed
+with plugin diagnostics and zero reported plugin errors. [Corpus evaluation](corpus-evaluation.md)
+
+On Dart 3.14.1, the small installed LSP consumer measured 36.5 seconds to
+plugin readiness. Across three unsaved edit cycles, the caller diagnostic
+appeared in 5–27 ms and cleared in 10–20 ms. The files on disk stayed unchanged.
+
 ### Installed Flutter and Chromium consumer
 
 Flutter 3.50.1 with its bundled Dart 3.14.0 loaded the plugin on Linux.

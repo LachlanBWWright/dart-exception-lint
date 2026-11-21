@@ -37,8 +37,11 @@ evaluation order within arguments, records, collections, and cascades.
 Invocation effects require the receiver and arguments to finish evaluating.
 Null-aware selectors can skip the rest of a chain up to its expression
 boundary. Loop initialization, conditions, and updates respect evaluation
-order, including labeled `continue`. Opaque expressions retain possible
-normal completion in these structural proofs.
+order, including labeled `continue`. Assignment summaries distinguish getter,
+operator, and setter effects, including indexed writes. Proven switch case
+selection honors guards and grouped labels. Structural proofs retain possible
+normal completion for opaque expressions and conservative selection for
+switches with labeled case targets.
 
 Resolved constant booleans use the same branch facts in completion, inference
 and async ownership. Ordinary final/mutable initializers do not establish these

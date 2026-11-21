@@ -24,6 +24,23 @@ The HTTP manifest entry selects `pkgs/http`. The startup probe confirmed
 that the installed plugin emitted `no_manual_throw`. The table records
 diagnostic volume. The separate semantic corpus carries expected effect labels.
 
+## Flutter 3.50.1 and bundled Dart 3.14.0
+
+Three pinned Flutter packages completed dependency resolution and plugin
+analysis on Linux x64. The protocol logs reported no plugin errors, and each
+cached checkout remained clean after its evaluation worktree was removed.
+
+| Repository | Scope | Plugin diagnostics | Flutter analysis time |
+| --- | --- | ---: | ---: |
+| flutter_hooks | Package directory | 594 | 175.4 s |
+| provider | Package directory | 340 | 189.7 s |
+| window_manager | Package source and test directories | 21 | 135.7 s |
+
+The timings include plugin setup and reflect concurrent workloads on the same
+host. They describe these specific runs. The evaluator now uses package source
+and test directories for all Flutter rows so a separately configured example
+cannot finish before the package under evaluation publishes its results.
+
 ## Earlier release-contract run
 
 The release-contract implementation batch exercised three pinned repositories
