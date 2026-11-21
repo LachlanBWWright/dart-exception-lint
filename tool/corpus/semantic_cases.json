@@ -234,5 +234,17 @@
     "source": "void boundedSubstring(String text) { var start = 0; for (var i = start; i < text.length; i++) { if (text[i] == '/') { text.codeUnitAt(i); text.substring(start, i); start = i + 1; } } if (start < text.length) text.substring(start); }",
     "effects": [],
     "exceptionTypes": []
+  },
+  {
+    "name": "optionalFutureValue",
+    "source": "Future<int> optionalFutureValue(FutureOr<int>? input) => Future<int>.value(input);",
+    "effects": [
+      "synchronous:known",
+      "future:known"
+    ],
+    "exceptionTypes": [
+      "synchronous:TypeError",
+      "future:*"
+    ]
   }
 ]

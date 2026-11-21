@@ -315,7 +315,12 @@ final class InferredThrowAnalyzer {
     );
     final summary = ThrowSummary.merge(
       baseSummary.elementKey,
-      [...baseSummary.sources, ..._callbackSources(node, element, 0, {})],
+      [
+        ...baseSummary.sources,
+        if (node is InstanceCreationExpression)
+          ?ThrowSourceCatalog.matchFutureFactoryNullCheck(node),
+        ..._callbackSources(node, element, 0, {}),
+      ],
       dependencyElementKeys: baseSummary.dependencyElementKeys,
       complete: baseSummary.complete,
       truncationReason: baseSummary.truncationReason,
@@ -1407,10 +1412,13 @@ final class InferredThrowAnalyzer {
           isAsyncObserved ||
           discardedFuture ||
           directSource.channel == ExceptionChannel.scheduled;
-      if (shouldKeep) {
+      final nullCheck = node is InstanceCreationExpression
+          ? ThrowSourceCatalog.matchFutureFactoryNullCheck(node)
+          : null;
+      if (shouldKeep || nullCheck != null) {
         return ThrowSummary.merge(
           directSource.displayName,
-          [directSource, ...callbackSources],
+          [if (shouldKeep) directSource, ?nullCheck, ...callbackSources],
           dependencyElementKeys: const [],
           complete: true,
         );
@@ -1560,7 +1568,10 @@ final class InferredThrowAnalyzer {
       while (expression is ParenthesizedExpression) {
         expression = expression.expression;
       }
-      if (expression is NullLiteral) continue;
+      if (expression is NullLiteral ||
+          expression.staticType?.isDartCoreNull == true) {
+        continue;
+      }
       final value = _callbackValues.resolve(expression);
       final alternatives = <ThrowSummary>[];
       for (final target in value.targets) {

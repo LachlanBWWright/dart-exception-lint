@@ -215,6 +215,10 @@ const _effects = {
   'nullFailure': ('synchronous', 'TypeError'),
   'getterFailure': ('synchronous', 'String'),
   'futureFailure': ('future', 'String'),
+  'emptyFutureValue': ('synchronous', 'TypeError'),
+  'emptyFutureDelayed': ('synchronous', 'ArgumentError'),
+  'optionalFutureValue': ('synchronous', 'TypeError'),
+  'delayedCallback': ('future', 'String'),
   'streamFailure': ('stream', 'String'),
   'constructedStream': ('stream', 'String'),
   'streamToList': ('future', 'String'),
@@ -262,6 +266,7 @@ const _suppressedEffects = {
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
+  'caughtEmptyFactories': 'TypeError',
   'waitKnownCaught': 'String',
   'immediateStoredCaught': 'String',
   'futureAsStreamCaught': 'String',
@@ -384,6 +389,13 @@ const _observations = {
   'null': 'TypeError',
   'getter': 'String',
   'future': 'String',
+  'empty_future_value': 'TypeError',
+  'empty_future_delayed': 'ArgumentError',
+  'optional_future_null': 'TypeError',
+  'optional_future_error': 'String',
+  'delayed_callback': 'String',
+  'caught_empty_factories': 'none',
+  'nullable_future_factories': 'none',
   'stream': 'String',
   'constructed_stream': 'String',
   'stream_to_list': 'String',
@@ -647,6 +659,20 @@ void nullFailure(String? value) { if (value case var text!) { text.length; } }
 final class Data { int get value { throw 'getter'; } }
 void getterFailure(Data data) { if (data case Data(value: var item)) { item; } }
 Future<void> futureFailure() async { throw 'future'; }
+Future<int> emptyFutureValue() => Future<int>.value();
+Future<int> emptyFutureDelayed() => Future<int>.delayed(Duration.zero, null);
+Future<int> optionalFutureValue(FutureOr<int>? input) => Future<int>.value(input);
+Future<int> delayedCallback() => Future<int>.delayed(Duration.zero, () => throw 'callback');
+void caughtEmptyFactories() {
+  try { Future<int>.value(null); } on TypeError {}
+  try { Future<int>.delayed(Duration.zero); } on ArgumentError {}
+}
+Future<void> nullableFutureFactories() async {
+  await Future<void>.value();
+  await Future<int?>.value(null);
+  await Future<void>.delayed(Duration.zero);
+  await Future<int?>.delayed(Duration.zero, null);
+}
 Stream<int> streamFailure() async* { throw 'stream'; }
 Iterable<int> lazyFailure() sync* { throw 'lazy'; }
 void storedLazyIterator() {
@@ -794,7 +820,15 @@ Future<void> futureHandlerCaught() async {
   } on String {}
 }
 
-String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is AssertionError ? 'AssertionError' : error is UnsupportedError ? 'UnsupportedError' : error is String ? 'String' : '$error';
+String label(Object error) => switch (error) {
+  TypeError() => 'TypeError',
+  RangeError() => 'RangeError',
+  ArgumentError() => 'ArgumentError',
+  AssertionError() => 'AssertionError',
+  UnsupportedError() => 'UnsupportedError',
+  String() => 'String',
+  _ => '$error',
+};
 String capture(void Function() operation) {
   try { operation(); return 'none'; } catch (error) { return label(error); }
 }
@@ -908,6 +942,13 @@ Future<void> main() async {
     'null': capture(() => nullFailure(null)),
     'getter': capture(() => getterFailure(Data())),
     'future': await captureAsync(futureFailure),
+    'empty_future_value': capture(() => emptyFutureValue()),
+    'empty_future_delayed': capture(() => emptyFutureDelayed()),
+    'optional_future_null': capture(() => optionalFutureValue(null)),
+    'optional_future_error': await captureAsync(() async { await optionalFutureValue(Future<int>.error('input')); }),
+    'delayed_callback': await captureAsync(() async { await delayedCallback(); }),
+    'caught_empty_factories': capture(caughtEmptyFactories),
+    'nullable_future_factories': await captureAsync(nullableFutureFactories),
     'stream': await captureAsync(() async { await streamFailure().toList(); }),
     'constructed_stream': await captureAsync(() async { await constructedStream().toList(); }),
     'stream_to_list': await captureAsync(streamToList),

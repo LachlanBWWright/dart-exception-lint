@@ -372,6 +372,29 @@ void f(Object? value) {
     ]);
   }
 
+  Future<void> test_emptyFutureFactories_haveSynchronousChecks() async {
+    const code = r'''
+// ignore_for_file: null_argument_to_non_null_type
+void f(int? maybe) {
+  Future<int>.value();
+  Future<int>.delayed(Duration.zero, null);
+  Future<int?>.value(null);
+  Future<void>.delayed(Duration.zero);
+  Future<int>.value(maybe);
+  try { Future<int>.value(); } on TypeError {}
+  try { Future<int>.delayed(Duration.zero); } on ArgumentError {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('Future<int>.value'), 'Future<int>.value'.length),
+      lint(code.indexOf('Future<int>.delayed'), 'Future<int>.delayed'.length),
+      lint(
+        code.indexOf('Future<int>.value(maybe)'),
+        'Future<int>.value'.length,
+      ),
+    ]);
+  }
+
   Future<void> test_boundsAndSubstringOperations_report() async {
     const code = r'''
 void f(List<int> values, String text) {

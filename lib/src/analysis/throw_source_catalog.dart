@@ -350,6 +350,18 @@ final class ThrowSourceCatalog {
       );
     }
 
+    if (libraryUri == 'dart:async' &&
+        className == 'Future' &&
+        constructorName == 'delayed') {
+      // The optional computation and its returned Future have their own
+      // effects. The constructor's null check happens synchronously.
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: 'Future.delayed',
+      );
+    }
+
     if ((className == 'Future' || className == 'Stream') &&
         constructorName == 'error' &&
         _isExpectedLibrary(libraryUri, 'dart:async')) {
@@ -424,6 +436,59 @@ final class ThrowSourceCatalog {
     }
 
     return null;
+  }
+
+  static ThrowSource? matchFutureFactoryNullCheck(
+    InstanceCreationExpression node,
+  ) {
+    final element = node.constructorName.element;
+    if (element == null ||
+        !element.library.isInSdk ||
+        element.library.uri.toString() != 'dart:async' ||
+        element.enclosingElement.name != 'Future') {
+      return null;
+    }
+    final index = switch (element.name) {
+      'value' => 0,
+      'delayed' => 1,
+      _ => null,
+    };
+    if (index == null) return null;
+    final arguments = node.argumentList.arguments;
+    if (index < arguments.length &&
+        isDefinitelyNonNull(arguments[index].argumentExpression)) {
+      return null;
+    }
+    if (!_futureValueRejectsNull(node)) return null;
+    return index == 0
+        ? const ThrowSource(
+            kind: ThrowSourceKind.asCast,
+            confidence: ThrowConfidence.possibleThrow,
+            displayName: 'Future.value null value',
+            exceptionTypes: ['TypeError'],
+            evidence: {EffectEvidence.sdkModel},
+          )
+        : const ThrowSource(
+            kind: ThrowSourceKind.collectionStateCall,
+            confidence: ThrowConfidence.possibleThrow,
+            displayName: 'Future.delayed without a computation',
+            exceptionTypes: ['ArgumentError'],
+            evidence: {EffectEvidence.sdkModel},
+          );
+  }
+
+  static bool _futureValueRejectsNull(InstanceCreationExpression node) {
+    final type = node.staticType;
+    final valueType = type is InterfaceType && type.isDartAsyncFuture
+        ? type.typeArguments.singleOrNull
+        : null;
+    final library = node.constructorName.element?.library;
+    return valueType != null &&
+        library != null &&
+        !library.typeSystem.isSubtypeOf(
+          library.typeProvider.nullType,
+          valueType,
+        );
   }
 
   static ThrowSource? _matchMethodInvocation(

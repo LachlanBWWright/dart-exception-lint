@@ -174,11 +174,13 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final source = ThrowSourceCatalog.matchResolvedInvocation(
-      node,
-      node.constructorName.element,
-      options,
-    );
+    final source =
+        ThrowSourceCatalog.matchFutureFactoryNullCheck(node) ??
+        ThrowSourceCatalog.matchResolvedInvocation(
+          node,
+          node.constructorName.element,
+          options,
+        );
     if (source == null ||
         !source.confidence.isThrowing ||
         source.confidence.isAsync) {
