@@ -240,6 +240,41 @@ void genericFallback<T>(T value) { value ?? input(); }
     );
   });
 
+  test(
+    'nullable selectors and cascades can skip otherwise definite throws',
+    () async {
+      await _verify(
+        '''
+final class Target {
+  void fail() { throw 'method'; }
+  void take(int value) {}
+}
+void optionalCall(Target? target) { target?.fail(); }
+void optionalArgument(Target? target) { target?.take(throw 'argument'); }
+void optionalCascade(Target? target) { target?..fail(); }
+void requiredCall(Target target) { target.fail(); }
+''',
+        (summaries, _) {
+          for (final name in [
+            'optionalCall',
+            'optionalArgument',
+            'optionalCascade',
+          ]) {
+            expect(
+              summaries[name]!.confidence,
+              ThrowConfidence.possibleThrow,
+              reason: name,
+            );
+          }
+          expect(
+            summaries['requiredCall']!.confidence,
+            ThrowConfidence.definiteThrow,
+          );
+        },
+      );
+    },
+  );
+
   test('pattern guards govern selection and fallthrough', () async {
     await _verify(
       '''

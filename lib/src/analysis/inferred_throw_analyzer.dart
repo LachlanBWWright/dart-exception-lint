@@ -3180,10 +3180,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     AstNode node, {
     bool conditional = false,
   }) {
-    final route = asyncValueRoute(
-      node,
-      ExceptionEffect.fromSource(source).channel,
-    );
+    final effect = ExceptionEffect.fromSource(source);
+    final route = asyncValueRoute(node, effect.channel);
     final sourceChannel = route.channel;
     final storedAwait = sourceChannel == ExceptionChannel.future
         ? immediateAwaitOfStoredFuture(route.consumer, node)
@@ -3229,7 +3227,10 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
             ThrowConfidence.possibleThrow => ThrowConfidence.asyncError,
             _ => source.confidence,
           };
-    final mayNotExecute = conditional || _conditionalDepth > 0;
+    final mayNotExecute =
+        conditional ||
+        _conditionalDepth > 0 ||
+        effect.certainty == ExceptionCertainty.definite && maySkipForNull(node);
     final confidence =
         mayNotExecute && contextualConfidence == ThrowConfidence.definiteThrow
         ? ThrowConfidence.possibleThrow
@@ -3245,11 +3246,9 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
           _isAsyncContext ||
           confidence == ThrowConfidence.asyncError,
       certainty:
-          mayNotExecute &&
-              ExceptionEffect.fromSource(source).certainty ==
-                  ExceptionCertainty.definite
+          mayNotExecute && effect.certainty == ExceptionCertainty.definite
           ? ExceptionCertainty.possible
-          : ExceptionEffect.fromSource(source).certainty,
+          : effect.certainty,
       channel: channel,
       timing: channel == ExceptionChannel.synchronous
           ? ThrowTiming.synchronous

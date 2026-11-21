@@ -285,6 +285,40 @@ bool isReachable(AstNode node) {
   return true;
 }
 
+/// Whether an operation can be skipped by a nullable receiver in its chain.
+bool maySkipForNull(AstNode node) {
+  final operation = node is AssignmentExpression ? node.leftHandSide : node;
+  if (operation is Expression &&
+      _selectorShorting(operation) == _NullShorting.possible) {
+    return true;
+  }
+  var child = node;
+  for (var parent = child.parent; parent != null; parent = parent.parent) {
+    if (parent is FunctionBody) break;
+    if (parent is Expression) {
+      final receiver = _selectorReceiver(parent);
+      if (receiver != null &&
+          !identical(child, receiver.target) &&
+          _selectorShorting(parent) == _NullShorting.possible) {
+        return true;
+      }
+    }
+    if (parent is CascadeExpression &&
+        parent.isNullAware &&
+        !identical(child, parent.target) &&
+        !isDefinitelyNonNull(parent.target)) {
+      return true;
+    }
+    if (parent is AssignmentExpression &&
+        identical(child, parent.rightHandSide) &&
+        _selectorShorting(parent.leftHandSide) == _NullShorting.possible) {
+      return true;
+    }
+    child = parent;
+  }
+  return false;
+}
+
 // Effects of the operation itself occur after its inputs have been evaluated.
 // This check deliberately applies only to the starting node, so a failure in
 // an input is still reachable when the containing operation cannot execute.
