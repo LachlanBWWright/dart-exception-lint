@@ -37,6 +37,8 @@ The injected analyzer options exclude nested packages that have their own
 `pubspec.yaml`. These packages can have separate dependencies and can be
 selected explicitly by a manifest entry. Dependency resolution also skips
 separately configured examples.
+Warnings remain visible in analyzer logs. Compiler errors, dependency failures,
+and plugin failures determine the recorded failure status.
 
 This repository inventory measures diagnostic volume and execution failures. It does not measure precision or recall; it has no reviewed expected-diagnostic labels. It is not a claim that every repository has a
 single canonical package root. Failures caused by unavailable platform SDKs,

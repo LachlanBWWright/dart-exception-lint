@@ -110,7 +110,7 @@ while IFS=$'\t' read -r id url manager commit package_path; do
     analyzer=(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings)
   else
     resolver=(dart pub get --no-example)
-    analyzer=(dart analyze)
+    analyzer=(dart analyze --no-fatal-warnings)
   fi
 
   checkout="$corpus_root/$id"
