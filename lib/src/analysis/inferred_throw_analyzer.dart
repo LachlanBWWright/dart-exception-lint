@@ -2757,10 +2757,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   }
 
   @override
-  void visitForElement(ForElement node) {
-    node.forLoopParts.accept(this);
-    _visitWithCertainty(node.body, conditional: true);
-  }
+  void visitForElement(ForElement node) =>
+      _visitForLoop(node.forLoopParts, node.body);
 
   @override
   void visitMapLiteralEntry(MapLiteralEntry node) {
@@ -2772,28 +2770,45 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   }
 
   @override
-  void visitForStatement(ForStatement node) {
-    node.forLoopParts.accept(this);
-    _conditionalDepth++;
-    node.body.accept(this);
-    _conditionalDepth--;
+  void visitForStatement(ForStatement node) =>
+      _visitForLoop(node.forLoopParts, node.body);
+
+  void _visitForLoop(ForLoopParts parts, AstNode body) {
+    if (parts is! ForParts) {
+      parts.accept(this);
+      _visitWithCertainty(body, conditional: true);
+      return;
+    }
+    final initializer = switch (parts) {
+      ForPartsWithDeclarations(:final variables) => variables,
+      ForPartsWithExpression(:final initialization) => initialization,
+      ForPartsWithPattern(:final variables) => variables,
+    };
+    initializer?.accept(this);
+    final condition = parts.condition;
+    condition?.accept(this);
+    _visitWithCertainty(
+      body,
+      conditional: condition != null && _constantBoolean(condition) != true,
+    );
+    for (final updater in parts.updaters) {
+      _visitWithCertainty(updater, conditional: true);
+    }
   }
 
   @override
   void visitWhileStatement(WhileStatement node) {
     node.condition.accept(this);
-    if (_constantBoolean(node.condition) == false) return;
-    _conditionalDepth++;
-    node.body.accept(this);
-    _conditionalDepth--;
+    final condition = _constantBoolean(node.condition);
+    if (condition != false) {
+      _visitWithCertainty(node.body, conditional: condition != true);
+    }
   }
 
   @override
   void visitDoStatement(DoStatement node) {
-    _conditionalDepth++;
     node.body.accept(this);
-    _conditionalDepth--;
-    node.condition.accept(this);
+    _visitWithCertainty(node.condition, conditional: true);
   }
 
   @override

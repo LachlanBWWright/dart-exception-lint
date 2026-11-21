@@ -103,6 +103,37 @@ void lazyInitializer() { late final int value = stop(); probe(); }
     );
   });
 
+  test(
+    'loop certainty distinguishes the first iteration from optional work',
+    () async {
+      await _verify(
+        '''
+void doAlways() { do { throw 'body'; } while (false); }
+void whileAlways() { while (true) { throw 'body'; } }
+void forAlways() { for (;;) { throw 'body'; } }
+void whileMaybe(bool enabled) { while (enabled) { throw 'body'; } }
+void forUpdate(bool enabled) { for (; enabled; throw 'update') {} }
+''',
+        (summaries, _) {
+          for (final name in ['doAlways', 'whileAlways', 'forAlways']) {
+            expect(
+              summaries[name]!.confidence,
+              ThrowConfidence.definiteThrow,
+              reason: name,
+            );
+          }
+          for (final name in ['whileMaybe', 'forUpdate']) {
+            expect(
+              summaries[name]!.confidence,
+              ThrowConfidence.possibleThrow,
+              reason: name,
+            );
+          }
+        },
+      );
+    },
+  );
+
   test('conditional exits lower the certainty of later failures', () async {
     await _verify(
       '''
