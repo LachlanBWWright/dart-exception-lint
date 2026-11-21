@@ -227,6 +227,46 @@ void cast(dynamic value) { int result = value; }
       });
     },
   );
+
+  test('source deduplication compares typed fields and ancestry', () {
+    const source = ThrowSource(
+      kind: ThrowSourceKind.parseCall,
+      confidence: ThrowConfidence.possibleThrow,
+      displayName: 'parse',
+      exceptionTypes: ['A', 'B'],
+      exceptionSupertypes: {
+        'A': ['Object'],
+        'B': ['Exception', 'Object'],
+      },
+    );
+    const sameSource = ThrowSource(
+      kind: ThrowSourceKind.parseCall,
+      confidence: ThrowConfidence.possibleThrow,
+      displayName: 'parse',
+      exceptionTypes: ['A', 'B'],
+      exceptionSupertypes: {
+        'B': ['Exception', 'Object'],
+        'A': ['Object'],
+      },
+    );
+    const distinct = ThrowSource(
+      kind: ThrowSourceKind.parseCall,
+      confidence: ThrowConfidence.possibleThrow,
+      displayName: 'parse',
+      exceptionTypes: ['A,B'],
+      exceptionSupertypes: {
+        'A': ['Object'],
+        'B': ['Exception', 'Object'],
+      },
+    );
+    final summary = ThrowSummary.merge(
+      'test',
+      [source, sameSource, distinct, source],
+      dependencyElementKeys: [],
+      complete: true,
+    );
+    expect(summary.sources, [source, distinct]);
+  });
 }
 
 Future<void> _withSummaries(

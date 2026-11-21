@@ -348,40 +348,21 @@ final class ThrowSummary {
     String? truncationReason,
     int maxSources = 64,
   }) {
-    final uniqueSources = <String, ThrowSource>{};
+    final uniqueSources = <_ThrowSourceKey, ThrowSource>{};
     for (final source in sources) {
       if (source.confidence == ThrowConfidence.noObviousThrow) continue;
-      final key = [
-        source.kind,
-        source.confidence,
-        source.displayName,
-        source.effectiveTiming,
-        source.channel,
-        source.certainty,
-        source.resolvedExceptionTypes,
-        source.exceptionTypes.join(','),
-        source.exceptionSupertypes,
-        source.intent,
-        source.origin?.displayName,
-        source.origin?.filePath,
-        source.origin?.offset,
-        source.origin?.length,
-        source.callbackInvocation?.offset,
-        (source.evidenceKinds.map((item) => item.name).toList()..sort()).join(
-          ',',
-        ),
-      ].join('|');
-      uniqueSources.putIfAbsent(key, () => source);
+      uniqueSources.putIfAbsent(_ThrowSourceKey(source), () => source);
     }
     if (!complete &&
         !uniqueSources.values.any(
           (source) => source.confidence == ThrowConfidence.unknown,
         )) {
-      uniqueSources['incomplete'] = ThrowSource(
+      final source = ThrowSource(
         kind: ThrowSourceKind.unresolvedCall,
         confidence: ThrowConfidence.unknown,
         displayName: truncationReason ?? 'incomplete exception analysis',
       );
+      uniqueSources[_ThrowSourceKey(source)] = source;
     }
     final sourceLimit = maxSources < 0 ? 0 : maxSources;
     final wasTruncated = uniqueSources.length > sourceLimit;
@@ -480,5 +461,92 @@ final class ThrowSummary {
           ? (truncationReason ?? 'max_sources_per_summary')
           : truncationReason,
     );
+  }
+}
+
+final class _ThrowSourceKey {
+  _ThrowSourceKey(this.source) : evidence = _evidenceMask(source);
+
+  final ThrowSource source;
+  final int evidence;
+
+  Object get _attributes => (
+    source.kind,
+    source.confidence,
+    source.displayName,
+    source.effectiveTiming,
+    source.channel,
+    source.certainty,
+    source.intent,
+    source.origin?.displayName,
+    source.origin?.filePath,
+    source.origin?.offset,
+    source.origin?.length,
+    source.callbackInvocation,
+  );
+
+  @override
+  int get hashCode => Object.hash(
+    _attributes,
+    evidence,
+    Object.hashAll(source.exceptionTypes),
+    Object.hashAll(source.resolvedExceptionTypes),
+    Object.hashAllUnordered(
+      source.exceptionSupertypes.entries.map(
+        (entry) => Object.hash(entry.key, Object.hashAll(entry.value)),
+      ),
+    ),
+  );
+
+  @override
+  bool operator ==(Object other) {
+    return other is _ThrowSourceKey &&
+        (identical(source, other.source) ||
+            _attributes == other._attributes &&
+                evidence == other.evidence &&
+                _sameItems(
+                  source.exceptionTypes,
+                  other.source.exceptionTypes,
+                ) &&
+                _sameItems(
+                  source.resolvedExceptionTypes,
+                  other.source.resolvedExceptionTypes,
+                ) &&
+                _sameSupertypes(
+                  source.exceptionSupertypes,
+                  other.source.exceptionSupertypes,
+                ));
+  }
+
+  static int _evidenceMask(ThrowSource source) {
+    var mask = 0;
+    for (final item in source.evidenceKinds) {
+      mask |= 1 << item.index;
+    }
+    return mask;
+  }
+
+  static bool _sameItems<T>(List<T> first, List<T> second) {
+    if (identical(first, second)) return true;
+    if (first.length != second.length) return false;
+    for (var index = 0; index < first.length; index++) {
+      if (first[index] != second[index]) return false;
+    }
+    return true;
+  }
+
+  static bool _sameSupertypes(
+    Map<String, List<String>> first,
+    Map<String, List<String>> second,
+  ) {
+    if (identical(first, second)) return true;
+    if (first.length != second.length) return false;
+    for (final entry in first.entries) {
+      final candidates = second[entry.key];
+      if (candidates == null || !_sameItems(entry.value, candidates)) {
+        return false;
+      }
+    }
+    return true;
   }
 }
