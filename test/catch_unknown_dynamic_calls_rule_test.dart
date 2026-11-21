@@ -403,6 +403,19 @@ dynamic f(dynamic value) => value + (throw 'operand');
 ''');
   }
 
+  Future<void>
+  test_modeledClausesAndConstructorCalls_haveNoSyntaxWarning() async {
+    await assertNoDiagnostics(r'''
+class Interface {}
+class Base { Base(); }
+class Concrete extends Base implements Interface {
+  Concrete() : super();
+  Concrete.redirected() : this();
+}
+List<int> items() => [for (var i = 0; i < 3; i++) i];
+''');
+  }
+
   Future<void> test_dynamicAwait_insideTryCatch_notReported() async {
     await assertNoDiagnostics(r'''
 Future<void> f(dynamic future) async {

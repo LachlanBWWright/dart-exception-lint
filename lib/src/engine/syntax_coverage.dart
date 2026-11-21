@@ -158,7 +158,7 @@ final class SyntaxCoverageInventory {
     'SimpleStringLiteral': SyntaxCoverage.structural,
     'SpreadElement': SyntaxCoverage.conservative,
     'StringInterpolation': SyntaxCoverage.structural,
-    'SuperConstructorInvocation': SyntaxCoverage.conservative,
+    'SuperConstructorInvocation': SyntaxCoverage.analyzed,
     'SuperExpression': SyntaxCoverage.structural,
     'SuperFormalParameter': SyntaxCoverage.structural,
     'SwitchCase': SyntaxCoverage.structural,
@@ -189,7 +189,7 @@ final class SyntaxCoverageInventory {
     'PatternVariableDeclarationStatement': SyntaxCoverage.structural,
     'RecordTypeAnnotationNamedFields': SyntaxCoverage.structural,
     'RecordTypeAnnotationPositionalField': SyntaxCoverage.structural,
-    'RedirectingConstructorInvocation': SyntaxCoverage.conservative,
+    'RedirectingConstructorInvocation': SyntaxCoverage.analyzed,
 
     // Experimental analyzer AST representations with separate evaluation nodes.
     'BinaryOperatorInvocation': SyntaxCoverage.conservative,
@@ -230,13 +230,19 @@ final class SyntaxCoverageInventory {
     'UnqualifiedNameAssignmentTarget': SyntaxCoverage.conservative,
   };
 
-  static String kind(AstNode node) =>
-      node.runtimeType.toString().replaceAll('Impl', '');
+  static String kind(AstNode node) {
+    final name = node.runtimeType.toString();
+    const suffix = 'Impl';
+    return name.endsWith(suffix)
+        ? name.substring(0, name.length - suffix.length)
+        : name;
+  }
 
   static bool requiresUnknown(AstNode node) {
     final coverage = nodes[kind(node)];
     if (coverage == null) return true;
     if (coverage != SyntaxCoverage.conservative) return false;
+    if (node is ForElement && node.forLoopParts is ForParts) return false;
     // Literal primitive patterns compare with SDK implementations. A failed
     // match is normal control flow and does not itself throw.
     if (node is ConstantPattern && node.expression is Literal) return false;
