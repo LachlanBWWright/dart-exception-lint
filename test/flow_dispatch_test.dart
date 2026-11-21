@@ -660,17 +660,21 @@ void skippedOperand(int? current) { Holder(current).item ??= throw 3; }
   });
 
   test('untyped index assignments keep their possible execution paths', () {
-    final result = parseString(
-      content: 'Object? write(dynamic cache) => cache[0] ??= "value";',
-    );
-    final declaration = result.unit.declarations.single as FunctionDeclaration;
-    final body = declaration.functionExpression.body as ExpressionFunctionBody;
-    final assignment = body.expression as AssignmentExpression;
+    for (final operator in ['??=', '+=']) {
+      final result = parseString(
+        content: 'Object? write(dynamic cache) => cache[0] $operator 1;',
+      );
+      final declaration =
+          result.unit.declarations.single as FunctionDeclaration;
+      final body =
+          declaration.functionExpression.body as ExpressionFunctionBody;
+      final assignment = body.expression as AssignmentExpression;
 
-    expect(hasUnknownIndexAssignmentReceiver(assignment), isTrue);
-    expect(assignmentReadType(assignment), isNull);
-    expect(expressionCanCompleteNormally(assignment), isTrue);
-    expect(assignmentWriteCanExecute(assignment), isTrue);
+      expect(hasUnknownIndexAssignmentReceiver(assignment), isTrue);
+      expect(assignmentReadType(assignment), isNull);
+      expect(expressionCanCompleteNormally(assignment), isTrue);
+      expect(assignmentWriteCanExecute(assignment), isTrue);
+    }
   });
 
   test('String bounds follow nonempty guards for stable values', () async {
