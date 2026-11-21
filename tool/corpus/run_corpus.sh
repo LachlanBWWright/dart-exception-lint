@@ -51,6 +51,56 @@ remove_worktree() {
   active_worktree=''
 }
 
+flutter_plugin_completed() {
+  local protocol_log=$1
+  local package_dir=$2
+  # Flutter can exit after the first Analysis Server plugin becomes idle.
+  # Check the final state of every plugin process observed in this run.
+  awk -v prefix="\"$package_dir/" '
+    /PluginNoti:.*"analysis\.errors"/ && index($0, prefix) { published = 1 }
+    /PluginNoti:.*"plugin\.status"/ && match($0, /"isAnalyzing"::(true|false)/) {
+      state = substr($0, RSTART, RLENGTH)
+      plugin = $0
+      if (sub(/^.*}:file::/, "", plugin)) {
+        active[plugin] = state ~ /true$/
+      }
+    }
+    END {
+      if (!published) exit 1
+      for (plugin in active) {
+        completed = 1
+        if (active[plugin]) exit 1
+      }
+      if (!completed) exit 1
+    }
+  ' "$protocol_log"
+}
+
+analyze_scope() {
+  local source_root=$1
+  local output_log=$2
+  local protocol_log=$3
+  local analysis_command=("${analyzer[@]}")
+  local code=0
+  if [[ "$manager" == flutter ]]; then
+    analysis_command+=("--protocol-traffic-log=$protocol_log")
+    rm -f -- "$protocol_log"
+  fi
+  timeout "$timeout_seconds" "${analysis_command[@]}" "$source_root" >"$output_log" 2>&1 || code=$?
+  if rg -q 'Failed to compile|executing an analyzer plugin|Plugin execution failed' "$output_log" ||
+      { [[ "$manager" == flutter && -f "$protocol_log" ]] && rg -q '"plugin\.error"' "$protocol_log"; }; then
+    printf '%s\n' plugin_failed
+  elif [[ "$code" == 124 ]]; then
+    printf '%s\n' timeout
+  elif [[ "$code" != 0 ]]; then
+    printf '%s\n' analyzer_failed
+  elif [[ "$manager" == flutter ]] && ! flutter_plugin_completed "$protocol_log" "$source_root"; then
+    printf '%s\n' plugin_incomplete
+  else
+    printf '%s\n' ok
+  fi
+}
+
 cleanup() {
   restore_options
   remove_worktree || true
@@ -244,38 +294,47 @@ EOF
       restore_options
       continue
     fi
-    analyzer_command=("${analyzer[@]}")
     analysis_roots=("$package_dir")
     if [[ "$manager" == flutter ]]; then
-      analyzer_command+=("--protocol-traffic-log=$protocol_log")
-      # A nested example can finish its own plugin context first and make
-      # Flutter exit before the selected package publishes diagnostics.
+      # Separate processes keep a finished context from terminating a sibling
+      # context. The selected roots also keep embedded examples out of analysis.
       analysis_roots=()
       for directory in lib bin test integration_test tool; do
-        if [[ -d "$package_dir/$directory" ]]; then
-          analysis_roots+=("$package_dir/$directory")
+        scope="$package_dir/$directory"
+        if [[ -d "$scope" ]] && [[ -n "$(find "$scope" -type f -name '*.dart' -print -quit)" ]]; then
+          analysis_roots+=("$scope")
         fi
       done
       if [[ "${#analysis_roots[@]}" == 0 ]]; then
         analysis_roots=("$package_dir")
       fi
     fi
-    status_code=0
-    timeout "$timeout_seconds" "${analyzer_command[@]}" "${analysis_roots[@]}" >"$output_file" 2>&1 || status_code=$?
-    case "$status_code" in
-      0) status=ok ;;
-      124) status=timeout ;;
-      *) status=analyzer_failed ;;
-    esac
-    if rg -q 'Failed to compile|executing an analyzer plugin|Plugin execution failed' "$output_file" ||
-        { [[ "$manager" == flutter && -f "$protocol_log" ]] && rg -q '"plugin\.error"' "$protocol_log"; }; then
-      ((plugin_failures += 1))
-      status=plugin_failed
-    elif [[ "$manager" == flutter && "$status" == ok ]] &&
-        ! rg 'PluginNoti:.*"analysis\.errors"' "$protocol_log" 2>/dev/null | rg -F -- "\"$package_dir/" >/dev/null; then
-      ((plugin_failures += 1))
-      status=plugin_incomplete
+    status=ok
+    failed_plugin=0
+    scope_count=0
+    if [[ "${#analysis_roots[@]}" != 1 ]]; then
+      : > "$output_file"
+      : > "$protocol_log"
     fi
+    for scope in "${analysis_roots[@]}"; do
+      ((scope_count += 1))
+      scope_output="$output_file"
+      scope_protocol="$protocol_log"
+      if [[ "${#analysis_roots[@]}" != 1 ]]; then
+        scope_output="$corpus_root/$id.$package_count.$scope_count.analyze.log"
+        scope_protocol="$corpus_root/$id.$package_count.$scope_count.protocol.log"
+      fi
+      scope_status="$(analyze_scope "$scope" "$scope_output" "$scope_protocol")"
+      if [[ "$status" == ok ]]; then status="$scope_status"; fi
+      if [[ "$scope_status" == plugin_failed || "$scope_status" == plugin_incomplete ]]; then
+        failed_plugin=1
+      fi
+      if [[ "${#analysis_roots[@]}" != 1 ]]; then
+        cat "$scope_output" >> "$output_file"
+        if [[ -f "$scope_protocol" ]]; then cat "$scope_protocol" >> "$protocol_log"; fi
+      fi
+    done
+    ((plugin_failures += failed_plugin))
     if [[ "$package_status" == ok ]]; then package_status="$status"; fi
     mapfile -t matches < <(
       rg -o --replace '$3' "^[[:space:]]*(error|warning|info)[[:space:]].*[[:space:]](-|•)[[:space:]]($diagnostic_names)[[:space:]]*$" "$output_file" || true

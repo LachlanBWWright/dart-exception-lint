@@ -69,10 +69,11 @@ zero. The regular corpus result records the original dependency resolution.
 
 ## Flutter 3.50.1 and bundled Dart 3.14.0
 
-Three pinned Flutter packages completed dependency resolution and plugin
-analysis on Linux x64 at `83fface`. The evaluator analyzed each package's own
-source and test directories. The protocol logs reported no plugin errors,
-and each cached checkout remained clean after its evaluation worktree was removed.
+Three pinned Flutter packages completed dependency resolution and emitted
+plugin diagnostics on Linux x64 at `83fface`. The protocol logs reported zero
+plugin errors and showed an active analysis process when Flutter exited.
+The counts are partial. Each cached checkout remained clean after the evaluator
+removed its worktree.
 
 | Repository | Plugin diagnostics | Flutter analysis time |
 | --- | ---: | ---: |
@@ -82,9 +83,9 @@ and each cached checkout remained clean after its evaluation worktree was remove
 | Total | 3,169 | |
 
 The timings include plugin setup and reflect concurrent workloads on the same
-host. They describe these specific runs. The evaluator now uses package source
-and test directories for all Flutter rows so a separately configured example
-cannot finish before the package under evaluation publishes its results.
+host. These runs passed multiple source and test directories to one Flutter
+process. The evaluator now analyzes each directory in a separate process and
+requires an idle status from every observed plugin process.
 
 ## Reviewed source sites
 

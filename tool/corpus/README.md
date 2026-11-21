@@ -33,8 +33,11 @@ analyzer. It removes the worktrees after analysis and atomically replaces
 retain their current revisions and can supply available pins without a fetch.
 Flutter analyzer protocol logs are kept with analyzer output under
 `CORPUS_ROOT` and are checked for plugin errors and results from the selected
-package. Flutter analysis targets the package's source and test directories,
-which keeps separately configured examples out of the run.
+package. A Flutter run also needs a final idle status for every observed
+plugin process. Partial plugin output is recorded as `plugin_incomplete`.
+Flutter analysis runs each package source or test directory in its own process.
+The runner keeps numbered scope logs alongside the combined package logs.
+Separately configured examples are outside those scopes.
 The injected analyzer options exclude nested packages that have their own
 `pubspec.yaml`. These packages can have separate dependencies and can be
 selected explicitly by a manifest entry. Dependency resolution also skips

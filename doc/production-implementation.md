@@ -115,8 +115,9 @@ effect labels.
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level
-accessor bodies. After the fixes, all three pinned Flutter packages completed
-with plugin diagnostics and zero reported plugin errors. [Corpus evaluation](corpus-evaluation.md)
+accessor bodies. After the fixes, all three pinned Flutter runs emitted plugin
+diagnostics and reported zero plugin errors. A later protocol audit found that
+Flutter exited while another analysis process was still active in those runs. [Corpus evaluation](corpus-evaluation.md)
 
 On Dart 3.14.1, the small installed LSP consumer measured 36.5 seconds to
 plugin readiness. Across three unsaved edit cycles, the caller diagnostic
