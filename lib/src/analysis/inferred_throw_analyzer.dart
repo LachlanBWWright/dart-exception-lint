@@ -1080,8 +1080,7 @@ final class InferredThrowAnalyzer {
               maxSources: options.maxSourcesPerSummary,
             );
             changed =
-                changed ||
-                _summarySignature(previous) != _summarySignature(merged);
+                changed || !previous.hasSameEffectsAndDependencies(merged);
             _summaryCache[key] = merged;
           }
           if (!changed) {
@@ -1108,33 +1107,6 @@ final class InferredThrowAnalyzer {
       _solvingRecursiveComponent = false;
     }
   }
-
-  String _summarySignature(ThrowSummary summary) => [
-    summary.complete,
-    summary.dependencyElementKeys.join(','),
-    ...summary.sources.map(
-      (source) => [
-        source.kind,
-        source.confidence,
-        source.effectiveTiming,
-        source.channel,
-        source.certainty,
-        source.resolvedExceptionTypes
-            .map(
-              (type) =>
-                  '${type.element?.library?.uri}:${type.getDisplayString()}',
-            )
-            .join(','),
-        source.displayName,
-        source.exceptionTypes.join(','),
-        (source.evidenceKinds.map((item) => item.name).toList()..sort()).join(
-          ',',
-        ),
-        source.origin?.filePath,
-        source.origin?.offset,
-      ].join('|'),
-    ),
-  ].join('\n');
 
   ThrowSummary summarizeImplementation(ExecutableElement executable) {
     final key =

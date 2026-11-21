@@ -340,6 +340,27 @@ final class ThrowSummary {
       canCompleteWithAsyncError ||
       hasUnknownEffects;
 
+  /// Whether a recursive inference pass has changed the summary facts.
+  bool hasSameEffectsAndDependencies(ThrowSummary other) {
+    if (complete != other.complete ||
+        sources.length != other.sources.length ||
+        !_ThrowSourceKey._sameItems(
+          dependencyElementKeys,
+          other.dependencyElementKeys,
+        )) {
+      return false;
+    }
+    for (var index = 0; index < sources.length; index++) {
+      final first = sources[index];
+      final second = other.sources[index];
+      if (!identical(first, second) &&
+          _ThrowSourceKey(first) != _ThrowSourceKey(second)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   static ThrowSummary merge(
     String elementKey,
     Iterable<ThrowSource> sources, {
