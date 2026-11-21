@@ -136,6 +136,12 @@ proofs; no exhaustion probes were run.
 
 ## Primitive numeric methods and formatting
 
+Resolved SDK addition, subtraction, multiplication, comparisons, integer
+bitwise operations, and increment and decrement have no intrinsic exception
+for compatible operands. An incompatible dynamic operand retains its
+`TypeError` check. Both runtimes confirm that user-defined operators keep
+their own effects.
+
 | API and condition | VM | Compiled JavaScript | Native declaration |
 | --- | --- | --- | --- |
 | Integral `remainder(0)` | `IntegerDivisionByZeroException` | NaN, no exception | `lib/core/num.dart:210` |
