@@ -124,6 +124,11 @@ Iterable<CallbackExecution> callbackExecutions(
         final callback = at(index, ExceptionChannel.future);
         if (callback != null) yield callback;
       }
+      // A failed wait runs cleanup through a separate, discarded Future.
+      final cleanup = named['cleanUp'];
+      if (name == 'wait' && cleanup != null) {
+        yield CallbackExecution(cleanup, ExceptionChannel.scheduled);
+      }
       for (final key in const ['onError', 'onTimeout']) {
         if (named[key] case final expression?) {
           yield CallbackExecution(

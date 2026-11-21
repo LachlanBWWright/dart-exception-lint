@@ -177,6 +177,7 @@ const _effects = {
   'callbackIgnoredFuture': ('scheduled', 'String'),
   'callbackAsyncVoid': ('scheduled', 'String'),
   'sdkIgnoredFuture': ('scheduled', 'String'),
+  'waitCleanupFailure': ('scheduled', 'String'),
   'castFailure': ('synchronous', 'TypeError'),
   'covarianceFailure': ('synchronous', 'TypeError'),
   'patternFailure': ('synchronous', 'TypeError'),
@@ -281,6 +282,7 @@ const _observations = {
   'callback_ignored_future': 'none/String',
   'callback_async_void': 'none/String',
   'sdk_ignored_future': 'none/String',
+  'wait_cleanup_failure': 'none/String',
   'callback_awaited_caught': 'none',
   'cast': 'TypeError',
   'covariance': 'TypeError',
@@ -528,6 +530,15 @@ void containedCast(dynamic value) {
   try { String text = value; text.length; } on TypeError {}
 }
 
+Future<void> waitCleanupFailure() async {
+  try {
+    await Future.wait<int>(
+      [Future<int>.value(1), Future<int>.error(42)],
+      cleanUp: (_) => throw 'cleanup failed',
+    );
+  } catch (_) {}
+}
+
 String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is String ? 'String' : '$error';
 String capture(void Function() operation) {
   try { operation(); return 'none'; } catch (error) { return label(error); }
@@ -597,6 +608,7 @@ Future<void> main() async {
     'callback_ignored_future': await captureUnobserved(() async { callbackIgnoredFuture(); }),
     'callback_async_void': await captureUnobserved(() async { callbackAsyncVoid(); }),
     'sdk_ignored_future': await captureUnobserved(() async { sdkIgnoredFuture(); }),
+    'wait_cleanup_failure': await captureUnobserved(waitCleanupFailure),
     'callback_awaited_caught': await captureAsync(callbackAwaitedCaught),
     'cast': capture(() => castFailure(1)),
     'covariance': capture(() => covarianceFailure(<String>[], Object())),
