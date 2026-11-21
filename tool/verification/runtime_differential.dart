@@ -8,8 +8,8 @@ import 'package:dart_exception_lint/src/analysis/inferred_throw_analyzer.dart';
 import 'package:dart_exception_lint/src/config/exception_analysis_options.dart';
 import 'package:dart_exception_lint/src/config/throwing_api_manifest.dart';
 
-/// A small labeled differential corpus: native VM and JavaScript observations
-/// are checked against independently specified source/type/channel expectations.
+/// A small labeled differential corpus across the VM, JavaScript and Wasm.
+/// Observations are checked against independent source/type/channel expectations.
 /// This is a regression gate, not a claim of exhaustive precision or recall.
 Future<void> main() async {
   final directory = await Directory.systemTemp.createTemp('exception-runtime-');
@@ -137,18 +137,22 @@ Future<void> main() async {
       '--enable-asserts',
       file.path,
     ], 'Dart VM');
-    final javascript = '${directory.path}/main.js';
-    final compile = await Process.run(Platform.resolvedExecutable, [
-      'compile',
-      'js',
-      '--enable-asserts',
-      file.path,
-      '-o',
-      javascript,
-    ], workingDirectory: directory.path);
-    if (compile.exitCode != 0) {
-      throw StateError('JavaScript compilation failed: ${compile.stderr}');
+    Future<void> compile(String target, String output) async {
+      final result = await Process.run(Platform.resolvedExecutable, [
+        'compile',
+        target,
+        '--enable-asserts',
+        file.path,
+        '-o',
+        output,
+      ], workingDirectory: directory.path);
+      if (result.exitCode != 0) {
+        throw StateError('$target compilation failed: ${result.stderr}');
+      }
     }
+
+    final javascript = '${directory.path}/main.js';
+    await compile('js', javascript);
     // dart2js targets a browser global. Node provides the same timers and
     // microtasks after exposing its global object as `self`.
     await verify('node', [
@@ -156,6 +160,20 @@ Future<void> main() async {
       'globalThis.self = globalThis; require(process.argv[1]);',
       javascript,
     ], 'Dart JavaScript (Node)');
+
+    await compile('wasm', '${directory.path}/main.wasm');
+    final wasmLauncher = await File('${directory.path}/run.mjs').writeAsString(
+      '''
+import {readFile} from 'node:fs/promises';
+import {compile} from './main.mjs';
+
+const bytes = await readFile(new URL('./main.wasm', import.meta.url));
+const application = await compile(bytes);
+const instance = await application.instantiate({});
+instance.invokeMain();
+''',
+    );
+    await verify('node', [wasmLauncher.path], 'Dart Wasm (Node)');
   } finally {
     await collection?.dispose();
     await directory.delete(recursive: true);
