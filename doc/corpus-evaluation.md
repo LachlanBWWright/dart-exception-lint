@@ -144,6 +144,24 @@ their selected scopes with zero dependency and plugin failures.
 | Workmanager | 853 |
 | Sqflite | 1,181 |
 
+### Prepared workspace packages
+
+These packages were extracted from their pinned trees into disposable
+directories. Dependency resolution used the selected packages and their
+required siblings. The repository-wide Pub workspaces were outside these
+individual runs.
+
+| Package | Plugin diagnostics |
+| --- | ---: |
+| Dart SDK `meta` | 5 |
+| Flutter Web Plugins | 746 |
+| Flutter Samples Animations | 2,031 |
+
+The more recent `packages/hydrated_bloc` at the pinned Bloc revision passed
+its own analysis with 4,154 plugin diagnostics. The separately archived
+Hydrated Bloc pin fails dependency resolution on Dart 3.14.1 because its
+SDK constraint predates null safety.
+
 ## Reviewed source sites
 
 - In `dart_path`, the nonempty check guards `path.codeUnitAt(0)` and `path[0]`
@@ -165,6 +183,9 @@ their selected scopes with zero dependency and plugin failures.
 - In Dart Build, both calls to `pathSegments.skip(1)` in `AssetId.resolve`
   now pass the SDK count validation. The focused rerun still reports open
   dispatch for `Iterable.skip`. [Pinned source](https://github.com/dart-lang/build/blob/4800d7e734f7d9a2704d7f1d525c7bd131bac5e5/build/lib/src/asset_id.dart#L71-L81)
+- The Dart SDK `meta` package uses two constant `pragma` constructors for
+  compiler annotations. The focused rerun clears both constructor diagnostics.
+  The other five findings remain visible. [Pinned source](https://github.com/dart-lang/sdk/blob/7ca61c210632aa1c96d85aa17e916fabfb955243/pkg/meta/lib/dart2js.dart)
 
 ## Earlier release-contract run
 
