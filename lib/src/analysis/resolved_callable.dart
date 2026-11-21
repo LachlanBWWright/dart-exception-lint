@@ -30,7 +30,9 @@ final class ResolvedCallable {
   final String? constructorName;
   final Set<String> supertypeKeys;
 
-  String get elementKey {
+  late final String elementKey = _makeElementKey();
+
+  String _makeElementKey() {
     final classSegment = enclosingClassName == null
         ? ''
         : '$enclosingClassName.';
@@ -40,7 +42,23 @@ final class ResolvedCallable {
     return '$libraryUri::${kind.name}:$classSegment$callableName$constructorSegment';
   }
 
+  static final _resolved =
+      Expando<({Object session, ResolvedCallable? value})>();
+
   static ResolvedCallable? tryCreate(Element? element) {
+    if (element is! ExecutableElement) return null;
+    final base = element.baseElement;
+    final session = base.library.session;
+    final cached = _resolved[base];
+    if (cached != null && identical(cached.session, session)) {
+      return cached.value;
+    }
+    final value = _fromElement(base);
+    _resolved[base] = (session: session, value: value);
+    return value;
+  }
+
+  static ResolvedCallable? _fromElement(ExecutableElement element) {
     switch (element) {
       case TopLevelFunctionElement():
         final sourceUri = _libraryUriFor(element);
@@ -147,10 +165,10 @@ final class ResolvedCallable {
   }
 
   static Set<String> _supertypeKeys(InterfaceElement element) {
-    return {
+    return Set.unmodifiable({
       for (final type in element.allSupertypes)
         if (type.element.name case final name?)
           '${type.element.library.firstFragment.source.uri}::$name',
-    };
+    });
   }
 }
