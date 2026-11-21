@@ -28,7 +28,7 @@ diagnostic volume. The separate semantic corpus carries expected effect labels.
 
 Each counter below covers the selected package's own files. Dependency
 resolution skipped nested examples, and existing analyzer warnings were kept
-visible. All five runs completed with zero dependency and plugin failures.
+visible. All eight runs completed with zero dependency and plugin failures.
 
 | Repository | Plugin diagnostics |
 | --- | ---: |
@@ -36,14 +36,18 @@ visible. All five runs completed with zero dependency and plugin failures.
 | Fpdart | 3,019 |
 | GetIt | 10,541 |
 | RxDart | 23,778 |
-| `dart_path` | 11,610 |
+| `dart_path` | 11,465 |
+| `dart_lints` | 0 |
+| Mocktail | 5,855 |
+| Very Good Analysis | 44 |
 
 The earlier full-package RxDart analysis reached its 660-second timeout. An
 Analysis Server CPU profile showed repeated dependency hashing and source-key
 construction during rule execution. At `93e1bec`, the same pinned package
 completed plugin analysis in about 183 seconds with a fresh analyzer state.
-Its pinned package root contains 83 library files. The `dart_path` result
-was verified separately at `d6d4dcd`.
+Its pinned package root contains 83 library files. The `dart_path`, Dart Lints,
+Mocktail and Very Good Analysis rows were verified at `83997df`. The Mocktail
+run used an existing bare clone with an unavailable upstream.
 
 ## Flutter 3.50.1 and bundled Dart 3.14.0
 
@@ -73,8 +77,9 @@ cannot finish before the package under evaluation publishes its results.
 - In the same parser, `start` begins at zero or one and is updated to `i + 1`
   inside the bounded loop. The final `substring(start)` also checks
   `start < path.length`. The evaluator confirms that this final bounds
-  diagnostic disappears. The code-unit read, indexed read and two-argument
-  substring inside the loop still report bounds effects. [Pinned source](https://github.com/dart-lang/path/blob/7e3d5d87220133ad9cc99f82e85a826011a62859/lib/src/parsed_path.dart#L60-L72)
+  diagnostic and the loop's code-unit, indexed-read and two-argument
+  substring diagnostics disappear. The open `InternalStyle.isSeparator`
+  dispatch still reports uncertainty. [Pinned source](https://github.com/dart-lang/path/blob/7e3d5d87220133ad9cc99f82e85a826011a62859/lib/src/parsed_path.dart#L60-L72)
 - The `flutter_hooks` ticker assertion explicitly throws a `FlutterError`.
   The scoped run reports the expected `no_manual_throw` diagnostic on that
   statement. [Pinned source](https://github.com/rrousselGit/flutter_hooks/blob/6f7344fc09f3800c1a9944d06ae56d5324e084e3/packages/flutter_hooks/lib/src/animation.dart#L178-L187)
