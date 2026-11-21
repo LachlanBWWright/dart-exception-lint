@@ -133,6 +133,9 @@ const numericExpectedTypes = <String, List<String>>{
   'caughtDynamicDivide': ['TypeError'],
   'caughtDynamicModulo': ['TypeError'],
   'caughtDynamicShift': ['TypeError'],
+  'dynamicAddend': ['TypeError'],
+  'dynamicBitOperand': ['TypeError'],
+  'customAddition': ['String'],
   'getterCompound': [
     'String',
     'IntegerDivisionByZeroException',
@@ -205,6 +208,7 @@ const numericExpectedTypes = <String, List<String>>{
 
 const numericSafeFunctions = [
   'safeUnary',
+  'safePrimitiveOperators',
   'safeStringConversion',
   'safeIntLiterals',
   'safeDoubleLiterals',
@@ -235,6 +239,10 @@ const numericSafeFunctions = [
 
 const _vmObservations = <String, String>{
   'safe_unary': 'none',
+  'safe_primitive_operators': 'none',
+  'dynamic_addend': 'TypeError',
+  'dynamic_bit_operand': 'TypeError',
+  'custom_addition': 'String',
   'safe_string_conversion': 'none',
   'custom_unary': 'String',
   'custom_string_conversion': 'String',
@@ -385,6 +393,17 @@ import 'dart:math';
 void safeUnary(int value, double floating, BigInt big) {
   -value; ~value; -floating; -big; ~big;
 }
+void safePrimitiveOperators(int value, num other, dynamic arbitrary) {
+  value + other; value - other; value * other;
+  value < other; value <= other; value > other; value >= other;
+  value == arbitrary; value != arbitrary;
+  value & 1; value | 1; value ^ 1;
+  value += 2; value++; --value;
+}
+num dynamicAddend(num value, dynamic other) => value + other;
+int dynamicBitOperand(int value, dynamic other) => value & other;
+class CustomAddition { int operator +(int other) => throw 'custom'; }
+int customAddition(CustomAddition value) => value + 1;
 String safeStringConversion(int value, double floating, BigInt big) =>
     '${value.toString()} $floating ${big.toString()}';
 final class CustomUnary {
@@ -607,6 +626,10 @@ String capture(void Function() operation) {
 void main() {
   print(jsonEncode({
     'safe_unary': capture(() => safeUnary(-1, double.infinity, BigInt.two)),
+    'safe_primitive_operators': capture(() => safePrimitiveOperators(7, double.nan, 'text')),
+    'dynamic_addend': capture(() => dynamicAddend(7, 'text')),
+    'dynamic_bit_operand': capture(() => dynamicBitOperand(7, 1.5)),
+    'custom_addition': capture(() => customAddition(CustomAddition())),
     'safe_string_conversion': capture(() => safeStringConversion(1, double.nan, BigInt.two)),
     'custom_unary': capture(() => customUnary(CustomUnary())),
     'custom_string_conversion': capture(() => customStringConversion(CustomUnary())),

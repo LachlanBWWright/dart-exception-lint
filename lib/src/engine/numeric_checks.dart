@@ -39,6 +39,20 @@ final class NumericChecks {
     'toStringAsPrecision',
   };
   static const _shifts = {'<<', '>>', '>>>'};
+  static const _primitiveTotalOperators = {
+    '+',
+    '-',
+    '*',
+    '<',
+    '<=',
+    '>',
+    '>=',
+    '==',
+    '!=',
+    '&',
+    '|',
+    '^',
+  };
   static const _bigIntMethods = {
     'remainder',
     'pow',
@@ -76,6 +90,16 @@ final class NumericChecks {
   static bool isNativeToString(Element? element) {
     final target = _nativeNumeric(element);
     return target is MethodElement && target.name == 'toString';
+  }
+
+  static bool isSafeIncrement(String operator, Element? element) {
+    final target = _nativeNumeric(element);
+    return target is MethodElement &&
+        target.enclosingElement?.name != 'BigInt' &&
+        switch ((operator, target.name)) {
+          ('++', '+') || ('--', '-') => true,
+          _ => false,
+        };
   }
 
   static bool modelsAssignment(AssignmentExpression node) {
@@ -116,16 +140,29 @@ final class NumericChecks {
             _primitiveMethods.contains(target.name));
   }
 
-  static bool _modelsOperator(String operator, Element? element) =>
-      const {'/', '~/', '%', '<<', '>>', '>>>'}.contains(operator) &&
-      _nativeNumeric(element)?.name == operator;
+  static bool _modelsOperator(String operator, Element? element) {
+    final target = _nativeNumeric(element);
+    if (target is! MethodElement ||
+        target.name != (operator == '!=' ? '==' : operator)) {
+      return false;
+    }
+    return const {'/', '~/', '%', '<<', '>>', '>>>'}.contains(operator) ||
+        (target.enclosingElement?.name != 'BigInt' &&
+            _primitiveTotalOperators.contains(operator));
+  }
 
-  static ThrowSource? binary(BinaryExpression node) => _operator(
-    node.operator.lexeme,
-    node.element,
-    node.leftOperand,
-    node.rightOperand,
-  );
+  static ThrowSource? binary(BinaryExpression node) {
+    if (!expressionCanCompleteNormally(node.leftOperand) ||
+        !expressionCanCompleteNormally(node.rightOperand)) {
+      return null;
+    }
+    return _operator(
+      node.operator.lexeme,
+      node.element,
+      node.leftOperand,
+      node.rightOperand,
+    );
+  }
 
   static ThrowSource? assignment(AssignmentExpression node) {
     final operator = node.operator.lexeme;
@@ -327,11 +364,14 @@ final class NumericChecks {
           : _source(target, 'BigInt $operator operation', types);
     }
     final arithmetic = _arithmetic(target, operator, left, right);
-    final value = _constantNumber(right);
-    final argumentCheck =
-        right.staticType is DynamicType &&
-        !(_shifts.contains(operator) ? value is int : value != null);
-    if (!argumentCheck) return arithmetic;
+    final parameter = target.formalParameters.firstOrNull;
+    if (operator == '==' ||
+        operator == '!=' ||
+        right.staticType is! DynamicType ||
+        parameter == null ||
+        !_argumentMayFail(right, parameter)) {
+      return arithmetic;
+    }
     return _source(target, arithmetic?.displayName ?? 'numeric operand check', [
       ...?arithmetic?.exceptionTypes,
       'TypeError',
@@ -344,7 +384,9 @@ final class NumericChecks {
     Expression left,
     Expression right,
   ) {
-    if (operator == '/') return null;
+    if (operator == '/' || _primitiveTotalOperators.contains(operator)) {
+      return null;
+    }
     final lhs = _constantNumber(left);
     final rhs = _constantNumber(right);
     final leftKind = _kind(left.staticType);
