@@ -30,7 +30,7 @@ isar	https://github.com/isar/isar.git	dart	713001bf1615ea15460d9bc8d3fb9c8cb4150
 hive	https://github.com/isar/hive.git	dart	1b4febe967370f790759823a5e154adc383e53d3
 getx	https://github.com/jonataslaw/getx.git	flutter	e3c8fa04ae65ebf7ff0128dbeb2dc91d4dafa429
 get_it	https://github.com/fluttercommunity/get_it.git	dart	f4c447fc8d3fc2425dc43efe86905ef86905442e
-auto_route	https://github.com/Milad-Akarie/auto_route_library.git	dart	1505c67a42466bb929c2ad833c5b15d67b94b2f9
+auto_route	https://github.com/Milad-Akarie/auto_route_library.git	flutter	1505c67a42466bb929c2ad833c5b15d67b94b2f9	auto_route
 retrofit	https://github.com/trevorwang/retrofit.dart.git	dart	81c39a6169a86c27e9dfd7260ff58f2520748987	retrofit
 fpdart	https://github.com/SandroMaglione/fpdart.git	dart	27e0576669fc86197db02f042ef3455b2ec153ee	packages/fpdart
 rxdart	https://github.com/ReactiveX/rxdart.git	dart	d1f3ba64f71669a137489341009345f59ec84614	packages/rxdart
@@ -43,11 +43,11 @@ melos	https://github.com/invertase/melos.git	dart	073b15060c5269496b065aa5629008
 mason	https://github.com/felangel/mason.git	dart	5beba2574aac1555ad09abe59b3d5ef85fa4c8a6
 serverpod	https://github.com/serverpod/serverpod.git	dart	b693774b77613a21a3ebca3e1d310e59ca578c13
 supabase_flutter	https://github.com/supabase/supabase-flutter.git	flutter	1eefe0ee2b22c883fb26ac21cb5bbe38d7df2493
-permission_handler	https://github.com/Baseflow/flutter-permission-handler.git	flutter	06844691889603bf867ef03e8f3ca24b83f9f1a0
-plus_plugins	https://github.com/fluttercommunity/plus_plugins.git	flutter	53e5ecf38c8775af21c62c2932d07f88bad1a3b2
+permission_handler	https://github.com/Baseflow/flutter-permission-handler.git	flutter	06844691889603bf867ef03e8f3ca24b83f9f1a0	permission_handler
+plus_plugins	https://github.com/fluttercommunity/plus_plugins.git	flutter	53e5ecf38c8775af21c62c2932d07f88bad1a3b2	packages/connectivity_plus/connectivity_plus
 flutter_hooks	https://github.com/rrousselGit/flutter_hooks.git	flutter	6f7344fc09f3800c1a9944d06ae56d5324e084e3	packages/flutter_hooks
 provider	https://github.com/rrousselGit/provider.git	flutter	3ed4c6d6b1700c08256f25a034bb93f943bd7236	packages/provider
-workmanager	https://github.com/fluttercommunity/flutter_workmanager.git	flutter	896c4c1122f5e267ed472b044219c884305246d3
-sqflite	https://github.com/tekartik/sqflite.git	flutter	aaabf90828645125bf7f4bd8e9a6fe4e3935b076
+workmanager	https://github.com/fluttercommunity/flutter_workmanager.git	flutter	896c4c1122f5e267ed472b044219c884305246d3	workmanager
+sqflite	https://github.com/tekartik/sqflite.git	flutter	aaabf90828645125bf7f4bd8e9a6fe4e3935b076	sqflite
 flutter_quill	https://github.com/singerdmx/flutter-quill.git	flutter	e880534f8750072c879fecd72ada72d0902bc5e8
 window_manager	https://github.com/leanflutter/window_manager.git	flutter	4080b59c0b1084c6085f1613c660382cd164ad76	packages/window_manager

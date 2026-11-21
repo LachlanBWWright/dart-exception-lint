@@ -61,6 +61,17 @@ plugin failures.
 | Dio | 10,303 |
 | Retrofit | 445 |
 
+Four further pinned packages completed with zero dependency or plugin errors.
+The Flutter Native Splash scopes also published diagnostics and finished all
+observed plugin processes.
+
+| Package | Plugin diagnostics |
+| --- | ---: |
+| Dart Test | 20,691 |
+| Dart Build | 1,317 |
+| Hive | 1,765 |
+| Flutter Native Splash | 1,877 |
+
 The pinned `json_serializable` package produced 11 compiler errors after Pub
 resolved `source_helper` 1.4.0 under its `^1.3.10` constraint. The two packages
 defined conflicting imports and extensions. A separate run with `source_helper`
