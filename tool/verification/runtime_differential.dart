@@ -164,6 +164,7 @@ const _effects = {
   'failedAssertionCondition': ('synchronous', 'int'),
   'failedAssertionMessage': ('synchronous', 'String'),
   'failedAssertionInitializer': ('synchronous', 'AssertionError'),
+  'unmatchedLiteralCatch': ('synchronous', 'String'),
   'stoppedConstructorField': ('synchronous', 'int'),
   'stoppedSuperArgument': ('synchronous', 'int'),
   'resolvedSuperCall': ('synchronous', 'String'),
@@ -242,6 +243,8 @@ const _suppressedEffects = {
   'blockedLazyConsumer': 'String',
   'stoppedGuardCase': 'String',
   'skippedAssertionMessage': 'String',
+  'firstLiteralCatch': 'String',
+  'unmatchedLiteralCatch': 'bool',
   'failedAssertionMessage': 'AssertionError',
   'stoppedConstructorField': 'String',
   'stoppedSuperArgument': 'String',
@@ -296,6 +299,8 @@ const _observations = {
   'failed_assertion_message': 'String',
   'skipped_assertion_message': 'none',
   'failed_assertion_initializer': 'AssertionError',
+  'first_literal_catch': 'none',
+  'unmatched_literal_catch': 'String',
   'stopped_constructor_field': '42',
   'stopped_super_argument': '42',
   'resolved_super_call': 'String',
@@ -433,6 +438,12 @@ void failedAssertionMessage() { assert(false, throwString()); }
 void skippedAssertionMessage() { assert(true, throwString()); }
 final class Checked { Checked() : assert(false); }
 void failedAssertionInitializer() { Checked(); }
+void firstLiteralCatch() {
+  try { throw true; } on Object { return; } on bool { throwString(); }
+}
+void unmatchedLiteralCatch() {
+  try { throw 'unmatched'; } on int { throw false; }
+}
 class ConstructorBase {
   ConstructorBase.named(int value) { throwString(); }
 }
@@ -768,6 +779,8 @@ Future<void> main() async {
     'failed_assertion_message': capture(failedAssertionMessage),
     'skipped_assertion_message': capture(skippedAssertionMessage),
     'failed_assertion_initializer': capture(failedAssertionInitializer),
+    'first_literal_catch': capture(firstLiteralCatch),
+    'unmatched_literal_catch': capture(unmatchedLiteralCatch),
     'stopped_constructor_field': capture(stoppedConstructorField),
     'stopped_super_argument': capture(stoppedSuperArgument),
     'resolved_super_call': capture(resolvedSuperCall),

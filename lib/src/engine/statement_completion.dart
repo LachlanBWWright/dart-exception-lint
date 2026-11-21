@@ -168,14 +168,15 @@ Set<CompletionTransfer> _statement(
         }
       }
       return result;
-    case TryStatement(:final body, :final catchClauses, :final finallyBlock):
+    case TryStatement(:final body, :final finallyBlock):
       final result = _statement(body);
       // The thrown transfer already includes possible implicit failures.
       if (result.contains(_thrown)) {
-        if (catchClauses.any((clause) => clause.exceptionType == null)) {
+        final selection = _selectCatches(statement);
+        if (selection.handlesThrow) {
           result.remove(_thrown);
         }
-        for (final clause in catchClauses) {
+        for (final clause in selection.reachable) {
           result.addAll(_statement(clause.body));
         }
       }
@@ -190,6 +191,49 @@ Set<CompletionTransfer> _statement(
     default:
       return {_normal, _thrown};
   }
+}
+
+typedef _CatchSelection = ({Set<CatchClause> reachable, bool handlesThrow});
+
+final _catchSelections = Expando<_CatchSelection>();
+
+_CatchSelection _selectCatches(TryStatement node) =>
+    _catchSelections[node] ??= _computeCatchSelection(node);
+
+_CatchSelection _computeCatchSelection(TryStatement node) {
+  final thrownType = _portableThrownLiteralType(node.body);
+  final typeSystem = thrownType?.element?.library?.typeSystem;
+  final reachable = <CatchClause>{};
+  var handlesThrow = false;
+  for (final clause in node.catchClauses) {
+    final catchType = clause.exceptionType?.type;
+    final matches = clause.exceptionType == null
+        ? true
+        : thrownType != null && typeSystem != null && catchType is InterfaceType
+        ? typeSystem.isSubtypeOf(thrownType, catchType)
+        : null;
+    if (matches != false) reachable.add(clause);
+    if (matches == true) {
+      handlesThrow = true;
+      break;
+    }
+  }
+  return (reachable: reachable, handlesThrow: handlesThrow);
+}
+
+DartType? _portableThrownLiteralType(Block body) {
+  if (body.statements.length != 1) return null;
+  final statement = body.statements.single;
+  if (statement is! ExpressionStatement ||
+      statement.expression is! ThrowExpression) {
+    return null;
+  }
+  final value = (statement.expression as ThrowExpression).expression;
+  // String and bool literal types are exact on both VM and JavaScript.
+  // Numeric runtime type overlap differs between those backends.
+  return value is SimpleStringLiteral || value is BooleanLiteral
+      ? value.staticType
+      : null;
 }
 
 Set<CompletionTransfer> _loop(
@@ -898,7 +942,8 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     }
   }
   if (parent is TryStatement && child is CatchClause) {
-    return statementCompletion(parent.body).transfers.contains(_thrown);
+    return statementCompletion(parent.body).transfers.contains(_thrown) &&
+        _selectCatches(parent).reachable.contains(child);
   }
   if (parent is RecordLiteral && child is RecordLiteralField) {
     for (final field in parent.fields) {

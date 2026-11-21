@@ -736,6 +736,33 @@ void coalescing() { Holder().item ??= 1; }
     },
   );
 
+  test('exact literal throws reach the first compatible handler', () async {
+    await _verify(
+      '''
+void contained() {
+  try { throw 'failure'; } on int { throw true; } on String {}
+}
+void unmatched() {
+  try { throw 'failure'; } on int { throw true; }
+  throw 3;
+}
+void firstMatch() {
+  try { throw true; } on Object { return; } on bool { throw 'later catch'; }
+  throw 3;
+}
+void replacement() {
+  try { throw true; } on bool { throw 'replacement'; }
+}
+''',
+      (summaries, _) {
+        expect(summaries['contained']!.hasAnyThrowSource, isFalse);
+        expect(summaries['firstMatch']!.hasAnyThrowSource, isFalse);
+        expect(summaries['unmatched']!.exceptionTypes.toSet(), {'String'});
+        expect(summaries['replacement']!.exceptionTypes.toSet(), {'String'});
+      },
+    );
+  });
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''
