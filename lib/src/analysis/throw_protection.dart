@@ -5,6 +5,7 @@ import 'package:analyzer/dart/element/element.dart';
 
 import 'exception_annotations.dart';
 import 'exception_type_hierarchy.dart';
+import 'throw_source_catalog.dart';
 import '../engine/exception_effect.dart';
 import '../engine/statement_completion.dart';
 import '../engine/future_forwarding.dart';
@@ -179,14 +180,14 @@ AstNode? _forwardingFutureParent(AstNode node) {
     if (element?.library?.uri.toString() == 'dart:async') {
       final owner = element?.enclosingElement?.name;
       final name = parent.methodName.name;
-      if ((owner == 'Future' &&
+      if (ThrowSourceCatalog.isNativeFutureIgnore(element) ||
+          (owner == 'Future' &&
               const {
                 'then',
                 'catchError',
                 'asStream',
                 'whenComplete',
                 'timeout',
-                'ignore',
               }.contains(name)) ||
           (owner == 'Stream' &&
               const {
@@ -277,6 +278,53 @@ AstNode? _forwardingFutureParent(AstNode node) {
 AstNode? asyncValueConsumer(AstNode node) =>
     asyncValueRoute(node, ExceptionChannel.synchronous).consumer;
 
+/// A Stream passed to Future.syncValue remains a value inside the returned
+/// Future. Returning that wrapper preserves the obligation to subscribe.
+bool isReturnedStreamPayload(AstNode node) {
+  final wrapper = _synchronousFutureWrapper(node);
+  if (wrapper == null) return false;
+  final consumer = asyncValueConsumer(wrapper);
+  return consumer is ReturnStatement || consumer is ExpressionFunctionBody;
+}
+
+InstanceCreationExpression? _synchronousFutureWrapper(AstNode node) {
+  var argument = node;
+  while (argument.parent is ParenthesizedExpression) {
+    argument = argument.parent!;
+  }
+  final arguments = argument.parent;
+  final invocation = arguments?.parent;
+  if (arguments is! ArgumentList ||
+      arguments.arguments.length != 1 ||
+      invocation is! InstanceCreationExpression) {
+    return null;
+  }
+  final constructor = invocation.constructorName.element;
+  if (constructor == null ||
+      !constructor.library.isInSdk ||
+      constructor.library.uri.toString() != 'dart:async' ||
+      constructor.enclosingElement.name != 'Future' ||
+      constructor.name != 'syncValue') {
+    return null;
+  }
+  return invocation;
+}
+
+bool _discardsSynchronousFuturePayload(AstNode node) {
+  final wrapper = _synchronousFutureWrapper(node);
+  if (wrapper == null) return false;
+  AstNode value = wrapper;
+  while (value.parent is ParenthesizedExpression) {
+    value = value.parent!;
+  }
+  final consumer = value.parent;
+  if (consumer is ExpressionStatement) return true;
+  if (consumer is! MethodInvocation || !identical(consumer.realTarget, value)) {
+    return false;
+  }
+  return ThrowSourceCatalog.isNativeFutureIgnore(consumer.methodName.element);
+}
+
 /// An await of a final local before intervening code or suspension can run.
 AwaitExpression? immediateAwaitOfStoredFuture(
   AstNode? consumer,
@@ -338,6 +386,10 @@ AwaitExpression? immediateAwaitOfStoredFuture(
 ) {
   var current = node;
   while (true) {
+    if (channel == ExceptionChannel.future &&
+        _discardsSynchronousFuturePayload(current)) {
+      return (consumer: null, channel: ExceptionChannel.scheduled);
+    }
     final forwarding = _forwardingFutureParent(current);
     if (forwarding == null) return (consumer: current.parent, channel: channel);
     final projected = _channelAfterForwarding(channel, forwarding);
@@ -629,9 +681,11 @@ bool _handlerMatchesChannel(
   MethodInvocation invocation,
   ExceptionChannel? channel,
 ) {
-  final owner = invocation.methodName.element?.enclosingElement?.name;
+  final element = invocation.methodName.element;
+  final owner = element?.enclosingElement?.name;
   return switch (channel) {
-    ExceptionChannel.future => owner == 'Future',
+    ExceptionChannel.future =>
+      owner == 'Future' || ThrowSourceCatalog.isNativeFutureIgnore(element),
     ExceptionChannel.stream => owner == 'Stream',
     _ => true,
   };
@@ -645,7 +699,7 @@ bool hasUnconditionalAsyncErrorHandler(MethodInvocation node) {
   if (element?.library?.uri.toString() != 'dart:async') return false;
   final owner = element?.enclosingElement?.name;
   final name = node.methodName.name;
-  if (owner == 'Future' && name == 'ignore') return true;
+  if (ThrowSourceCatalog.isNativeFutureIgnore(element)) return true;
   if ((owner == 'Future' && name == 'catchError') ||
       (owner == 'Stream' && name == 'handleError')) {
     final arguments = node.argumentList.arguments;

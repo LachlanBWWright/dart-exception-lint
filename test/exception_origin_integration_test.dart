@@ -78,12 +78,27 @@ import 'package:third_party_stub/third_party_stub.dart';
 Future<void> f() async {
   await DangerousClient().fetch();
 }
+
+void ignoredFutures() {
+  Future<void>.error('direct').ignore();
+  final pending = Future<void>.error('stored');
+  pending.ignore();
+}
 ''',
     );
 
     expect(result.exitCode, 0, reason: result.stderr.toString());
     expect(result.stdout, contains('lib/main.dart:4:3'));
-    expect(result.stdout, contains('catch_async_error_sources'));
+    final mainDiagnostics = result.stdout
+        .toString()
+        .split('\n')
+        .where((line) => line.contains(' - lib/main.dart:'))
+        .join('\n');
+    expect(
+      _countCode(mainDiagnostics, 'catch_async_error_sources'),
+      1,
+      reason: result.stdout.toString(),
+    );
     expect(result.stdout, contains('third_party_stub/DangerousClient.fetch'));
   });
 

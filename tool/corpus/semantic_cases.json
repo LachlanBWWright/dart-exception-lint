@@ -262,5 +262,15 @@
     "exceptionTypes": [
       "future:*"
     ]
+  },
+  {
+    "name": "bufferedSynchronousStream",
+    "source": "Future<Stream<int>> bufferedSynchronousStream() => Future<Stream<int>>.syncValue(Stream<int>.error('buffered'));",
+    "effects": [
+      "stream:known"
+    ],
+    "exceptionTypes": [
+      "stream:String"
+    ]
   }
 ]

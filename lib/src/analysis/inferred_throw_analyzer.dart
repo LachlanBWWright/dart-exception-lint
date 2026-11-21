@@ -1411,6 +1411,7 @@ final class InferredThrowAnalyzer {
           !directSource.isAsync ||
           isAsyncObserved ||
           discardedFuture ||
+          channel == ExceptionChannel.stream && isReturnedStreamPayload(node) ||
           directSource.channel == ExceptionChannel.scheduled;
       final nullCheck = node is InstanceCreationExpression
           ? ThrowSourceCatalog.matchFutureFactoryNullCheck(node)

@@ -43,6 +43,7 @@ Future<void> main() async {
             'forwardCaught',
             'adoptCaught',
             'synchronousValueFactory',
+            'directNativeFutureIgnore',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -222,6 +223,8 @@ const _effects = {
   'delayedCallback': ('future', 'String'),
   'streamFailure': ('stream', 'String'),
   'constructedStream': ('stream', 'String'),
+  'bufferedSynchronousStream': ('stream', 'String'),
+  'discardedWrappedFuture': ('scheduled', 'String'),
   'streamToList': ('future', 'String'),
   'streamToListDiscarded': ('scheduled', 'String'),
   'nestedStream': ('stream', 'String'),
@@ -399,6 +402,9 @@ const _observations = {
   'caught_empty_factories': 'none',
   'nullable_future_factories': 'none',
   'synchronous_value_factory': 'none',
+  'buffered_synchronous_stream': 'none/String',
+  'discarded_wrapped_future': 'none/String',
+  'direct_native_future_ignore': 'none',
   'stream': 'String',
   'constructed_stream': 'String',
   'stream_to_list': 'String',
@@ -681,6 +687,11 @@ Future<void> synchronousValueFactory() async {
   await Future<int>.syncValue(1);
   await Future<int>.syncValue(2).asStream().toList();
 }
+Future<Stream<int>> bufferedSynchronousStream() => Future<Stream<int>>.syncValue(Stream<int>.error('buffered'));
+void discardedWrappedFuture() {
+  Future<Future<void>>.syncValue(Future<void>.error('inner')).ignore();
+}
+void directNativeFutureIgnore() { Future<void>.error('ignored').ignore(); }
 Stream<int> streamFailure() async* { throw 'stream'; }
 Iterable<int> lazyFailure() sync* { throw 'lazy'; }
 void storedLazyIterator() {
@@ -959,6 +970,9 @@ Future<void> main() async {
     'caught_empty_factories': capture(caughtEmptyFactories),
     'nullable_future_factories': await captureAsync(nullableFutureFactories),
     'synchronous_value_factory': await captureAsync(synchronousValueFactory),
+    'buffered_synchronous_stream': '${await captureAsync(() async { await bufferedSynchronousStream(); })}/${await captureAsync(() async { final stream = await bufferedSynchronousStream(); await stream.toList(); })}',
+    'discarded_wrapped_future': await captureUnobserved(() async { discardedWrappedFuture(); }),
+    'direct_native_future_ignore': await captureAsync(() async { directNativeFutureIgnore(); }),
     'stream': await captureAsync(() async { await streamFailure().toList(); }),
     'constructed_stream': await captureAsync(() async { await constructedStream().toList(); }),
     'stream_to_list': await captureAsync(streamToList),

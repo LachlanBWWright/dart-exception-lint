@@ -34,6 +34,16 @@ final class ThrowSourceCatalog {
         evidence: const {EffectEvidence.sdkModel},
       );
     }
+    if (node is MethodInvocation &&
+        isNativeFutureIgnore(element) &&
+        _knownFutureSource(node.realTarget) != null) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: 'Future.ignore',
+        evidence: {EffectEvidence.sdkModel},
+      );
+    }
     if (NumericParseChecks.modelsInvocation(node, element)) {
       return options.treatParseMethodsAsThrowing
           ? NumericParseChecks.invocation(node, element)
@@ -240,6 +250,14 @@ final class ThrowSourceCatalog {
         element.enclosingElement?.name == 'String' &&
         element.name == '==';
   }
+
+  static bool isNativeFutureIgnore(Element? element) =>
+      element is MethodElement &&
+      element.library.isInSdk &&
+      element.library.uri.toString() == 'dart:async' &&
+      element.enclosingElement is ExtensionElement &&
+      element.enclosingElement?.name == 'FutureExtensions' &&
+      element.name == 'ignore';
 
   static ThrowSource? matchAssignmentExpression(
     AssignmentExpression node,
