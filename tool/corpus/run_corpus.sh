@@ -10,9 +10,13 @@ timeout_seconds="${CORPUS_TIMEOUT:-300}"
 refresh="${CORPUS_REFRESH:-0}"
 packages_per_repo="${CORPUS_PACKAGES_PER_REPO:-1}"
 results="$repo_root/tool/corpus/results.tsv"
-mkdir -p "$corpus_root"
+mkdir -p "$corpus_root" || exit 1
+corpus_root="$(cd "$corpus_root" && pwd)" || exit 1
 plugin_root="$(mktemp -d "$corpus_root/plugin.XXXXXX")" || exit 1
 probe_root=''
+evaluation_root=''
+active_checkout=''
+active_worktree=''
 active_options=''
 active_backup=''
 active_had_options=0
@@ -38,11 +42,22 @@ restore_options() {
   fi
 }
 
+remove_worktree() {
+  [[ -z "$active_worktree" ]] && return 0
+  git -C "$active_checkout" worktree remove --force "$active_worktree" || return 1
+  active_checkout=''
+  active_worktree=''
+}
+
 cleanup() {
   restore_options
+  remove_worktree || true
   rm -rf -- "$plugin_root"
   if [[ -n "$probe_root" ]]; then
     rm -rf -- "$probe_root"
+  fi
+  if [[ -n "$evaluation_root" ]]; then
+    rmdir -- "$evaluation_root" || true
   fi
 }
 trap cleanup EXIT
@@ -77,6 +92,7 @@ if [[ "$probe_status" == 124 ]] || ! rg -qi '\|NO_MANUAL_THROW\|' "$probe_log"; 
 fi
 
 printf 'id\turl\tstatus\tpackages\tdiagnostics\tdependency_failures\tplugin_failures\trule_counts\tcommand\n' > "$results"
+evaluation_root="$(mktemp -d "$corpus_root/evaluate.XXXXXX")" || exit 1
 
 count=0
 while IFS=$'\t' read -r id url manager commit package_path; do
@@ -129,6 +145,16 @@ while IFS=$'\t' read -r id url manager commit package_path; do
     continue
   fi
 
+  # Flutter's tooling can modify nested files outside the selected package.
+  # Run in a fresh worktree so those writes cannot touch the cached checkout.
+  evaluation="$evaluation_root/$id"
+  if ! git -C "$checkout" worktree add --quiet --detach "$evaluation" "$commit"; then
+    printf '%s\t%s\tcheckout_failed\t0\t0\t0\t0\t\t%s\n' "$id" "$url" "git worktree add" >> "$results"
+    continue
+  fi
+  active_checkout="$checkout"
+  active_worktree="$evaluation"
+
   package_count=0
   diagnostic_count=0
   rule_counts=''
@@ -137,7 +163,7 @@ while IFS=$'\t' read -r id url manager commit package_path; do
   package_status=ok
   while IFS= read -r pubspec; do
     package_dir="$(dirname "$pubspec")"
-    [[ "$package_dir" == "$checkout/.dart_tool"* ]] && continue
+    [[ "$package_dir" == "$evaluation/.dart_tool"* ]] && continue
     ((package_count += 1))
     options="$package_dir/analysis_options.yaml"
     backup="$plugin_root/corpus-package.options.backup"
@@ -179,7 +205,13 @@ EOF
       ((dependency_failures += 1))
     fi
     output_file="$corpus_root/$id.$package_count.analyze.log"
-    if timeout "$timeout_seconds" "${analyzer[@]}" "$package_dir" >"$output_file" 2>&1; then
+    analyzer_command=("${analyzer[@]}")
+    protocol_log="$corpus_root/$id.$package_count.protocol.log"
+    if [[ "$manager" == flutter ]]; then
+      rm -f -- "$protocol_log"
+      analyzer_command+=("--protocol-traffic-log=$protocol_log")
+    fi
+    if timeout "$timeout_seconds" "${analyzer_command[@]}" "$package_dir" >"$output_file" 2>&1; then
       status_code=0
     else
       status_code=$?
@@ -189,7 +221,8 @@ EOF
         package_status=analyzer_failed
       fi
     fi
-    if rg -q 'Failed to compile|executing an analyzer plugin|Plugin execution failed' "$output_file"; then
+    if rg -q 'Failed to compile|executing an analyzer plugin|Plugin execution failed' "$output_file" ||
+        { [[ "$manager" == flutter && -f "$protocol_log" ]] && rg -q '"plugin\.error"' "$protocol_log"; }; then
       ((plugin_failures += 1))
       package_status=plugin_failed
     elif [[ "$resolver_status" != 0 && "$package_status" == ok ]]; then
@@ -204,14 +237,15 @@ EOF
     restore_options
   done < <(
     if [[ -n "$package_path" ]]; then
-      printf '%s\n' "$checkout/$package_path/pubspec.yaml"
-    elif [[ -f "$checkout/pubspec.yaml" ]]; then
-      printf '%s\n' "$checkout/pubspec.yaml"
+      printf '%s\n' "$evaluation/$package_path/pubspec.yaml"
+    elif [[ -f "$evaluation/pubspec.yaml" ]]; then
+      printf '%s\n' "$evaluation/pubspec.yaml"
     else
-      find "$checkout" -name pubspec.yaml -not -path '*/.dart_tool/*' -print \
+      find "$evaluation" -name pubspec.yaml -not -path '*/.dart_tool/*' -print \
         | sort | head -n "$packages_per_repo"
     fi
   )
+  remove_worktree || exit 1
 
   if [[ "$package_count" == 0 ]]; then package_status=no_packages_found; fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \

@@ -25,10 +25,12 @@ The runner first verifies that a disposable consumer emits a plugin diagnostic.
 If startup fails, it leaves the previous results in place and records the
 startup output in `plugin-probe.log` under the corpus root.
 
-The runner checks out the exact commit recorded in each row, injects a temporary local plugin configuration
-into each package, runs dependency resolution, runs the analyzer, restores the
-package files, and writes machine-readable results to
-`tool/corpus/results.tsv`. Clones and generated results are ignored by git.
+The runner creates a disposable worktree at each pinned commit, injects a
+temporary local plugin configuration, resolves dependencies, and runs the
+analyzer. It removes the worktrees after analysis and writes machine-readable
+results to `tool/corpus/results.tsv`. The cached clones remain available for
+later runs. Flutter analyzer protocol logs are kept with analyzer output under
+`CORPUS_ROOT` and are checked for plugin errors.
 
 This repository inventory measures diagnostic volume and execution failures. It does not measure precision or recall; it has no reviewed expected-diagnostic labels. It is not a claim that every repository has a
 single canonical package root. Failures caused by unavailable platform SDKs,
