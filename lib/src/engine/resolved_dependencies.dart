@@ -27,6 +27,10 @@ final class ResolvedDependencies {
   final Object _session;
   final Map<LibraryElement, Map<String, CompilationUnit>?> _libraries = {};
   static const maxLibraries = 128;
+  static final _sharedLibraries =
+      Expando<
+        Map<LibraryElement, WeakReference<Map<String, CompilationUnit>>?>
+      >();
 
   bool get isCurrent {
     final session = _session;
@@ -50,6 +54,15 @@ final class ResolvedDependencies {
     if (_libraries.length >= maxLibraries) return null;
     // Reserve before resolving, so reentry cannot recursively resolve a body.
     _libraries[library] = null;
+    final shared = _sharedLibraries[_session] ??= {};
+    if (shared.containsKey(library)) {
+      final entry = shared[library];
+      if (entry == null) return null;
+      if (entry.target case final cached?) return _libraries[library] = cached;
+      shared.remove(library);
+    }
+    if (shared.length >= maxLibraries) shared.remove(shared.keys.first);
+    shared[library] = null;
     try {
       final session = _session as AnalysisSessionImpl;
       final context = session.analysisContext;
@@ -82,13 +95,19 @@ final class ResolvedDependencies {
       if (!isCurrent || results.any((result) => !result.file.exists)) {
         return null;
       }
-      return _libraries[library] = {
+      final units = {
         for (final result in results) result.file.path: result.unit,
       };
+      shared[library] = WeakReference(units);
+      return _libraries[library] = units;
     } catch (_) {
       // Edits, unsupported implementations and resolver failures widen the
       // caller to unknown; they must never become a no-throw proof.
       return null;
+    } finally {
+      // A failed resolution is local to this caller. Let another caller in
+      // the same session retry instead of reusing the transient failure.
+      if (shared[library] == null) shared.remove(library);
     }
   }
 }

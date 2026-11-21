@@ -90,8 +90,12 @@ void caughtCaller() { try { helper(fail); } on String {} }
       try {
         final main = File('${directory.path}/main.dart');
         final dependency = File('${directory.path}/dependency.dart');
+        final sibling = File('${directory.path}/sibling.dart');
         await main.writeAsString(
           "import 'dependency.dart'; void caller() { helper(); }",
+        );
+        await sibling.writeAsString(
+          "import 'dependency.dart'; void siblingCaller() { helper(); }",
         );
         await dependency.writeAsString('void helper() {}');
         final provider =
@@ -123,6 +127,19 @@ void caughtCaller() { try { helper(fail); } on String {} }
           contains('String'),
         );
         expect(analyzer.dependenciesAreCurrent, isTrue);
+        final imported = resolved.libraryElement.firstFragment.importedLibraries
+            .singleWhere(
+              (library) => library.uri.path.endsWith('dependency.dart'),
+            );
+        final firstResolution = dependencies.resolve(imported);
+        final siblingUnit =
+            await context.currentSession.getResolvedUnit(sibling.path)
+                as ResolvedUnitResult;
+        expect(firstResolution, isNotNull);
+        expect(
+          ResolvedDependencies(siblingUnit.libraryElement).resolve(imported),
+          same(firstResolution),
+        );
 
         // A notification invalidates the old session even before re-resolution.
         provider.setOverlay(
