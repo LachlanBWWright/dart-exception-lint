@@ -833,11 +833,18 @@ final class InferredThrowAnalyzer {
   }) => ThrowSummary.unknown(
     elementKey,
     reason: reason,
-    sources: _unknownSourcesForType(
-      executable.returnType,
-      kind: kind,
-      displayName: _displayNameForExecutable(executable),
-    ),
+    sources: [
+      ..._unknownSourcesForType(
+        executable.returnType,
+        kind: kind,
+        displayName: _displayNameForExecutable(executable),
+      ),
+      if (reason == 'max_call_depth' &&
+          executable.formalParameters.any(
+            (parameter) => parameter.type is FunctionType,
+          ))
+        _unverifiedCallbackScheduling,
+    ],
   );
 
   ThrowSummary summarizeExecutable(ExecutableElement executable) {
