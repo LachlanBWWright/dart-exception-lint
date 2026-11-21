@@ -1709,6 +1709,7 @@ final class InferredThrowAnalyzer {
           resolvedExceptionTypes: source.resolvedExceptionTypes,
           exceptionSupertypes: source.exceptionSupertypes,
           origin: source.origin,
+          callbackInvocation: node is MethodInvocation ? node : null,
         );
       }
     }

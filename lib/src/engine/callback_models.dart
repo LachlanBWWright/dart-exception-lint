@@ -129,6 +129,10 @@ Iterable<CallbackExecution> callbackExecutions(
       if (name == 'wait' && cleanup != null) {
         yield CallbackExecution(cleanup, ExceptionChannel.scheduled);
       }
+      final filter = named['test'];
+      if (name == 'catchError' && filter != null) {
+        yield CallbackExecution(filter, ExceptionChannel.future);
+      }
       for (final key in const ['onError', 'onTimeout']) {
         if (named[key] case final expression?) {
           yield CallbackExecution(
@@ -156,9 +160,14 @@ Iterable<CallbackExecution> callbackExecutions(
         'takeWhile',
         'skipWhile',
         'distinct',
+        'handleError',
       }.contains(name)) {
         final callback = at(0, ExceptionChannel.stream);
         if (callback != null) yield callback;
+        final filter = named['test'];
+        if (name == 'handleError' && filter != null) {
+          yield CallbackExecution(filter, ExceptionChannel.stream);
+        }
       }
     }
   }

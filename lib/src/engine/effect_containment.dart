@@ -35,5 +35,6 @@ bool isEffectContained(
     resolvedExceptionTypes: source.resolvedExceptionTypes,
     exceptionSupertypes: source.exceptionSupertypes,
     respectExceptionBoundary: respectExceptionBoundary,
+    skipCurrentAsyncHandler: identical(source.callbackInvocation, node),
   );
 }

@@ -1,3 +1,4 @@
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/type.dart';
 import '../result.dart';
 import '../engine/exception_effect.dart';
@@ -166,6 +167,7 @@ final class ThrowSource {
     this.exceptionSupertypes = const {},
     this.origin,
     this.evidence = const {},
+    this.callbackInvocation,
   });
 
   final ThrowSourceKind kind;
@@ -185,6 +187,10 @@ final class ThrowSource {
   final Map<String, List<String>> exceptionSupertypes;
   final ThrowOrigin? origin;
   final Set<EffectEvidence> evidence;
+
+  /// The invocation producing this callback effect. Its own handler applies
+  /// to incoming errors and cannot discharge a failure it creates.
+  final MethodInvocation? callbackInvocation;
 
   Set<EffectEvidence> get evidenceKinds => Set.unmodifiable({
     ...evidence,
@@ -226,6 +232,7 @@ final class ThrowSource {
     resolvedExceptionTypes: resolvedExceptionTypes,
     exceptionSupertypes: exceptionSupertypes,
     origin: origin,
+    callbackInvocation: callbackInvocation,
     evidence: Set.unmodifiable({if (!replace) ...evidenceKinds, ...additional}),
   );
 
@@ -359,6 +366,7 @@ final class ThrowSummary {
         source.origin?.filePath,
         source.origin?.offset,
         source.origin?.length,
+        source.callbackInvocation?.offset,
         (source.evidenceKinds.map((item) => item.name).toList()..sort()).join(
           ',',
         ),

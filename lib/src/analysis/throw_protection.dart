@@ -17,6 +17,7 @@ bool isProtectedByCatch(
   List<DartType> resolvedExceptionTypes = const [],
   Map<String, List<String>> exceptionSupertypes = const {},
   bool respectExceptionBoundary = true,
+  bool skipCurrentAsyncHandler = false,
 }) {
   if (!isReachable(node)) return true;
   if (respectExceptionBoundary && isInsideExceptionBoundary(node)) {
@@ -46,7 +47,12 @@ bool isProtectedByCatch(
     if (!isReachable(consumer)) return true;
     node = consumer;
   }
-  if (requireAsyncProtection && _hasAsyncErrorHandler(node, channel)) {
+  if (requireAsyncProtection &&
+      _hasAsyncErrorHandler(
+        node,
+        channel,
+        skipCurrent: skipCurrentAsyncHandler,
+      )) {
     return true;
   }
 
@@ -507,10 +513,15 @@ PropertyAccess? _iterableIteratorAccess(AstNode target) {
 bool _containsNode(AstNode ancestor, AstNode node) =>
     node.offset >= ancestor.offset && node.end <= ancestor.end;
 
-bool _hasAsyncErrorHandler(AstNode node, ExceptionChannel? channel) {
+bool _hasAsyncErrorHandler(
+  AstNode node,
+  ExceptionChannel? channel, {
+  required bool skipCurrent,
+}) {
   AstNode? current = node;
   while (current != null) {
     if (current is MethodInvocation &&
+        (!skipCurrent || !identical(current, node)) &&
         _handlerMatchesChannel(current, channel) &&
         hasUnconditionalAsyncErrorHandler(current)) {
       return true;

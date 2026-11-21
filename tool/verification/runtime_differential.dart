@@ -178,6 +178,9 @@ const _effects = {
   'callbackAsyncVoid': ('scheduled', 'String'),
   'sdkIgnoredFuture': ('scheduled', 'String'),
   'waitCleanupFailure': ('scheduled', 'String'),
+  'futureHandlerFailure': ('future', 'String'),
+  'futureFilterFailure': ('future', 'String'),
+  'streamHandlerFailure': ('stream', 'String'),
   'castFailure': ('synchronous', 'TypeError'),
   'covarianceFailure': ('synchronous', 'TypeError'),
   'patternFailure': ('synchronous', 'TypeError'),
@@ -218,6 +221,7 @@ const _suppressedEffects = {
   'stoppedGuardCase': 'String',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
+  'futureHandlerCaught': 'String',
   'futureAsStreamCaught': 'String',
   'blockedStreamTerminal': 'String',
   'groupedStatementCase': 'String',
@@ -294,6 +298,10 @@ const _observations = {
   'callback_async_void': 'none/String',
   'sdk_ignored_future': 'none/String',
   'wait_cleanup_failure': 'none/String',
+  'future_handler_failure': 'String',
+  'future_filter_failure': 'String',
+  'stream_handler_failure': 'String',
+  'future_handler_caught': 'none',
   'callback_awaited_caught': 'none',
   'cast': 'TypeError',
   'covariance': 'TypeError',
@@ -587,6 +595,18 @@ Future<void> waitCleanupFailure() async {
     );
   } catch (_) {}
 }
+Future<void> futureHandlerFailure() =>
+    Future<void>.error(42).catchError((Object _) => throw 'replacement');
+Future<void> futureFilterFailure() => Future<void>.error(42).catchError(
+  (Object _) {}, test: (Object _) => throw 'filter error',
+);
+Stream<void> streamHandlerFailure() =>
+    Stream<void>.error(42).handleError((Object _) => throw 'replacement');
+Future<void> futureHandlerCaught() async {
+  try {
+    await Future<void>.error(42).catchError((Object _) => throw 'replacement');
+  } on String {}
+}
 
 String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is String ? 'String' : '$error';
 String capture(void Function() operation) {
@@ -658,6 +678,10 @@ Future<void> main() async {
     'callback_async_void': await captureUnobserved(() async { callbackAsyncVoid(); }),
     'sdk_ignored_future': await captureUnobserved(() async { sdkIgnoredFuture(); }),
     'wait_cleanup_failure': await captureUnobserved(waitCleanupFailure),
+    'future_handler_failure': await captureAsync(futureHandlerFailure),
+    'future_filter_failure': await captureAsync(futureFilterFailure),
+    'stream_handler_failure': await captureAsync(() async { await streamHandlerFailure().toList(); }),
+    'future_handler_caught': await captureAsync(futureHandlerCaught),
     'callback_awaited_caught': await captureAsync(callbackAwaitedCaught),
     'cast': capture(() => castFailure(1)),
     'covariance': capture(() => covarianceFailure(<String>[], Object())),
