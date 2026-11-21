@@ -132,6 +132,11 @@ The `c883c2f` release snapshot passed all 21 gates on the four SDKs. Dart
 Every SDK matched 154 core observations on the VM, JavaScript and Wasm,
 and completed the release installation and Analysis Server smoke checks.
 
+On Dart 3.14.1, `eac4f5a` passed all 21 gates and 621 tests. The later
+`f263b9f` snapshot passed 201 focused tests on each SDK, with 244
+observations per backend. The 64 seeded probes exercise short circuits,
+conditional expressions, eager argument order, and typed catch coverage.
+
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level

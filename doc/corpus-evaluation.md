@@ -144,6 +144,24 @@ their selected scopes with zero dependency and plugin failures.
 | Workmanager | 853 |
 | Sqflite | 1,181 |
 
+### Additional Dart and Flutter packages
+
+A mid-run edit interrupted the earlier evaluator's final TSV write. These
+counts come from the retained analyzer logs. The Flutter protocol logs
+confirmed idle processes across both scopes. The runner now loads its
+commands and snapshots its manifest before evaluating packages.
+
+| Package | Plugin diagnostics |
+| --- | ---: |
+| Isar | 4,127 |
+| Mason | 8,148 |
+| Melos | 32,409 |
+| Very Good CLI | 26,635 |
+| Patrol | 4,589 |
+| Supabase Flutter | 3,959 |
+| GoRouter | 22,817 |
+| Firebase Core | 312 |
+
 ### Prepared workspace packages
 
 These packages were extracted from their pinned trees into disposable
@@ -156,11 +174,18 @@ individual runs.
 | Dart SDK `meta` | 5 |
 | Flutter Web Plugins | 746 |
 | Flutter Samples Animations | 2,031 |
+| Serverpod library | 14,323 |
 
 The more recent `packages/hydrated_bloc` at the pinned Bloc revision passed
 its own analysis with 4,154 plugin diagnostics. The separately archived
 Hydrated Bloc pin fails dependency resolution on Dart 3.14.1 because its
 SDK constraint predates null safety.
+
+Serverpod's full workspace could not resolve `flutter_test` with the
+installed Flutter SDK. The pinned CLI constrains analyzer below version 11,
+while the compatible `test` versions require analyzer 13 or later. The
+prepared Dart workspace contains the selected Serverpod package and its
+pinned dependencies. Its library analysis exited successfully.
 
 ## Reviewed source sites
 
