@@ -57,6 +57,7 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     registry.addBinaryExpression(this, visitor);
     registry.addSimpleIdentifier(this, visitor);
     registry.addAssertStatement(this, visitor);
+    registry.addAssertInitializer(this, visitor);
     registry.addListLiteral(this, visitor);
     registry.addSetOrMapLiteral(this, visitor);
     registry.addVariableDeclaration(this, visitor);
@@ -249,11 +250,23 @@ final class _Visitor extends SimpleAstVisitor<void> {
   }
 
   @override
-  void visitAssertStatement(AssertStatement node) {
-    final source = ThrowSourceCatalog.matchAssertStatement(node);
+  void visitAssertStatement(AssertStatement node) =>
+      _reportAssertion(node, node.condition, node.message);
+
+  @override
+  void visitAssertInitializer(AssertInitializer node) =>
+      _reportAssertion(node, node.condition, node.message);
+
+  void _reportAssertion(
+    AstNode node,
+    Expression condition,
+    Expression? message,
+  ) {
+    final source = ThrowSourceCatalog.matchAssertion(condition, message);
+    if (source == null) return;
     _report(
       node,
-      node.condition,
+      condition,
       source.displayName,
       source.exceptionTypes,
       source: source,

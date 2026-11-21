@@ -122,11 +122,15 @@ Future<void> main() async {
       );
     }
 
-    await verify(Platform.resolvedExecutable, [file.path], 'Dart VM');
+    await verify(Platform.resolvedExecutable, [
+      '--enable-asserts',
+      file.path,
+    ], 'Dart VM');
     final javascript = '${directory.path}/main.js';
     final compile = await Process.run(Platform.resolvedExecutable, [
       'compile',
       'js',
+      '--enable-asserts',
       file.path,
       '-o',
       javascript,
@@ -156,6 +160,10 @@ const _effects = {
   'storedLazyIterator': ('synchronous', 'String'),
   'blockedLazyConsumer': ('synchronous', 'int'),
   'stoppedGuardCase': ('synchronous', 'int'),
+  'failedAssertion': ('synchronous', 'AssertionError'),
+  'failedAssertionCondition': ('synchronous', 'int'),
+  'failedAssertionMessage': ('synchronous', 'String'),
+  'failedAssertionInitializer': ('synchronous', 'AssertionError'),
   'stoppedStatementGuard': ('synchronous', 'int'),
   'groupedStatementCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
@@ -225,6 +233,8 @@ const _suppressedEffects = {
   'unusedLazyIterator': 'String',
   'blockedLazyConsumer': 'String',
   'stoppedGuardCase': 'String',
+  'skippedAssertionMessage': 'String',
+  'failedAssertionMessage': 'AssertionError',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
@@ -270,6 +280,11 @@ const _observations = {
   'unused_lazy_iterator': 'none',
   'blocked_lazy_consumer': '42',
   'stopped_guard_case': '42',
+  'failed_assertion': 'AssertionError',
+  'failed_assertion_condition': '42',
+  'failed_assertion_message': 'String',
+  'skipped_assertion_message': 'none',
+  'failed_assertion_initializer': 'AssertionError',
   'stopped_statement_guard': '42',
   'grouped_statement_case': '42',
   'skipped_guard': 'none',
@@ -391,6 +406,12 @@ void stoppedGuardCase() {
     _ => throwString(),
   };
 }
+void failedAssertion() { assert(false); }
+void failedAssertionCondition() { assert(stopEvaluation(), throwString()); }
+void failedAssertionMessage() { assert(false, throwString()); }
+void skippedAssertionMessage() { assert(true, throwString()); }
+final class Checked { Checked() : assert(false); }
+void failedAssertionInitializer() { Checked(); }
 void stoppedStatementGuard() {
   switch (false) {
     case _ when stopEvaluation(): throwString();
@@ -654,7 +675,7 @@ Future<void> futureHandlerCaught() async {
   } on String {}
 }
 
-String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is String ? 'String' : '$error';
+String label(Object error) => error is TypeError ? 'TypeError' : error is RangeError ? 'RangeError' : error is AssertionError ? 'AssertionError' : error is String ? 'String' : '$error';
 String capture(void Function() operation) {
   try { operation(); return 'none'; } catch (error) { return label(error); }
 }
@@ -688,6 +709,11 @@ Future<void> main() async {
     'unused_lazy_iterator': capture(unusedLazyIterator),
     'blocked_lazy_consumer': capture(blockedLazyConsumer),
     'stopped_guard_case': capture(stoppedGuardCase),
+    'failed_assertion': capture(failedAssertion),
+    'failed_assertion_condition': capture(failedAssertionCondition),
+    'failed_assertion_message': capture(failedAssertionMessage),
+    'skipped_assertion_message': capture(skippedAssertionMessage),
+    'failed_assertion_initializer': capture(failedAssertionInitializer),
     'stopped_statement_guard': capture(stoppedStatementGuard),
     'grouped_statement_case': capture(groupedStatementCase),
     'skipped_guard': capture(skippedGuard),

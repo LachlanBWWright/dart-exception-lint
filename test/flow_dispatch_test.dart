@@ -248,6 +248,32 @@ void possibleElse(Object value) { if (value case int _ when stop()) probe(); els
     );
   });
 
+  test('assertions evaluate inputs in order and may be disabled', () async {
+    await _verify(
+      '''
+Never stop() => throw 3;
+Never message() => throw 'message';
+void passed() { assert(true, message()); }
+void failed() { assert(false); }
+void failedMessage() { assert(false, message()); }
+void failedCondition() { assert(stop(), message()); }
+class Checked { Checked() : assert(false); }
+void construct() { Checked(); }
+void contained() { try { assert(false); } on AssertionError {} }
+''',
+      (summaries, _) {
+        expect(summaries['passed']!.hasAnyThrowSource, isFalse);
+        expect(summaries['contained']!.hasAnyThrowSource, isFalse);
+        for (final name in ['failed', 'construct']) {
+          expect(summaries[name]!.exceptionTypes, contains('AssertionError'));
+          expect(summaries[name]!.confidence, ThrowConfidence.possibleThrow);
+        }
+        expect(summaries['failedMessage']!.exceptionTypes.toSet(), {'String'});
+        expect(summaries['failedCondition']!.exceptionTypes.toSet(), {'int'});
+      },
+    );
+  });
+
   test('selection certainty follows collection and pattern branches', () async {
     await _verify(
       '''

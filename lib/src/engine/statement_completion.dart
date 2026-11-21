@@ -56,6 +56,8 @@ Set<CompletionTransfer> _statement(
       return !expressionCanCompleteNormally(expression)
           ? {_thrown}
           : {_normal, _thrown};
+    case AssertStatement(:final condition):
+      return {_normal, if (constantBooleanValue(condition) != true) _thrown};
     case VariableDeclarationStatement(:final variables):
       if (variables.isLate) return {_normal};
       return {
@@ -653,6 +655,15 @@ bool _assignmentCanComplete(AssignmentExpression node) {
 }
 
 bool _childCanExecute(AstNode parent, AstNode child) {
+  final assertion = switch (parent) {
+    AssertStatement(:final condition, :final message) ||
+    AssertInitializer(:final condition, :final message) => (condition, message),
+    _ => null,
+  };
+  if (assertion != null && identical(child, assertion.$2)) {
+    return expressionCanCompleteNormally(assertion.$1) &&
+        constantBooleanValue(assertion.$1) != true;
+  }
   if (parent is ArgumentList && child is Argument) {
     for (final argument in parent.arguments) {
       if (identical(child, argument)) break;

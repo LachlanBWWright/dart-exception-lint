@@ -2577,6 +2577,31 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   }
 
   @override
+  void visitAssertStatement(AssertStatement node) =>
+      _visitAssertion(node, node.condition, node.message);
+
+  @override
+  void visitAssertInitializer(AssertInitializer node) =>
+      _visitAssertion(node, node.condition, node.message);
+
+  void _visitAssertion(
+    AstNode node,
+    Expression condition,
+    Expression? message,
+  ) {
+    // The language permits runtimes to disable assertions entirely.
+    _conditionalDepth++;
+    _recordImplicitCast(condition, executable.library.typeProvider.boolType);
+    condition.accept(this);
+    message?.accept(this);
+    final source = ThrowSourceCatalog.matchAssertion(condition, message);
+    if (source != null && !_isProtected(node, source)) {
+      sources.add(_normalize(source, node));
+    }
+    _conditionalDepth--;
+  }
+
+  @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
     _recordCall(node);
     super.visitFunctionExpressionInvocation(node);

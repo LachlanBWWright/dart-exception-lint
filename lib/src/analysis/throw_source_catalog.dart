@@ -216,7 +216,15 @@ final class ThrowSourceCatalog {
   ) =>
       options.treatArithmeticAsThrowing ? NumericChecks.assignment(node) : null;
 
-  static ThrowSource matchAssertStatement(AssertStatement node) {
+  static ThrowSource? matchAssertion(
+    Expression condition,
+    Expression? message,
+  ) {
+    if (constantBooleanValue(condition) == true ||
+        !expressionCanCompleteNormally(condition) ||
+        message != null && !expressionCanCompleteNormally(message)) {
+      return null;
+    }
     return const ThrowSource(
       kind: ThrowSourceKind.assertion,
       confidence: ThrowConfidence.possibleThrow,
