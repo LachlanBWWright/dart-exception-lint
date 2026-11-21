@@ -1,5 +1,9 @@
 # External smoke evaluation
 
+Across these runs, 50 of the 52 pins completed their selected package or
+source scope. The prepared-package results describe the Hydrated Bloc and
+Dart Linter archive limits.
+
 ## Dart 3.14.1 and analyzer 14.3.0
 
 The evaluator completed one package at each of 10 pinned revisions on Linux
@@ -53,6 +57,10 @@ completed plugin analysis in about 183 seconds with a fresh analyzer state.
 Its pinned package root contains 83 library files. The `dart_path`, Dart Lints,
 Mocktail and Very Good Analysis rows were verified at `83997df`. The Mocktail
 run used an existing bare clone with an unavailable upstream.
+
+At `8cb0b75`, RxDart completed another run with 22,091 plugin diagnostics
+and zero dependency or plugin failures. The evaluator took 240 seconds
+including package and plugin setup.
 
 ### Dart monorepo package selection
 
