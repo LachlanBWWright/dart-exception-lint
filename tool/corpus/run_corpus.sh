@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Parse the full runner before starting work so edits during analysis cannot
+# alter commands that are still waiting to execute.
+{
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -398,3 +401,5 @@ done < "$manifest"
 mv -- "$results_tmp" "$results" || exit 1
 results_tmp=''
 printf 'Wrote %s\n' "$results"
+exit 0
+}
