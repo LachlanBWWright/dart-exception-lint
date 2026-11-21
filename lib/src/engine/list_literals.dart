@@ -15,22 +15,39 @@ ListLiteral? literalListAddReceiver(MethodInvocation node) {
       target.name != 'add') {
     return null;
   }
-  return _literalReceiver(node.realTarget);
+  return _literalReceiver(node.realTarget)?.literal;
 }
 
 bool isKnownLiteralListIndex(Expression receiver, int index) {
-  final literal = _literalReceiver(receiver, immutableLocal: true);
+  final allocation = _literalReceiver(receiver);
   return index >= 0 &&
-      literal != null &&
-      index < literal.elements.length &&
-      literal.elements.every((element) => element is Expression);
+      allocation != null &&
+      allocation.stableLength &&
+      index < allocation.literal.elements.length &&
+      allocation.literal.elements.every((element) => element is Expression);
 }
 
-ListLiteral? _literalReceiver(
-  Expression? expression, {
-  bool immutableLocal = false,
-}) {
+({ListLiteral literal, bool stableLength})? literalListPropertyReceiver(
+  AstNode node,
+  GetterElement getter,
+) {
+  if (!getter.library.isInSdk ||
+      getter.library.uri.toString() != 'dart:core' ||
+      !const {'List', 'Iterable'}.contains(getter.enclosingElement.name)) {
+    return null;
+  }
+  return _literalReceiver(switch (node) {
+    PropertyAccess(:final realTarget) => realTarget,
+    PrefixedIdentifier(:final prefix) => prefix,
+    _ => null,
+  });
+}
+
+({ListLiteral literal, bool stableLength})? _literalReceiver(
+  Expression? expression,
+) {
   var receiver = _unparenthesized(expression);
+  var stableLength = true;
   if (receiver is SimpleIdentifier) {
     final local = receiver.element;
     if (local is! LocalVariableElement ||
@@ -44,13 +61,11 @@ ListLiteral? _literalReceiver(
     ).searchWithin(receiver.root)?.thisOrAncestorOfType<VariableDeclaration>();
     if (declaration?.declaredFragment?.element != local) return null;
     receiver = _unparenthesized(declaration?.initializer);
-    if (immutableLocal &&
-        !local.isConst &&
-        (receiver is! ListLiteral || receiver.constKeyword == null)) {
-      return null;
-    }
+    stableLength = local.isConst;
   }
-  return receiver is ListLiteral ? receiver : null;
+  return receiver is ListLiteral
+      ? (literal: receiver, stableLength: stableLength || receiver.isConst)
+      : null;
 }
 
 bool literalListAccepts(ListLiteral literal, Expression value) {

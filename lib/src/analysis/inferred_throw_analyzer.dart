@@ -1724,6 +1724,10 @@ final class InferredThrowAnalyzer {
         literalListAddReceiver(callSite) != null) {
       return baseSummary;
     }
+    if (declared is GetterElement &&
+        literalListPropertyReceiver(callSite, declared) != null) {
+      return baseSummary;
+    }
 
     final receiver = switch (callSite) {
       MethodInvocation() => callSite.realTarget,

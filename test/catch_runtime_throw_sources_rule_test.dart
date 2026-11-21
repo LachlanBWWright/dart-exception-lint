@@ -230,6 +230,31 @@ void f(List<int> values) {
     ]);
   }
 
+  Future<void> test_nativeListGetter_reportsStateError() async {
+    const code = r'''
+void f() {
+  final items = <int>[1, 2];
+  items.length;
+  items.first;
+  (<int>[]).last;
+  try { (<int>[]).first; } catch (_) {}
+  (const [1]).first;
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('first'),
+        'first'.length,
+        messageContainsAll: ['List.first', 'StateError'],
+      ),
+      lint(
+        code.indexOf('last'),
+        'last'.length,
+        messageContainsAll: ['List.last', 'StateError'],
+      ),
+    ]);
+  }
+
   Future<void> test_customJsonDecodeName_notReported() async {
     await assertNoDiagnostics(r'''
 String jsonDecode(String value) => value;

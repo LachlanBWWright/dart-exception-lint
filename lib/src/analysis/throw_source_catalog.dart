@@ -34,6 +34,10 @@ final class ThrowSourceCatalog {
         evidence: const {EffectEvidence.sdkModel},
       );
     }
+    if (element is GetterElement) {
+      final source = _matchLiteralListGetter(node, element, options);
+      if (source != null) return source;
+    }
     if (node is MethodInvocation &&
         (isNativeFutureIgnore(element) ||
             isNativeTypedFutureHandler(element)) &&
@@ -97,6 +101,38 @@ final class ThrowSourceCatalog {
       _ => null,
     };
     return source?.withEvidence({EffectEvidence.sdkModel}, replace: true);
+  }
+
+  static ThrowSource? _matchLiteralListGetter(
+    AstNode node,
+    GetterElement getter,
+    ExceptionAnalysisOptions options,
+  ) {
+    final name = getter.name;
+    final checksLength = const {'first', 'last', 'single'}.contains(name);
+    if (!checksLength &&
+        !const {'length', 'isEmpty', 'isNotEmpty'}.contains(name)) {
+      return null;
+    }
+    final allocation = literalListPropertyReceiver(node, getter);
+    if (allocation == null) return null;
+    var confidence = ThrowConfidence.noObviousThrow;
+    if (checksLength && options.treatCollectionStateAsThrowing) {
+      final elements = allocation.literal.elements;
+      if (!allocation.stableLength ||
+          !elements.every((element) => element is Expression)) {
+        confidence = ThrowConfidence.possibleThrow;
+      } else if (elements.isEmpty || name == 'single' && elements.length != 1) {
+        confidence = ThrowConfidence.definiteThrow;
+      }
+    }
+    return ThrowSource(
+      kind: ThrowSourceKind.collectionStateCall,
+      confidence: confidence,
+      displayName: 'List.$name',
+      exceptionTypes: confidence.isThrowing ? const ['StateError'] : const [],
+      evidence: const {EffectEvidence.sdkModel},
+    );
   }
 
   static ThrowSource? matchIndexAccess(

@@ -49,6 +49,8 @@ Future<void> main() async {
             'caughtJsonReviver',
             'nullComparison',
             'storedConstantListIndex',
+            'safeLiteralListGetters',
+            'caughtEmptyListLast',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -200,6 +202,8 @@ const _effects = {
   'resolvedConstructorRedirect': ('synchronous', 'String'),
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'resizedLiteralListIndex': ('synchronous', 'RangeError'),
+  'multipleListSingle': ('synchronous', 'StateError'),
+  'resizedListFirst': ('synchronous', 'StateError'),
   'ordinaryEquality': ('synchronous', 'String'),
   'secondStringIndex': ('synchronous', 'RangeError'),
   'negativeSubstringStart': ('synchronous', 'RangeError'),
@@ -388,6 +392,10 @@ const _observations = {
   'ordinary_equality': 'String',
   'stored_constant_list_index': 'none',
   'resized_literal_list_index': 'RangeError',
+  'safe_literal_list_getters': 'none',
+  'caught_empty_list_last': 'none',
+  'multiple_list_single': 'StateError',
+  'resized_list_first': 'StateError',
   'negative_substring_start': 'RangeError',
   'reversed_substring_range': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
@@ -602,6 +610,18 @@ bool nullComparison(dynamic input) => input == null || null != input;
 bool ordinaryEquality(EqualityTrap input, Object other) => input == other;
 int storedConstantListIndex() { const list = [1, 2]; return list[1]; }
 int resizedLiteralListIndex() { final list = [1, 2]; list.clear(); return list[1]; }
+void safeLiteralListGetters() {
+  const list = [1];
+  list.first;
+  list.single;
+  final growable = [1, 2];
+  growable.add(3);
+  growable.length;
+  growable.isEmpty;
+}
+void caughtEmptyListLast() { try { (<int>[]).last; } on StateError {} }
+int multipleListSingle() => [1, 2].single;
+int resizedListFirst() { final list = [1]; list.clear(); return list.first; }
 void negativeSubstringStart(String text, int start) {
   if (start < text.length) text.substring(start);
 }
@@ -1014,6 +1034,10 @@ Future<void> main() async {
     'ordinary_equality': capture(() => ordinaryEquality(EqualityTrap(), Object())),
     'stored_constant_list_index': capture(storedConstantListIndex),
     'resized_literal_list_index': capture(resizedLiteralListIndex),
+    'safe_literal_list_getters': capture(safeLiteralListGetters),
+    'caught_empty_list_last': capture(caughtEmptyListLast),
+    'multiple_list_single': capture(multipleListSingle),
+    'resized_list_first': capture(resizedListFirst),
     'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
     'reversed_substring_range': capture(() => reversedSubstringRange('word')),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),

@@ -887,6 +887,40 @@ int resized() { final items = [1, 2]; items.clear(); return items[1]; }
     );
   });
 
+  test('List getters distinguish exact literals from open dispatch', () async {
+    await _verify(
+      '''
+int safeState() {
+  final items = <int>[];
+  items.add(1);
+  return items.isNotEmpty ? items.length : 0;
+}
+int safeSingle() { const Iterable<int> items = [1]; return items.single; }
+int emptyLast() => (<int>[]).last;
+int resizedFirst() {
+  final items = [1];
+  try { items.clear(); } catch (_) {}
+  return items.first;
+}
+void contained() { try { (<int>[]).first; } on StateError {} }
+int open(List<int> items) => items.first;
+class Custom { int get first => throw 'custom first'; }
+int custom() => Custom().first;
+''',
+      (summaries, _) {
+        for (final name in ['safeState', 'safeSingle', 'contained']) {
+          expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
+        }
+        for (final name in ['emptyLast', 'resizedFirst']) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {'StateError'});
+          expect(summaries[name]!.hasUnknownEffects, isFalse);
+        }
+        expect(summaries['open']!.hasUnknownEffects, isTrue);
+        expect(summaries['custom']!.exceptionTypes.toSet(), {'String'});
+      },
+    );
+  });
+
   test(
     'List.add uses the allocation type of a proven literal receiver',
     () async {

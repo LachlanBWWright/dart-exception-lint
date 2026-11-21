@@ -3,6 +3,7 @@ import 'package:analyzer/analysis_rule/rule_context.dart';
 import 'package:analyzer/analysis_rule/rule_visitor_registry.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/dart/element/type.dart';
 
@@ -12,6 +13,7 @@ import '../analysis/throw_source_catalog.dart';
 import '../analysis/throw_summary.dart';
 import '../engine/runtime_checks.dart';
 import '../engine/effect_containment.dart';
+import '../engine/invocation_targets.dart';
 import '../config/exception_analysis_options.dart';
 import '../diagnostics.dart';
 import '../engine/exception_analysis_service.dart';
@@ -48,6 +50,8 @@ class CatchRuntimeThrowSourcesRule extends AnalysisRule {
     registry.addMethodInvocation(this, visitor);
     registry.addFunctionExpressionInvocation(this, visitor);
     registry.addInstanceCreationExpression(this, visitor);
+    registry.addPropertyAccess(this, visitor);
+    registry.addPrefixedIdentifier(this, visitor);
     registry.addIndexExpression(this, visitor);
     registry.addAsExpression(this, visitor);
     registry.addCastPattern(this, visitor);
@@ -152,25 +156,8 @@ final class _Visitor extends SimpleAstVisitor<void> {
   }
 
   @override
-  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
-    final source = ThrowSourceCatalog.matchResolvedInvocation(
-      node,
-      node.element,
-      options,
-    );
-    if (source == null ||
-        !source.confidence.isThrowing ||
-        source.confidence.isAsync) {
-      return;
-    }
-    _report(
-      node,
-      node.function,
-      source.displayName,
-      source.exceptionTypes,
-      source: source,
-    );
-  }
+  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) =>
+      _reportInvocation(node, node.function, node.element);
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
@@ -212,10 +199,25 @@ final class _Visitor extends SimpleAstVisitor<void> {
   }
 
   @override
-  void visitMethodInvocation(MethodInvocation node) {
+  void visitMethodInvocation(MethodInvocation node) =>
+      _reportInvocation(node, node.methodName, node.methodName.element);
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    if (isAssignmentTarget(node)) return;
+    _reportInvocation(node, node.propertyName, node.propertyName.element);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    if (isAssignmentTarget(node)) return;
+    _reportInvocation(node, node.identifier, node.identifier.element);
+  }
+
+  void _reportInvocation(AstNode node, AstNode target, Element? element) {
     final source = ThrowSourceCatalog.matchResolvedInvocation(
       node,
-      node.methodName.element,
+      element,
       options,
     );
     if (source == null ||
@@ -225,7 +227,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
     }
     _report(
       node,
-      node.methodName,
+      target,
       source.displayName,
       source.exceptionTypes,
       source: source,
