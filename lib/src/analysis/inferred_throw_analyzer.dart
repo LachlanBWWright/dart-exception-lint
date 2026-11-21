@@ -2582,9 +2582,19 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
 
   @override
   void visitBlock(Block node) {
+    var canSkipStatement = false;
     for (final statement in node.statements) {
-      statement.accept(this);
-      if (!statementCompletion(statement).canCompleteNormally) break;
+      _visitWithCertainty(statement, conditional: canSkipStatement);
+      final completion = statementCompletion(statement);
+      if (!completion.canCompleteNormally) break;
+      canSkipStatement |= completion.transfers.any(
+        (transfer) => switch (transfer.kind) {
+          CompletionKind.returned ||
+          CompletionKind.broke ||
+          CompletionKind.continued => true,
+          _ => false,
+        },
+      );
     }
   }
 

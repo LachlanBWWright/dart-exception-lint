@@ -103,6 +103,32 @@ void lazyInitializer() { late final int value = stop(); probe(); }
     );
   });
 
+  test('conditional exits lower the certainty of later failures', () async {
+    await _verify(
+      '''
+void mayReturn(bool skip) { if (skip) return; throw 'later'; }
+void cannotReturn() { if (false) return; throw 'later'; }
+void mayBreak(bool skip) {
+  outer: { if (skip) break outer; throw 'later'; }
+}
+''',
+      (summaries, _) {
+        expect(
+          summaries['mayReturn']!.confidence,
+          ThrowConfidence.possibleThrow,
+        );
+        expect(
+          summaries['cannotReturn']!.confidence,
+          ThrowConfidence.definiteThrow,
+        );
+        expect(
+          summaries['mayBreak']!.confidence,
+          ThrowConfidence.possibleThrow,
+        );
+      },
+    );
+  });
+
   test('collection evaluation keeps only reachable effects', () async {
     await _verify(
       '''
