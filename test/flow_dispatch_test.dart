@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:dart_exception_lint/src/analysis/inferred_throw_analyzer.dart';
 import 'package:dart_exception_lint/src/analysis/throw_summary.dart';
@@ -10,6 +11,7 @@ import 'package:dart_exception_lint/src/config/throwing_api_manifest.dart';
 import 'package:dart_exception_lint/src/engine/exception_effect.dart';
 import 'package:dart_exception_lint/src/engine/resolved_dependencies.dart';
 import 'package:dart_exception_lint/src/engine/future_forwarding.dart';
+import 'package:dart_exception_lint/src/engine/statement_completion.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:test/test.dart';
 
@@ -655,6 +657,20 @@ void skippedOperand(int? current) { Holder(current).item ??= throw 3; }
         expect(operand.confidence, ThrowConfidence.possibleThrow);
       },
     );
+  });
+
+  test('untyped index assignments keep their possible execution paths', () {
+    final result = parseString(
+      content: 'Object? write(dynamic cache) => cache[0] ??= "value";',
+    );
+    final declaration = result.unit.declarations.single as FunctionDeclaration;
+    final body = declaration.functionExpression.body as ExpressionFunctionBody;
+    final assignment = body.expression as AssignmentExpression;
+
+    expect(hasUnknownIndexAssignmentReceiver(assignment), isTrue);
+    expect(assignmentReadType(assignment), isNull);
+    expect(expressionCanCompleteNormally(assignment), isTrue);
+    expect(assignmentWriteCanExecute(assignment), isTrue);
   });
 
   test('String bounds follow nonempty guards for stable values', () async {

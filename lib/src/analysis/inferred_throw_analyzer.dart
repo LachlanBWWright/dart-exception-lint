@@ -2200,7 +2200,8 @@ final class InferredThrowAnalyzer {
               node.operator.lexeme != '!' &&
               node.operand.staticType is DynamicType) ||
           (node is AssignmentExpression &&
-              (node.readType is DynamicType ||
+              (hasUnknownIndexAssignmentReceiver(node) ||
+                  assignmentReadType(node) is DynamicType ||
                   node.leftHandSide.staticType is DynamicType ||
                   (node.leftHandSide is PropertyAccess &&
                       (node.leftHandSide as PropertyAccess)
@@ -3038,7 +3039,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitAssignmentExpression(AssignmentExpression node) {
     final canSkipWrite =
-        node.operator.lexeme == '??=' && node.readType?.isDartCoreNull != true;
+        node.operator.lexeme == '??=' &&
+        assignmentReadType(node)?.isDartCoreNull != true;
     _recordImplicitCast(node.rightHandSide, node.writeType);
     final check = analyzer.options.treatAsCastsAsThrowing
         ? RuntimeChecks.assignmentCovarianceCheck(node)

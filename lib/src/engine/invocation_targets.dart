@@ -36,8 +36,7 @@ Iterable<Element?> invocationTargets(
       final dynamicReceiver = switch (node.leftHandSide) {
         PropertyAccess(:final realTarget) =>
           realTarget.staticType is DynamicType,
-        IndexExpression(:final realTarget) =>
-          realTarget.staticType is DynamicType,
+        IndexExpression() => hasUnknownIndexAssignmentReceiver(node),
         PrefixedIdentifier(:final prefix) => prefix.staticType is DynamicType,
         _ => false,
       };
@@ -50,7 +49,7 @@ Iterable<Element?> invocationTargets(
       if (node.element != null ||
           operator != '=' &&
               operator != '??=' &&
-              node.readType is DynamicType) {
+              assignmentReadType(node) is DynamicType) {
         yield node.element;
       }
       if (node.writeElement is ExecutableElement) yield node.writeElement;

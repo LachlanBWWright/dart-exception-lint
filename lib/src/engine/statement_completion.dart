@@ -832,6 +832,23 @@ bool assignmentWriteCanExecute(AssignmentExpression node) =>
     _assignmentRightHandSideCanExecute(node) &&
     expressionCanCompleteNormally(node.rightHandSide);
 
+/// An unresolved index receiver can make the analyzer's V1 read projection
+/// ask an untyped V2 expression for a mandatory type.
+DartType? assignmentReadType(AssignmentExpression node) {
+  final target = node.leftHandSide;
+  if (target is IndexExpression && target.realTarget.staticType == null) {
+    return null;
+  }
+  return node.readType;
+}
+
+bool hasUnknownIndexAssignmentReceiver(AssignmentExpression node) {
+  final target = node.leftHandSide;
+  if (target is! IndexExpression) return false;
+  final type = target.realTarget.staticType;
+  return type == null || type is DynamicType;
+}
+
 bool _assignmentTargetCanComplete(
   AssignmentExpression node, {
   required bool allowSkipping,
@@ -849,21 +866,22 @@ bool _assignmentTargetCanComplete(
 };
 
 bool _assignmentReadStops(AssignmentExpression node) {
-  final type = node.readType;
+  final type = assignmentReadType(node);
   return type is NeverType && type.nullabilitySuffix == NullabilitySuffix.none;
 }
 
 bool _assignmentRightHandSideCanExecute(AssignmentExpression node) =>
     assignmentTargetCanExecute(node) &&
     !_assignmentReadStops(node) &&
-    (node.operator.lexeme != '??=' || !_knownNonNullType(node.readType));
+    (node.operator.lexeme != '??=' ||
+        !_knownNonNullType(assignmentReadType(node)));
 
 bool _assignmentCanComplete(AssignmentExpression node) {
   if (!_assignmentTargetCanComplete(node, allowSkipping: true)) return false;
   if (_selectorShorting(node.leftHandSide) != _NullShorting.none) return true;
   if (_assignmentReadStops(node)) return false;
   return node.operator.lexeme == '??=' &&
-          node.readType?.isDartCoreNull != true ||
+          assignmentReadType(node)?.isDartCoreNull != true ||
       expressionCanCompleteNormally(node.rightHandSide);
 }
 
