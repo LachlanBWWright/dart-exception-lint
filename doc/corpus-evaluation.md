@@ -162,6 +162,20 @@ commands and snapshots its manifest before evaluating packages.
 | GoRouter | 22,817 |
 | Firebase Core | 312 |
 
+### Indexed assignment regression
+
+Drift, GetX, and Flutter Quill exposed the same analyzer projection failure
+when an indexed assignment receiver had no resolved type. The regression
+checks cover both null-coalescing and compound assignments. The reruns below
+finished all selected scopes with zero plugin failures and confirmed idle
+plugin processes.
+
+| Package | Plugin diagnostics |
+| --- | ---: |
+| Drift | 44,050 |
+| GetX | 16,952 |
+| Flutter Quill | 22,514 |
+
 ### Prepared workspace packages
 
 These packages were extracted from their pinned trees into disposable
@@ -186,6 +200,11 @@ installed Flutter SDK. The pinned CLI constrains analyzer below version 11,
 while the compatible `test` versions require analyzer 13 or later. The
 prepared Dart workspace contains the selected Serverpod package and its
 pinned dependencies. Its library analysis exited successfully.
+
+The archived Dart Linter pin has compiler errors with its default analyzer
+resolution. A disposable override to analyzer 6.2.0, the package's declared
+minimum, cleared those errors in stock analysis. The plugin run over its
+rules directory still reached the 420-second timeout.
 
 ## Reviewed source sites
 

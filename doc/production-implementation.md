@@ -137,6 +137,11 @@ On Dart 3.14.1, `eac4f5a` passed all 21 gates and 621 tests. The later
 observations per backend. The 64 seeded probes exercise short circuits,
 conditional expressions, eager argument order, and typed catch coverage.
 
+The `13e302d` snapshot passed 202 focused tests and matched 249 VM,
+JavaScript and Wasm observations on each SDK. Its installed stable consumer
+passed release and editor checks. Across three unsaved edits, diagnostics
+appeared in 12–23 ms and cleared in 27–89 ms after the plugin was ready.
+
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level
