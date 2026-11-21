@@ -1973,7 +1973,7 @@ final class InferredThrowAnalyzer {
             : null);
     return unit == null
         ? null
-        : NodeLocator2(
+        : NodeLocator(
             fragment.nameOffset ?? fragment.offset,
           ).searchWithin(unit)?.thisOrAncestorOfType<VariableDeclaration>();
   }
@@ -1996,7 +1996,9 @@ final class InferredThrowAnalyzer {
     }
 
     final unit = _parsedUnits[path] ??= _parseSharedUnitSafely(path);
-    final declarationNode = NodeLocator2(
+    // Body summaries use the analyzer's V1 visitors and parent accessors.
+    // Locate the declaration in that same view, including accessor wrappers.
+    final declarationNode = NodeLocator(
       fragment.nameOffset ?? fragment.offset,
     ).searchWithin(unit);
     if (declarationNode == null) {
@@ -2020,7 +2022,7 @@ final class InferredThrowAnalyzer {
       return null;
     }
     final unit = _parsedUnits[path] ??= _parseSharedUnitSafely(path);
-    final node = NodeLocator2(
+    final node = NodeLocator(
       fragment.nameOffset ?? fragment.offset,
     ).searchWithin(unit);
     return node?.thisOrAncestorMatching(

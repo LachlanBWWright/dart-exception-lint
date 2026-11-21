@@ -608,6 +608,24 @@ String entry() => first;
   });
 
   test(
+    'top-level accessor bodies use the same AST view as inference',
+    () async {
+      await _verify(
+        '''
+int get value => throw 'getter';
+set value(int next) { throw false; }
+int read() => value;
+void write() { value = 1; }
+''',
+        (summaries, _) {
+          expect(summaries['read']!.exceptionTypes.toSet(), {'String'});
+          expect(summaries['write']!.exceptionTypes.toSet(), {'bool'});
+        },
+      );
+    },
+  );
+
+  test(
     'forwarding proof accepts immediate async adoption and rejects delayed, mutation, virtual, cyclic, dynamic and side effect bodies',
     () async {
       await _verify(
