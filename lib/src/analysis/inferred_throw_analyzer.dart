@@ -1421,10 +1421,16 @@ final class InferredThrowAnalyzer {
       options,
     );
     if (directSource != null) {
+      final channel = ExceptionEffect.fromSource(directSource).channel;
+      final route =
+          channel == ExceptionChannel.future ||
+              channel == ExceptionChannel.stream
+          ? asyncValueRoute(node, channel)
+          : null;
       final discardedFuture =
-          ExceptionEffect.fromSource(directSource).channel ==
-              ExceptionChannel.future &&
-          asyncValueConsumer(node) is ExpressionStatement;
+          route != null &&
+          route.channel == ExceptionChannel.future &&
+          route.consumer is ExpressionStatement;
       final shouldKeep =
           !directSource.isAsync ||
           isAsyncObserved ||
@@ -1499,13 +1505,19 @@ final class InferredThrowAnalyzer {
     ];
     for (final effect in dispatchSummary.effects) {
       final source = effect.source;
+      final route =
+          effect.channel == ExceptionChannel.future ||
+              effect.channel == ExceptionChannel.stream
+          ? asyncValueRoute(node, effect.channel)
+          : null;
       final discardedCallbackFuture =
-          effect.channel == ExceptionChannel.future &&
+          route != null &&
+          route.channel == ExceptionChannel.future &&
           ((boundCallback && !isAsyncObserved) ||
-              asyncValueConsumer(node) is ExpressionStatement ||
+              route.consumer is ExpressionStatement ||
               (boundCallback &&
                   (currentExecutable.returnType is VoidType &&
-                      asyncValueConsumer(node) is! AwaitExpression)));
+                      route.consumer is! AwaitExpression)));
       if ((effect.channel == ExceptionChannel.future ||
               effect.channel == ExceptionChannel.stream) &&
           !isAsyncObserved &&
@@ -3079,7 +3091,11 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     AstNode node, {
     bool conditional = false,
   }) {
-    final sourceChannel = ExceptionEffect.fromSource(source).channel;
+    final route = asyncValueRoute(
+      node,
+      ExceptionEffect.fromSource(source).channel,
+    );
+    final sourceChannel = route.channel;
     final bodyChannel = _isAsyncContext
         ? (executable.returnType is VoidType
               ? ExceptionChannel.scheduled
@@ -3097,8 +3113,8 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
         sourceChannel == ExceptionChannel.future &&
         ((source.confidence == ThrowConfidence.unknown &&
                 !_isAsyncObserved(node, channel: sourceChannel)) ||
-            asyncValueConsumer(node) is ExpressionStatement);
-    final consumer = asyncValueConsumer(node);
+            route.consumer is ExpressionStatement);
+    final consumer = route.consumer;
     final consumesIterator =
         sourceChannel == ExceptionChannel.deferred &&
             deferredExecutionSite(node) != null ||

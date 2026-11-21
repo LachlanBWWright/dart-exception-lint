@@ -185,6 +185,9 @@ const _effects = {
   'getterFailure': ('synchronous', 'String'),
   'futureFailure': ('future', 'String'),
   'streamFailure': ('stream', 'String'),
+  'constructedStream': ('stream', 'String'),
+  'streamToList': ('future', 'String'),
+  'streamToListDiscarded': ('scheduled', 'String'),
   'lazyFailure': ('deferred', 'String'),
   'scheduledFailure': ('scheduled', 'String'),
   'finallyReplaceCast': ('synchronous', 'String'),
@@ -209,6 +212,7 @@ const _suppressedEffects = {
   'blockedLazyConsumer': 'String',
   'stoppedGuardCase': 'String',
   'stoppedStatementGuard': 'String',
+  'streamToListCaught': 'String',
   'groupedStatementCase': 'String',
   'skippedGuard': 'String',
   'caughtPostfixAssertion': 'TypeError',
@@ -291,6 +295,10 @@ const _observations = {
   'getter': 'String',
   'future': 'String',
   'stream': 'String',
+  'constructed_stream': 'String',
+  'stream_to_list': 'String',
+  'stream_to_list_caught': 'none',
+  'stream_to_list_discarded': 'none/String',
   'lazy': 'String',
   'scheduled': 'String',
   'contained': 'none',
@@ -503,6 +511,16 @@ Future<void> consumeStreamCaught() async {
   try { await for (final value in streamFailure()) { value; } } on String {}
 }
 void scheduledFailure() { Timer.run(() { throw 'scheduled'; }); }
+Stream<int> constructedStream() => Stream<int>.error('buffered error');
+Future<void> streamToList() async {
+  await Stream<int>.error('terminal error').toList();
+}
+Future<void> streamToListCaught() async {
+  try { await Stream<int>.error('terminal error').toList(); } on String {}
+}
+Future<void> streamToListDiscarded() async {
+  Stream<int>.error('discarded terminal error').toList();
+}
 void abandonFuture(Future<void> Function() source) {
   try { source(); } catch (_) {}
 }
@@ -617,6 +635,10 @@ Future<void> main() async {
     'getter': capture(() => getterFailure(Data())),
     'future': await captureAsync(futureFailure),
     'stream': await captureAsync(() async { await streamFailure().toList(); }),
+    'constructed_stream': await captureAsync(() async { await constructedStream().toList(); }),
+    'stream_to_list': await captureAsync(streamToList),
+    'stream_to_list_caught': await captureAsync(streamToListCaught),
+    'stream_to_list_discarded': await captureUnobserved(streamToListDiscarded),
     'lazy': capture(() { lazyFailure().toList(); }),
     'scheduled': await scheduled.future.timeout(const Duration(seconds: 5)),
     'contained': capture(() => containedCast(1)),

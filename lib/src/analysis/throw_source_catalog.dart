@@ -311,14 +311,18 @@ final class ThrowSourceCatalog {
       );
     }
 
-    if (className == 'Future' &&
+    if ((className == 'Future' || className == 'Stream') &&
         constructorName == 'error' &&
         _isExpectedLibrary(libraryUri, 'dart:async')) {
+      final stream = className == 'Stream';
       return ThrowSource(
-        kind: ThrowSourceKind.futureError,
+        kind: stream
+            ? ThrowSourceKind.streamAddError
+            : ThrowSourceKind.futureError,
         confidence: ThrowConfidence.asyncError,
-        displayName: 'Future.error',
+        displayName: '$className.error',
         isAsync: true,
+        channel: stream ? ExceptionChannel.stream : ExceptionChannel.future,
         exceptionTypes: _argumentExceptionTypes(node.argumentList),
         exceptionSupertypes: _argumentExceptionSupertypes(node.argumentList),
         resolvedExceptionTypes: [

@@ -244,13 +244,37 @@ AstNode? _forwardingFutureParent(AstNode node) {
 }
 
 /// The first consumer after expressions known to forward an async value.
-AstNode? asyncValueConsumer(AstNode node) {
+AstNode? asyncValueConsumer(AstNode node) =>
+    asyncValueRoute(node, ExceptionChannel.synchronous).consumer;
+
+/// Stream terminal operations deliver error events through a Future result.
+({AstNode? consumer, ExceptionChannel channel}) asyncValueRoute(
+  AstNode node,
+  ExceptionChannel channel,
+) {
   var current = node;
   while (true) {
     final forwarding = _forwardingFutureParent(current);
-    if (forwarding == null) return current.parent;
+    if (forwarding == null) return (consumer: current.parent, channel: channel);
+    if (channel == ExceptionChannel.stream &&
+        _streamTerminalFuture(forwarding)) {
+      channel = ExceptionChannel.future;
+    }
     current = forwarding;
   }
+}
+
+bool _streamTerminalFuture(AstNode node) {
+  final element = switch (node) {
+    MethodInvocation(:final methodName) => methodName.element,
+    PropertyAccess(:final propertyName) => propertyName.element,
+    _ => null,
+  };
+  return element is ExecutableElement &&
+      element.library.uri.toString() == 'dart:async' &&
+      element.enclosingElement?.name == 'Stream' &&
+      element.returnType is InterfaceType &&
+      (element.returnType as InterfaceType).isDartAsyncFuture;
 }
 
 /// The operation that executes a lazy value when its inputs finish evaluating.
