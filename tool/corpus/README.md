@@ -30,7 +30,9 @@ temporary local plugin configuration, resolves dependencies, and runs the
 analyzer. It removes the worktrees after analysis and writes machine-readable
 results to `tool/corpus/results.tsv`. The cached clones remain available for
 later runs. Flutter analyzer protocol logs are kept with analyzer output under
-`CORPUS_ROOT` and are checked for plugin errors.
+`CORPUS_ROOT` and are checked for plugin errors and results from the selected
+package. Flutter analysis targets the package's source and test directories,
+which keeps separately configured examples out of the run.
 
 This repository inventory measures diagnostic volume and execution failures. It does not measure precision or recall; it has no reviewed expected-diagnostic labels. It is not a claim that every repository has a
 single canonical package root. Failures caused by unavailable platform SDKs,

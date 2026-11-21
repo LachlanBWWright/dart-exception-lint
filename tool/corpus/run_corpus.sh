@@ -206,12 +206,24 @@ EOF
     fi
     output_file="$corpus_root/$id.$package_count.analyze.log"
     analyzer_command=("${analyzer[@]}")
+    analysis_roots=("$package_dir")
     protocol_log="$corpus_root/$id.$package_count.protocol.log"
     if [[ "$manager" == flutter ]]; then
       rm -f -- "$protocol_log"
       analyzer_command+=("--protocol-traffic-log=$protocol_log")
+      # A nested example can finish its own plugin context first and make
+      # Flutter exit before the selected package publishes diagnostics.
+      analysis_roots=()
+      for directory in lib bin test integration_test tool; do
+        if [[ -d "$package_dir/$directory" ]]; then
+          analysis_roots+=("$package_dir/$directory")
+        fi
+      done
+      if [[ "${#analysis_roots[@]}" == 0 ]]; then
+        analysis_roots=("$package_dir")
+      fi
     fi
-    if timeout "$timeout_seconds" "${analyzer_command[@]}" "$package_dir" >"$output_file" 2>&1; then
+    if timeout "$timeout_seconds" "${analyzer_command[@]}" "${analysis_roots[@]}" >"$output_file" 2>&1; then
       status_code=0
     else
       status_code=$?
@@ -225,6 +237,10 @@ EOF
         { [[ "$manager" == flutter && -f "$protocol_log" ]] && rg -q '"plugin\.error"' "$protocol_log"; }; then
       ((plugin_failures += 1))
       package_status=plugin_failed
+    elif [[ "$manager" == flutter && "$package_status" == ok ]] &&
+        ! rg 'PluginNoti:.*"analysis\.errors"' "$protocol_log" 2>/dev/null | rg -F -- "\"$package_dir/" >/dev/null; then
+      ((plugin_failures += 1))
+      package_status=plugin_incomplete
     elif [[ "$resolver_status" != 0 && "$package_status" == ok ]]; then
       package_status=dependency_failed
     fi
