@@ -6,25 +6,43 @@ List<Set<String>> stronglyConnectedComponents(Map<String, Set<String>> graph) {
   final stack = <String>[];
   final onStack = <String>{};
   final components = <Set<String>>[];
+  final traversal = <({String node, Iterator<String> edges})>[];
   var nextIndex = 0;
-  void visit(String node) {
+
+  void enter(String node) {
     indices[node] = nextIndex;
     lowLinks[node] = nextIndex++;
     stack.add(node);
     onStack.add(node);
-    for (final target in graph[node] ?? const <String>{}) {
-      if (!graph.containsKey(target)) continue;
-      if (!indices.containsKey(target)) {
-        visit(target);
-        if (lowLinks[target]! < lowLinks[node]!) {
-          lowLinks[node] = lowLinks[target]!;
+    traversal.add((node: node, edges: graph[node]!.iterator));
+  }
+
+  for (final root in graph.keys) {
+    if (indices.containsKey(root)) continue;
+    enter(root);
+    // The complete indexed graph can contain much longer chains than the
+    // per-call inference depth. Keep traversal state off the call stack.
+    while (traversal.isNotEmpty) {
+      final (node: node, edges: edges) = traversal.last;
+      if (edges.moveNext()) {
+        final target = edges.current;
+        if (!graph.containsKey(target)) continue;
+        if (!indices.containsKey(target)) {
+          enter(target);
+        } else if (onStack.contains(target) &&
+            indices[target]! < lowLinks[node]!) {
+          lowLinks[node] = indices[target]!;
         }
-      } else if (onStack.contains(target) &&
-          indices[target]! < lowLinks[node]!) {
-        lowLinks[node] = indices[target]!;
+        continue;
       }
-    }
-    if (lowLinks[node] == indices[node]) {
+
+      traversal.removeLast();
+      final lowLink = lowLinks[node]!;
+      if (traversal.isNotEmpty) {
+        final parent = traversal.last.node;
+        if (lowLink < lowLinks[parent]!) lowLinks[parent] = lowLink;
+      }
+      if (lowLink != indices[node]) continue;
       final component = <String>{};
       String member;
       do {
@@ -34,10 +52,6 @@ List<Set<String>> stronglyConnectedComponents(Map<String, Set<String>> graph) {
       } while (member != node);
       components.add(component);
     }
-  }
-
-  for (final node in graph.keys) {
-    if (!indices.containsKey(node)) visit(node);
   }
   return components;
 }

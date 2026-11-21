@@ -33,4 +33,15 @@ void main() {
       ],
     );
   });
+
+  test('walks a long dependency chain without consuming the call stack', () {
+    const depth = 20000;
+    final components = stronglyConnectedComponents({
+      for (var index = 0; index < depth; index++) '$index': {'${index + 1}'},
+      '$depth': {'${depth - 1}'},
+    });
+    expect(components, hasLength(depth));
+    expect(components.first, {'$depth', '${depth - 1}'});
+    expect(components.last, {'0'});
+  });
 }
