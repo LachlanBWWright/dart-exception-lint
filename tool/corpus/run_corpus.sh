@@ -299,14 +299,25 @@ EOF
       # Separate processes keep a finished context from terminating a sibling
       # context. The selected roots also keep embedded examples out of analysis.
       analysis_roots=()
+      scoped_options=()
       for directory in lib bin test integration_test tool; do
         scope="$package_dir/$directory"
         if [[ -d "$scope" ]] && [[ -n "$(find "$scope" -type f -name '*.dart' -print -quit)" ]]; then
           analysis_roots+=("$scope")
+          if [[ -f "$scope/analysis_options.yaml" && ! -L "$scope/analysis_options.yaml" ]]; then
+            scoped_options+=("$scope/analysis_options.yaml")
+          fi
         fi
       done
       if [[ "${#analysis_roots[@]}" == 0 ]]; then
         analysis_roots=("$package_dir")
+      fi
+      if [[ "${#scoped_options[@]}" != 0 ]] && ! (
+        cd "$plugin_root" && timeout "$timeout_seconds" dart run tool/corpus/isolate_workspace_plugins.dart --install-from "$options" "${scoped_options[@]}"
+      ) >"$corpus_root/$id.$package_count.scopes.log" 2>&1; then
+        if [[ "$package_status" == ok ]]; then package_status=configuration_failed; fi
+        restore_options
+        continue
       fi
     fi
     status=ok

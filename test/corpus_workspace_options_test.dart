@@ -41,6 +41,24 @@ linter:
       });
       workspace_options.main([file.path]);
       expect(await file.readAsString(), stripped);
+
+      final packageOptions = File('${directory.path}/package_options.yaml');
+      await packageOptions.writeAsString('''
+plugins:
+  dart_exception_lint:
+    path: /fixture/plugin
+''');
+      workspace_options.main([
+        '--install-from',
+        packageOptions.path,
+        file.path,
+      ]);
+      expect(jsonDecode(await file.readAsString()), {
+        ...jsonDecode(stripped) as Map<String, Object?>,
+        'plugins': {
+          'dart_exception_lint': {'path': '/fixture/plugin'},
+        },
+      });
     },
   );
 }

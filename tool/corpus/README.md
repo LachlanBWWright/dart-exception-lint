@@ -36,6 +36,7 @@ Flutter analyzer protocol logs are kept with analyzer output under
 package. A Flutter run also needs a final idle status for every observed
 plugin process. Partial plugin output is recorded as `plugin_incomplete`.
 Flutter analysis runs each package source or test directory in its own process.
+Each scope with its own analyzer options receives the same plugin activation.
 The runner keeps numbered scope logs alongside the combined package logs.
 Separately configured examples are outside those scopes.
 The injected analyzer options exclude nested packages that have their own
