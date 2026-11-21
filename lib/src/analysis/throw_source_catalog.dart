@@ -35,13 +35,14 @@ final class ThrowSourceCatalog {
       );
     }
     if (node is MethodInvocation &&
-        isNativeFutureIgnore(element) &&
+        (isNativeFutureIgnore(element) ||
+            isNativeTypedFutureHandler(element)) &&
         _knownFutureSource(node.realTarget) != null) {
-      return const ThrowSource(
+      return ThrowSource(
         kind: ThrowSourceKind.asyncOperation,
         confidence: ThrowConfidence.noObviousThrow,
-        displayName: 'Future.ignore',
-        evidence: {EffectEvidence.sdkModel},
+        displayName: 'Future.${element.name}',
+        evidence: const {EffectEvidence.sdkModel},
       );
     }
     if (NumericParseChecks.modelsInvocation(node, element)) {
@@ -252,12 +253,43 @@ final class ThrowSourceCatalog {
   }
 
   static bool isNativeFutureIgnore(Element? element) =>
+      _isNativeFutureExtension(element, 'ignore');
+
+  static bool isNativeTypedFutureHandler(Element? element) =>
+      _isNativeFutureExtension(element, 'onError');
+
+  static bool typedFutureHandlerMayRun(MethodInvocation node) {
+    var receiver = node.realTarget;
+    while (receiver is ParenthesizedExpression) {
+      receiver = receiver.expression;
+    }
+    final source = _knownFutureSource(receiver);
+    if (source?.confidence == ThrowConfidence.noObviousThrow) return false;
+    if (source?.kind != ThrowSourceKind.futureError ||
+        receiver is! InstanceCreationExpression) {
+      return true;
+    }
+    final expected = node.typeArgumentTypes?.singleOrNull;
+    final value =
+        receiver.argumentList.arguments.firstOrNull?.argumentExpression;
+    // Numeric literal runtime types differ across backends. Only compare
+    // exact String and bool values against a resolved concrete handler type.
+    if (expected is! InterfaceType ||
+        (value is! StringLiteral && value is! BooleanLiteral)) {
+      return true;
+    }
+    final actual = value?.staticType;
+    return actual == null ||
+        expected.element.library.typeSystem.isSubtypeOf(actual, expected);
+  }
+
+  static bool _isNativeFutureExtension(Element? element, String name) =>
       element is MethodElement &&
       element.library.isInSdk &&
       element.library.uri.toString() == 'dart:async' &&
       element.enclosingElement is ExtensionElement &&
       element.enclosingElement?.name == 'FutureExtensions' &&
-      element.name == 'ignore';
+      element.name == name;
 
   static ThrowSource? matchAssignmentExpression(
     AssignmentExpression node,

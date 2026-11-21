@@ -1,7 +1,9 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/element.dart';
 
+import '../analysis/throw_source_catalog.dart';
 import 'exception_effect.dart';
+import 'statement_completion.dart';
 
 /// Callback execution is distinct from creation of the closure value.
 /// Models are tied to resolved SDK declarations, never to user method names.
@@ -109,6 +111,17 @@ Iterable<CallbackExecution> callbackExecutions(
     } else if (owner == 'Timer') {
       final callback = at(name == 'run' ? 0 : 1, ExceptionChannel.scheduled);
       if (callback != null) yield callback;
+    } else if (node is MethodInvocation &&
+        ThrowSourceCatalog.isNativeTypedFutureHandler(element) &&
+        ThrowSourceCatalog.typedFutureHandlerMayRun(node)) {
+      final filter = named['test'];
+      if (filter == null || constantBooleanCallbackResult(filter) != false) {
+        final handler = at(0, ExceptionChannel.future);
+        if (handler != null) yield handler;
+      }
+      if (filter != null) {
+        yield CallbackExecution(filter, ExceptionChannel.future);
+      }
     } else if (owner == 'Future') {
       final index = switch (name) {
         '' ||

@@ -53,6 +53,9 @@ bool isProtectedByCatch(
         node,
         channel,
         skipCurrent: skipCurrentAsyncHandler,
+        exceptionTypes: exceptionTypes,
+        resolvedExceptionTypes: resolvedExceptionTypes,
+        exceptionSupertypes: exceptionSupertypes,
       )) {
     return true;
   }
@@ -181,6 +184,7 @@ AstNode? _forwardingFutureParent(AstNode node) {
       final owner = element?.enclosingElement?.name;
       final name = parent.methodName.name;
       if (ThrowSourceCatalog.isNativeFutureIgnore(element) ||
+          ThrowSourceCatalog.isNativeTypedFutureHandler(element) ||
           (owner == 'Future' &&
               const {
                 'then',
@@ -656,13 +660,21 @@ bool _hasAsyncErrorHandler(
   AstNode node,
   ExceptionChannel? channel, {
   required bool skipCurrent,
+  required List<String> exceptionTypes,
+  required List<DartType> resolvedExceptionTypes,
+  required Map<String, List<String>> exceptionSupertypes,
 }) {
   AstNode? current = node;
   while (current != null) {
     if (current is MethodInvocation &&
         (!skipCurrent || !identical(current, node)) &&
-        _handlerMatchesChannel(current, channel) &&
-        hasUnconditionalAsyncErrorHandler(current)) {
+        asyncHandlerContains(
+          current,
+          channel: channel,
+          exceptionTypes: exceptionTypes,
+          resolvedExceptionTypes: resolvedExceptionTypes,
+          exceptionSupertypes: exceptionSupertypes,
+        )) {
       return true;
     }
     final forwarding = _forwardingFutureParent(current);
@@ -685,10 +697,60 @@ bool _handlerMatchesChannel(
   final owner = element?.enclosingElement?.name;
   return switch (channel) {
     ExceptionChannel.future =>
-      owner == 'Future' || ThrowSourceCatalog.isNativeFutureIgnore(element),
+      owner == 'Future' ||
+          ThrowSourceCatalog.isNativeFutureIgnore(element) ||
+          ThrowSourceCatalog.isNativeTypedFutureHandler(element),
     ExceptionChannel.stream => owner == 'Stream',
-    _ => true,
+    null => true,
+    _ => false,
   };
+}
+
+bool asyncHandlerContains(
+  MethodInvocation node, {
+  ExceptionChannel? channel,
+  List<String> exceptionTypes = const [],
+  List<DartType> resolvedExceptionTypes = const [],
+  Map<String, List<String>> exceptionSupertypes = const {},
+}) {
+  if (!_handlerMatchesChannel(node, channel)) return false;
+  if (hasUnconditionalAsyncErrorHandler(node)) return isReachable(node);
+  final catchType = _typedFutureHandlerType(node);
+  if (catchType == null || !isReachable(node)) return false;
+  if (resolvedExceptionTypes.isNotEmpty) {
+    final typeSystem = node.methodName.element!.library!.typeSystem;
+    return resolvedExceptionTypes.every(
+      (type) => typeSystem.isSubtypeOf(type, catchType),
+    );
+  }
+  final element = catchType.element;
+  final name = element?.name;
+  return name != null &&
+      element?.library?.uri.scheme == 'dart' &&
+      exceptionTypes.isNotEmpty &&
+      exceptionTypes.every(
+        (type) =>
+            ExceptionTypeHierarchy.isSubtypeName(type, name) ||
+            (exceptionSupertypes[type]?.contains(name) ?? false),
+      );
+}
+
+DartType? _typedFutureHandlerType(MethodInvocation node) {
+  if (!ThrowSourceCatalog.isNativeTypedFutureHandler(node.methodName.element)) {
+    return null;
+  }
+  final arguments = node.argumentList.arguments;
+  if (arguments.isEmpty ||
+      !isDefinitelyNonNull(arguments.first.argumentExpression)) {
+    return null;
+  }
+  for (final argument in arguments.whereType<NamedArgument>()) {
+    if (argument.name.lexeme == 'test' &&
+        !_isAlwaysTrueFilter(argument.argumentExpression)) {
+      return null;
+    }
+  }
+  return node.typeArgumentTypes?.singleOrNull;
 }
 
 /// Whether an SDK chain intercepts every incoming error. A filter that cannot
@@ -700,6 +762,7 @@ bool hasUnconditionalAsyncErrorHandler(MethodInvocation node) {
   final owner = element?.enclosingElement?.name;
   final name = node.methodName.name;
   if (ThrowSourceCatalog.isNativeFutureIgnore(element)) return true;
+  if (_typedFutureHandlerType(node)?.isDartCoreObject == true) return true;
   if ((owner == 'Future' && name == 'catchError') ||
       (owner == 'Stream' && name == 'handleError')) {
     final arguments = node.argumentList.arguments;
@@ -722,25 +785,9 @@ bool hasUnconditionalAsyncErrorHandler(MethodInvocation node) {
   return false;
 }
 
-bool _isAlwaysTrueFilter(Expression expression) {
-  if (_isNullExpression(expression)) return true;
-  if (expression is ParenthesizedExpression) {
-    return _isAlwaysTrueFilter(expression.expression);
-  }
-  if (expression is! FunctionExpression) return false;
-  final body = expression.body;
-  if (body is ExpressionFunctionBody) {
-    return body.expression is BooleanLiteral &&
-        (body.expression as BooleanLiteral).value;
-  }
-  if (body is BlockFunctionBody && body.block.statements.length == 1) {
-    final statement = body.block.statements.single;
-    return statement is ReturnStatement &&
-        statement.expression is BooleanLiteral &&
-        (statement.expression as BooleanLiteral).value;
-  }
-  return false;
-}
+bool _isAlwaysTrueFilter(Expression expression) =>
+    _isNullExpression(expression) ||
+    constantBooleanCallbackResult(expression) == true;
 
 bool _isNullExpression(AstNode node) =>
     node is NullLiteral ||

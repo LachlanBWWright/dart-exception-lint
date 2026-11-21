@@ -1052,6 +1052,25 @@ bool? constantBooleanValue(Expression expression) => switch (expression) {
   _ => _constantVariable(expression)?.computeConstantValue()?.toBoolValue(),
 };
 
+/// The result of a Boolean callback whose body consists of one constant.
+bool? constantBooleanCallbackResult(Expression expression) {
+  while (expression is ParenthesizedExpression) {
+    expression = expression.expression;
+  }
+  if (expression is! FunctionExpression) return null;
+  final body = expression.body;
+  if (body.isAsynchronous || body.isGenerator) return null;
+  final statement = body is BlockFunctionBody
+      ? body.block.statements.singleOrNull
+      : null;
+  final result = body is ExpressionFunctionBody
+      ? body.expression
+      : statement is ReturnStatement
+      ? statement.expression
+      : null;
+  return result == null ? null : constantBooleanValue(result);
+}
+
 /// Resolved constants only: ordinary final/local initializers and getter bodies
 /// cannot establish a branch fact after mutation, escape or arbitrary execution.
 VariableElement? _constantVariable(Expression expression) {

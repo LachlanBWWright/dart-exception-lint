@@ -83,6 +83,8 @@ void ignoredFutures() {
   Future<void>.error('direct').ignore();
   final pending = Future<void>.error('stored');
   pending.ignore();
+  final typed = Future<void>.error('stored typed');
+  typed.onError<String>((_, _) {});
 }
 ''',
     );

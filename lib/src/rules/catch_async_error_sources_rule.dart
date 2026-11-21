@@ -680,9 +680,13 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       return;
     }
     final handledTarget = node.realTarget;
-    if (handledTarget != null && hasUnconditionalAsyncErrorHandler(node)) {
+    if (handledTarget != null &&
+        (hasUnconditionalAsyncErrorHandler(node) ||
+            ThrowSourceCatalog.isNativeTypedFutureHandler(
+              node.methodName.element,
+            ))) {
       for (final effect in _effectsForExpression(handledTarget)) {
-        _consumeStoredEffect(effect);
+        if (effect.isHandledBy(node)) _consumeStoredEffect(effect);
       }
     }
     // Let the outer async chain report the effect once. For example,
@@ -1406,4 +1410,26 @@ final class _DeferredAsyncEffect {
         resolvedExceptionTypes: resolvedExceptionTypes,
         exceptionSupertypes: exceptionSupertypes,
       );
+
+  bool isHandledBy(MethodInvocation handler) {
+    final sources = analysis?.sources;
+    if (sources != null && sources.isNotEmpty) {
+      return sources.every(
+        (source) => asyncHandlerContains(
+          handler,
+          channel: ExceptionEffect.fromSource(source).channel,
+          exceptionTypes: source.exceptionTypes,
+          resolvedExceptionTypes: source.resolvedExceptionTypes,
+          exceptionSupertypes: source.exceptionSupertypes,
+        ),
+      );
+    }
+    return asyncHandlerContains(
+      handler,
+      channel: channel,
+      exceptionTypes: exceptionTypes,
+      resolvedExceptionTypes: resolvedExceptionTypes,
+      exceptionSupertypes: exceptionSupertypes,
+    );
+  }
 }

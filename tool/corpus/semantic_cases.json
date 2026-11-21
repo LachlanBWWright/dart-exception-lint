@@ -272,5 +272,41 @@
     "exceptionTypes": [
       "stream:String"
     ]
+  },
+  {
+    "name": "coveredTypedFutureError",
+    "source": "Future<void> coveredTypedFutureError() => Future<void>.error('original').onError<String>((_, _) {});",
+    "effects": [],
+    "exceptionTypes": []
+  },
+  {
+    "name": "filteredTypedFutureError",
+    "source": "Future<void> filteredTypedFutureError() => Future<void>.error('original').onError<String>((_, _) => throw 1, test: (_) => false);",
+    "effects": [
+      "future:known"
+    ],
+    "exceptionTypes": [
+      "future:String"
+    ]
+  },
+  {
+    "name": "typedFutureErrorReplacement",
+    "source": "Future<void> typedFutureErrorReplacement() => Future<void>.error('original').onError<String>((_, _) => throw 1);",
+    "effects": [
+      "future:known"
+    ],
+    "exceptionTypes": [
+      "future:int"
+    ]
+  },
+  {
+    "name": "mismatchedTypedFutureError",
+    "source": "Future<void> mismatchedTypedFutureError() => Future<void>.error('original').onError<int>((_, _) => throw 1);",
+    "effects": [
+      "future:known"
+    ],
+    "exceptionTypes": [
+      "future:String"
+    ]
   }
 ]

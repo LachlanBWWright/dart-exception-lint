@@ -44,6 +44,7 @@ Future<void> main() async {
             'adoptCaught',
             'synchronousValueFactory',
             'directNativeFutureIgnore',
+            'handledTypedFutureError',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -212,6 +213,9 @@ const _effects = {
   'immediateStoredFailure': ('future', 'String'),
   'beforeStoredAwaitFailure': ('future', 'String'),
   'futureHandlerFailure': ('future', 'String'),
+  'mismatchedTypedFutureError': ('future', 'String'),
+  'filteredTypedFutureError': ('future', 'String'),
+  'typedFutureHandlerFailure': ('future', 'String'),
   'futureFilterFailure': ('future', 'String'),
   'streamHandlerFailure': ('stream', 'String'),
   'castFailure': ('synchronous', 'TypeError'),
@@ -275,6 +279,8 @@ const _suppressedEffects = {
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
+  'mismatchedTypedFutureError': 'int',
+  'filteredTypedFutureError': 'int',
   'caughtEmptyFactories': 'TypeError',
   'waitKnownCaught': 'String',
   'immediateStoredCaught': 'String',
@@ -414,6 +420,10 @@ const _observations = {
   'buffered_synchronous_stream': 'none/String',
   'discarded_wrapped_future': 'none/String',
   'direct_native_future_ignore': 'none',
+  'handled_typed_future_error': 'none',
+  'mismatched_typed_future_error': 'String',
+  'filtered_typed_future_error': 'String',
+  'typed_future_handler_failure': 'String',
   'stream': 'String',
   'constructed_stream': 'String',
   'stream_to_list': 'String',
@@ -708,6 +718,10 @@ void discardedWrappedFuture() {
   Future<Future<void>>.syncValue(Future<void>.error('inner')).ignore();
 }
 void directNativeFutureIgnore() { Future<void>.error('ignored').ignore(); }
+Future<void> handledTypedFutureError() => Future<void>.error('error').onError<String>((_, _) {});
+Future<void> mismatchedTypedFutureError() => Future<void>.error('error').onError<int>((_, _) => throw 1);
+Future<void> filteredTypedFutureError() => Future<void>.error('error').onError<String>((_, _) => throw 1, test: (_) => false);
+Future<void> typedFutureHandlerFailure() => Future<void>.error('error').onError<String>((_, _) => throw 'replacement');
 Stream<int> streamFailure() async* { throw 'stream'; }
 Iterable<int> lazyFailure() sync* { throw 'lazy'; }
 void storedLazyIterator() {
@@ -993,6 +1007,10 @@ Future<void> main() async {
     'buffered_synchronous_stream': '${await captureAsync(() async { await bufferedSynchronousStream(); })}/${await captureAsync(() async { final stream = await bufferedSynchronousStream(); await stream.toList(); })}',
     'discarded_wrapped_future': await captureUnobserved(() async { discardedWrappedFuture(); }),
     'direct_native_future_ignore': await captureAsync(() async { directNativeFutureIgnore(); }),
+    'handled_typed_future_error': await captureAsync(handledTypedFutureError),
+    'mismatched_typed_future_error': await captureAsync(mismatchedTypedFutureError),
+    'filtered_typed_future_error': await captureAsync(filteredTypedFutureError),
+    'typed_future_handler_failure': await captureAsync(typedFutureHandlerFailure),
     'stream': await captureAsync(() async { await streamFailure().toList(); }),
     'constructed_stream': await captureAsync(() async { await constructedStream().toList(); }),
     'stream_to_list': await captureAsync(streamToList),
