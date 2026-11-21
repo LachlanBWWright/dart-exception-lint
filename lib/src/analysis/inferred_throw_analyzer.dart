@@ -506,6 +506,7 @@ final class InferredThrowAnalyzer {
     ExecutableElement executable,
     AstNode call, {
     required int depth,
+    Set<String> activeKeys = const {},
   }) {
     if (executable.library.isInSdk || depth > options.maxCallDepth) return null;
     final forwarded = forwardedFutureArgument(
@@ -520,21 +521,38 @@ final class InferredThrowAnalyzer {
         _ => null,
       };
       if (target is ExecutableElement) {
+        final targetDepth = depth + 1;
         final direct = ThrowSourceCatalog.matchResolvedInvocation(
           forwarded,
           target,
           options,
         );
         final input = direct == null
-            ? (_specializedSummary(target, forwarded, depth: depth + 1) ??
-                  summarizeExecutable(target))
+            ? (_specializedSummary(
+                    target,
+                    forwarded,
+                    depth: targetDepth,
+                    activeKeys: activeKeys,
+                  ) ??
+                  _summarizeDependency(
+                    target,
+                    _executableKey(target),
+                    targetDepth,
+                    activeKeys,
+                  ))
             : ThrowSummary.merge(
                 'forwarded Future',
                 [direct],
                 dependencyElementKeys: const [],
                 complete: true,
               );
-        return _summaryForDispatch(target, input, forwarded, depth: depth + 1);
+        return _summaryForDispatch(
+          target,
+          input,
+          forwarded,
+          depth: targetDepth,
+          activeKeys: activeKeys,
+        );
       }
     }
     final parameters = executable.baseElement.formalParameters;
@@ -1446,18 +1464,17 @@ final class InferredThrowAnalyzer {
       return ThrowSummary.noObviousThrow(node.toSource());
     }
 
-    final callable = ResolvedCallable.tryCreate(resolved);
-    final dependencyKey =
-        callable?.elementKey ??
-        '${resolved.library.uri}::${resolved.runtimeType}:${resolved.firstFragment.offset}:${resolved.displayName}';
-
-    final currentKey =
-        ResolvedCallable.tryCreate(currentExecutable)?.elementKey ??
-        '${currentExecutable.library.uri}::${currentExecutable.runtimeType}:${currentExecutable.firstFragment.offset}:${currentExecutable.displayName}';
+    final dependencyKey = _executableKey(resolved);
+    final currentKey = _executableKey(currentExecutable);
     _recordDependency(currentKey, dependencyKey, resolved);
     final invokedDepth = depth + 1;
     final summary =
-        _specializedSummary(resolved, node, depth: invokedDepth) ??
+        _specializedSummary(
+          resolved,
+          node,
+          depth: invokedDepth,
+          activeKeys: activeKeys,
+        ) ??
         _summarizeDependency(resolved, dependencyKey, invokedDepth, activeKeys);
     final dispatchSummary = _summaryForDispatch(
       resolved,
@@ -1851,6 +1868,10 @@ final class InferredThrowAnalyzer {
     (_directDependencies[callerKey] ??= {}).add(dependencyKey);
     _directDependencies.putIfAbsent(dependencyKey, () => {});
   }
+
+  static String _executableKey(ExecutableElement executable) =>
+      ResolvedCallable.tryCreate(executable)?.elementKey ??
+      '${executable.library.uri}::${executable.runtimeType}:${executable.firstFragment.offset}:${executable.displayName}';
 
   ThrowSummary _summarizeDependency(
     ExecutableElement executable,

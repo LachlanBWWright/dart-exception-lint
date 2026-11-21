@@ -758,6 +758,28 @@ Future<void> escaping() async { await adopt(Future<void>.error('failure')); }
       );
     },
   );
+
+  test(
+    'forwarding a recursive Future preserves the active call chain',
+    () async {
+      await _verify(
+        '''
+Future<void> pass(Future<void> input) => input;
+Future<void> recursive(bool fail) async {
+  if (fail) throw 'failure';
+  await pass(recursive(fail));
+}
+Future<void> contained() async {
+  try { await recursive(true); } on String {}
+}
+''',
+        (summaries, _) {
+          expect(summaries['recursive']!.exceptionTypes, contains('String'));
+          expect(summaries['contained']!.hasAnyThrowSource, isFalse);
+        },
+      );
+    },
+  );
 }
 
 extension on ThrowSummary {
