@@ -383,6 +383,26 @@ void f(dynamic value) {
 ''');
   }
 
+  Future<void>
+  test_resolvedNativeNumericOperators_haveNoUnknownDispatch() async {
+    await assertNoDiagnostics(r'''
+void f(int end) {
+  for (var index = 0; index < end; index++) {
+    index + 1;
+    index - 1;
+    --index;
+  }
+}
+''');
+  }
+
+  Future<void>
+  test_noncompletingOperand_preventsDynamicOperatorDispatch() async {
+    await assertNoDiagnostics(r'''
+dynamic f(dynamic value) => value + (throw 'operand');
+''');
+  }
+
   Future<void> test_dynamicAwait_insideTryCatch_notReported() async {
     await assertNoDiagnostics(r'''
 Future<void> f(dynamic future) async {

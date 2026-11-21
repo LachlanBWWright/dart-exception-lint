@@ -377,6 +377,11 @@ bool _operationCanExecute(AstNode node) => switch (node) {
   ThrowExpression(:final expression) => expressionCanCompleteNormally(
     expression,
   ),
+  BinaryExpression(:final leftOperand, :final rightOperand) =>
+    expressionCanCompleteNormally(leftOperand) &&
+        expressionCanCompleteNormally(rightOperand),
+  PrefixExpression(:final operand) ||
+  PostfixExpression(:final operand) => expressionCanCompleteNormally(operand),
   ForEachParts(iterable: final expression) ||
   SpreadElement(:final expression) ||
   YieldStatement(

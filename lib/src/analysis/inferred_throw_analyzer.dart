@@ -294,13 +294,17 @@ final class InferredThrowAnalyzer {
         ThrowSourceCatalog.matchAssignmentExpression(node, options),
       _ => ThrowSourceCatalog.matchResolvedInvocation(node, element, options),
     };
+    // The native numeric proof covers the actual operator or SDK method at
+    // this call site, including implicit arguments to increment and decrement.
+    // Its internal SDK implementations cannot add an unrelated source effect.
+    if (directSource == null && _isProvenSafeNumeric(node, element)) {
+      return null;
+    }
     final baseSummary = _summaryForDispatch(
       executable,
       directSource == null
-          ? (_isProvenSafeNumeric(node, element)
-                ? ThrowSummary.noObviousThrow(node.toSource())
-                : (_specializedSummary(executable, node, depth: 0) ??
-                      summarizeExecutable(executable)))
+          ? (_specializedSummary(executable, node, depth: 0) ??
+                summarizeExecutable(executable))
           : ThrowSummary.merge(
               _displayNameForExecutable(executable),
               [directSource],
