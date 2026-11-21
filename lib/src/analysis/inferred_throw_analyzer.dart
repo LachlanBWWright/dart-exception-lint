@@ -1429,8 +1429,9 @@ final class InferredThrowAnalyzer {
           : null;
       final discardedFuture =
           route != null &&
-          route.channel == ExceptionChannel.future &&
-          route.consumer is ExpressionStatement;
+          (route.channel == ExceptionChannel.scheduled ||
+              route.channel == ExceptionChannel.future &&
+                  route.consumer is ExpressionStatement);
       final shouldKeep =
           !directSource.isAsync ||
           isAsyncObserved ||
@@ -1512,12 +1513,13 @@ final class InferredThrowAnalyzer {
           : null;
       final discardedCallbackFuture =
           route != null &&
-          route.channel == ExceptionChannel.future &&
-          ((boundCallback && !isAsyncObserved) ||
-              route.consumer is ExpressionStatement ||
-              (boundCallback &&
-                  (currentExecutable.returnType is VoidType &&
-                      route.consumer is! AwaitExpression)));
+          (route.channel == ExceptionChannel.scheduled ||
+              route.channel == ExceptionChannel.future &&
+                  ((boundCallback && !isAsyncObserved) ||
+                      route.consumer is ExpressionStatement ||
+                      (boundCallback &&
+                          (currentExecutable.returnType is VoidType &&
+                              route.consumer is! AwaitExpression))));
       if ((effect.channel == ExceptionChannel.future ||
               effect.channel == ExceptionChannel.stream) &&
           !isAsyncObserved &&

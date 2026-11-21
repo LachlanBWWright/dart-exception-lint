@@ -181,6 +181,7 @@ const _effects = {
   'waitKnownFailure': ('future', 'String'),
   'anyKnownFailure': ('future', 'String'),
   'discardedWaitFailure': ('scheduled', 'String'),
+  'blockedWaitFailure': ('scheduled', 'String'),
   'futureHandlerFailure': ('future', 'String'),
   'futureFilterFailure': ('future', 'String'),
   'streamHandlerFailure': ('stream', 'String'),
@@ -305,6 +306,7 @@ const _observations = {
   'wait_known_failure': 'String',
   'any_known_failure': 'String',
   'discarded_wait_failure': 'none/String',
+  'blocked_wait_failure': 'none/String',
   'wait_known_caught': 'none',
   'future_handler_failure': 'String',
   'future_filter_failure': 'String',
@@ -612,6 +614,11 @@ Future<void> anyKnownFailure() async {
 void discardedWaitFailure() {
   Future.wait<int>([Future<int>.error('unobserved wait')]);
 }
+Future<void> blockedWaitFailure() async {
+  try {
+    await Future.wait<int>([Future<int>.error('unattached future'), stopEvaluation()]);
+  } on int {}
+}
 Future<void> waitKnownCaught() async {
   try { await Future.wait<int>([Future<int>.error('wait error')]); } on String {}
 }
@@ -701,6 +708,7 @@ Future<void> main() async {
     'wait_known_failure': await captureAsync(waitKnownFailure),
     'any_known_failure': await captureAsync(anyKnownFailure),
     'discarded_wait_failure': await captureUnobserved(() async { discardedWaitFailure(); }),
+    'blocked_wait_failure': await captureUnobserved(blockedWaitFailure),
     'wait_known_caught': await captureAsync(waitKnownCaught),
     'future_handler_failure': await captureAsync(futureHandlerFailure),
     'future_filter_failure': await captureAsync(futureFilterFailure),

@@ -231,14 +231,9 @@ AstNode? _forwardingFutureParent(AstNode node) {
     final invocation = arguments?.parent;
     if (arguments is ArgumentList &&
         identical(arguments.arguments.firstOrNull, argument) &&
-        invocation is MethodInvocation) {
-      final method = invocation.methodName.element;
-      if (method?.library?.uri.toString() == 'dart:async' &&
-          method?.enclosingElement?.name == 'Future' &&
-          const {'wait', 'any'}.contains(method?.name) &&
-          isReachable(invocation)) {
-        return invocation;
-      }
+        invocation is MethodInvocation &&
+        _isSdkFutureJoin(invocation)) {
+      return invocation;
     }
   }
   if (parent is PropertyAccess && identical(parent.realTarget, node)) {
@@ -294,6 +289,9 @@ AstNode? asyncValueConsumer(AstNode node) =>
     if (forwarding == null) return (consumer: current.parent, channel: channel);
     final projected = _channelAfterForwarding(channel, forwarding);
     if (projected == null) return (consumer: null, channel: channel);
+    if (projected == ExceptionChannel.scheduled && channel != projected) {
+      return (consumer: null, channel: projected);
+    }
     channel = projected;
     current = forwarding;
   }
@@ -304,13 +302,30 @@ ExceptionChannel? _channelAfterForwarding(
   AstNode forwarding,
 ) {
   final projected = switch (channel) {
+    ExceptionChannel.future
+        when forwarding is MethodInvocation &&
+            _isSdkFutureJoin(forwarding) &&
+            !isReachable(forwarding) =>
+      // An earlier Future exists, but the call cannot attach a listener.
+      ExceptionChannel.scheduled,
     ExceptionChannel.stream when _streamTerminalFuture(forwarding) =>
       ExceptionChannel.future,
     ExceptionChannel.future when _futureToStream(forwarding) =>
       ExceptionChannel.stream,
     _ => channel,
   };
-  return projected != channel && !isReachable(forwarding) ? null : projected;
+  return projected != channel &&
+          projected != ExceptionChannel.scheduled &&
+          !isReachable(forwarding)
+      ? null
+      : projected;
+}
+
+bool _isSdkFutureJoin(MethodInvocation invocation) {
+  final method = invocation.methodName.element;
+  return method?.library?.uri.toString() == 'dart:async' &&
+      method?.enclosingElement?.name == 'Future' &&
+      const {'wait', 'any'}.contains(method?.name);
 }
 
 bool _futureToStream(AstNode node) {
@@ -548,7 +563,9 @@ bool _hasAsyncErrorHandler(
     final forwarding = _forwardingFutureParent(current);
     if (channel != null && forwarding != null) {
       channel = _channelAfterForwarding(channel, forwarding);
-      if (channel == null) return false;
+      if (channel == null || channel == ExceptionChannel.scheduled) {
+        return false;
+      }
     }
     current = forwarding;
   }
