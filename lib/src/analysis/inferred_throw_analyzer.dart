@@ -2174,7 +2174,8 @@ final class InferredThrowAnalyzer {
           (node is PostfixExpression &&
               node.operand.staticType is DynamicType) ||
           (node is AssignmentExpression &&
-              (node.leftHandSide.staticType is DynamicType ||
+              (node.readType is DynamicType ||
+                  node.leftHandSide.staticType is DynamicType ||
                   (node.leftHandSide is PropertyAccess &&
                       (node.leftHandSide as PropertyAccess)
                               .realTarget
@@ -2463,7 +2464,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitPatternField(PatternField node) {
     for (final target in invocationTargets(node, executable.library)) {
-      _recordCall(node, element: target);
+      _recordInvocation(node, target);
     }
     super.visitPatternField(node);
   }
@@ -2471,7 +2472,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitConstantPattern(ConstantPattern node) {
     for (final target in invocationTargets(node, executable.library)) {
-      _recordCall(node, element: target);
+      _recordInvocation(node, target);
     }
     super.visitConstantPattern(node);
   }
@@ -2479,7 +2480,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitRelationalPattern(RelationalPattern node) {
     for (final target in invocationTargets(node, executable.library)) {
-      _recordCall(node, element: target);
+      _recordInvocation(node, target);
     }
     _recordImplicitCast(
       node.operand,
@@ -2889,7 +2890,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   void visitAssignmentExpression(AssignmentExpression node) {
     _recordImplicitCast(node.rightHandSide, node.writeType);
     for (final target in invocationTargets(node, executable.library)) {
-      _recordCall(node, element: target);
+      _recordInvocation(node, target);
     }
     super.visitAssignmentExpression(node);
   }
@@ -2897,7 +2898,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitPrefixExpression(PrefixExpression node) {
     for (final target in invocationTargets(node, executable.library)) {
-      _recordCall(node, element: target);
+      _recordInvocation(node, target);
     }
     super.visitPrefixExpression(node);
   }
@@ -2905,7 +2906,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitInterpolationExpression(InterpolationExpression node) {
     for (final target in invocationTargets(node, executable.library)) {
-      _recordCall(node, element: target);
+      _recordInvocation(node, target);
     }
     super.visitInterpolationExpression(node);
   }
@@ -2913,7 +2914,7 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
   @override
   void visitPostfixExpression(PostfixExpression node) {
     for (final target in invocationTargets(node, executable.library)) {
-      _recordCall(node, element: target);
+      _recordInvocation(node, target);
     }
     if (node.operator.lexeme == '!' && !isDefinitelyNonNull(node.operand)) {
       const source = ThrowSource(
@@ -3004,11 +3005,14 @@ final class _BodySummaryVisitor extends GeneralizingAstVisitor<void> {
     };
   }
 
-  void _recordCall(AstNode node, {Element? element}) {
+  void _recordCall(AstNode node, {Element? element}) =>
+      _recordInvocation(node, element ?? _elementForNode(node));
+
+  void _recordInvocation(AstNode node, Element? element) {
     final summary = analyzer.inferCallFromBody(
       node,
       currentExecutable: executable,
-      resolvedElement: element ?? _elementForNode(node),
+      resolvedElement: element,
       depth: depth,
       activeKeys: activeKeys,
       isAsyncObserved: _isAsyncObserved(node),

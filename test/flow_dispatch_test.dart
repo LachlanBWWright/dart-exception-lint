@@ -438,6 +438,30 @@ void userWrite(Indexed values) { values[0] = 1; }
     );
   });
 
+  test(
+    'unresolved compound operators stay separate from resolved setters',
+    () async {
+      await _verify(
+        '''
+final class Holder {
+  dynamic get item => 1;
+  set item(dynamic next) {}
+}
+Never stop() => throw 'operand';
+void unresolved() { Holder().item += 1; }
+void stopped() { Holder().item += stop(); }
+void coalescing() { Holder().item ??= 1; }
+''',
+        (summaries, _) {
+          expect(summaries['unresolved']!.hasUnknownEffects, isTrue);
+          expect(summaries['stopped']!.hasUnknownEffects, isFalse);
+          expect(summaries['stopped']!.exceptionTypes.toSet(), {'String'});
+          expect(summaries['coalescing']!.hasAnyThrowSource, isFalse);
+        },
+      );
+    },
+  );
+
   test('catch bodies require a possible throwing transfer', () async {
     await _verify(
       '''

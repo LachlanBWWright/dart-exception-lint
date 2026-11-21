@@ -18,6 +18,7 @@ Iterable<Element?> invocationTargets(
   switch (node) {
     case AssignmentExpression():
       if (!assignmentTargetCanExecute(node)) return;
+      final operator = node.operator.lexeme;
       final dynamicReceiver = switch (node.leftHandSide) {
         PropertyAccess(:final realTarget) =>
           realTarget.staticType is DynamicType,
@@ -28,11 +29,16 @@ Iterable<Element?> invocationTargets(
       };
       if (node.readElement is ExecutableElement) {
         yield node.readElement;
-      } else if (node.operator.lexeme != '=' && dynamicReceiver) {
+      } else if (operator != '=' && dynamicReceiver) {
         yield null;
       }
       if (!assignmentWriteCanExecute(node)) return;
-      if (node.element != null) yield node.element;
+      if (node.element != null ||
+          operator != '=' &&
+              operator != '??=' &&
+              node.readType is DynamicType) {
+        yield node.element;
+      }
       if (node.writeElement is ExecutableElement) yield node.writeElement;
       if (node.writeElement == null && dynamicReceiver) {
         yield null;
