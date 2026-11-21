@@ -230,6 +230,10 @@ types require a universal catch. Direct stream listens require a non-null
 `catchError` and `handleError` filters preserve the incoming error effect unless
 they are absent, null, or visibly return `true` for every input. Callback bodies
 are analyzed independently, so a handler can itself introduce a new failure.
+SDK `Future.onError<E>` can handle a known compatible exception type under the
+same filter conditions. `Future.ignore()` observes errors delivered by its
+receiver. A Future or Stream stored as the value of `Future.syncValue` keeps
+its own error delivery.
 Errors stored in a local future are reported at the later `await`, or at the
 creation site when the future is abandoned without an observation. An
 unawaited future inside a synchronous `try`/`catch` is still reported because
