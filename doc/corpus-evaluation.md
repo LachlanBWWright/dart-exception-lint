@@ -146,6 +146,9 @@ in `test`.
 - The `provider` delegate initializer uses postfix `!` on `element` before
   starting its listener. The scoped run reports the expected
   `no_null_assertion` diagnostic at that operator. [Pinned source](https://github.com/rrousselGit/provider/blob/3ed4c6d6b1700c08256f25a034bb93f943bd7236/packages/provider/lib/src/deferred_inherited_provider.dart#L98-L107)
+- In Dart Build, both calls to `pathSegments.skip(1)` in `AssetId.resolve`
+  now pass the SDK count validation. The focused rerun still reports open
+  dispatch for `Iterable.skip`. [Pinned source](https://github.com/dart-lang/build/blob/4800d7e734f7d9a2704d7f1d525c7bd131bac5e5/build/lib/src/asset_id.dart#L71-L81)
 
 ## Earlier release-contract run
 
