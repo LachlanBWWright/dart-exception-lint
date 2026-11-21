@@ -106,10 +106,10 @@ while IFS=$'\t' read -r id url manager commit package_path; do
       printf '%s\t%s\tflutter_unavailable\t0\t0\t0\t0\t\t%s\n' "$id" "$url" "flutter analyze" >> "$results"
       continue
     fi
-    resolver=(flutter pub get)
+    resolver=(flutter pub get --no-example)
     analyzer=(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings)
   else
-    resolver=(dart pub get)
+    resolver=(dart pub get --no-example)
     analyzer=(dart analyze)
   fi
 
@@ -182,7 +182,23 @@ while IFS=$'\t' read -r id url manager commit package_path; do
       cp -- "$active_lock" "$active_lock_backup"
       active_had_lock=1
     fi
-    cat > "$options" <<EOF
+    nested_packages=()
+    while IFS= read -r -d '' nested_manifest; do
+      [[ "$nested_manifest" == "$package_dir/pubspec.yaml" ]] && continue
+      nested_package="${nested_manifest#"$package_dir/"}"
+      nested_packages+=("${nested_package%/pubspec.yaml}")
+    done < <(
+      find "$package_dir" \( -name .dart_tool -o -name .git \) -prune -o \
+        -type f -name pubspec.yaml -print0
+    )
+    : > "$options"
+    if [[ "${#nested_packages[@]}" != 0 ]]; then
+      printf 'analyzer:\n  exclude:\n' >> "$options"
+      for nested_package in "${nested_packages[@]}"; do
+        printf "    - '%s/**'\n" "${nested_package//\'/\'\'}" >> "$options"
+      done
+    fi
+    cat >> "$options" <<EOF
 plugins:
   dart_exception_lint:
     path: $plugin_root

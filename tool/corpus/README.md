@@ -33,6 +33,10 @@ later runs. Flutter analyzer protocol logs are kept with analyzer output under
 `CORPUS_ROOT` and are checked for plugin errors and results from the selected
 package. Flutter analysis targets the package's source and test directories,
 which keeps separately configured examples out of the run.
+The injected analyzer options exclude nested packages that have their own
+`pubspec.yaml`. These packages can have separate dependencies and can be
+selected explicitly by a manifest entry. Dependency resolution also skips
+separately configured examples.
 
 This repository inventory measures diagnostic volume and execution failures. It does not measure precision or recall; it has no reviewed expected-diagnostic labels. It is not a claim that every repository has a
 single canonical package root. Failures caused by unavailable platform SDKs,
