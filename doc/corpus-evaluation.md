@@ -27,14 +27,16 @@ diagnostic volume. The separate semantic corpus carries expected effect labels.
 ## Flutter 3.50.1 and bundled Dart 3.14.0
 
 Three pinned Flutter packages completed dependency resolution and plugin
-analysis on Linux x64. The protocol logs reported no plugin errors, and each
-cached checkout remained clean after its evaluation worktree was removed.
+analysis on Linux x64 at `83fface`. The evaluator analyzed each package's own
+source and test directories. The protocol logs reported no plugin errors,
+and each cached checkout remained clean after its evaluation worktree was removed.
 
-| Repository | Scope | Plugin diagnostics | Flutter analysis time |
-| --- | --- | ---: | ---: |
-| flutter_hooks | Package directory | 594 | 175.4 s |
-| provider | Package directory | 340 | 189.7 s |
-| window_manager | Package source and test directories | 21 | 135.7 s |
+| Repository | Plugin diagnostics | Flutter analysis time |
+| --- | ---: | ---: |
+| flutter_hooks | 1,840 | 209.2 s |
+| provider | 1,308 | 111.0 s |
+| window_manager | 21 | 70.1 s |
+| Total | 3,169 | |
 
 The timings include plugin setup and reflect concurrent workloads on the same
 host. They describe these specific runs. The evaluator now uses package source

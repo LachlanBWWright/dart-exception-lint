@@ -88,6 +88,11 @@ The `9edcc24` snapshot passed all 21 gates on each of Dart 3.11.0, 3.12.0,
 probes, performance benchmarks, installed plugin and CLI checks, publish dry
 runs and the Analysis Server LSP check.
 
+The later `969a2ea` snapshot passed the same 21 gates on Dart 3.11.0 and
+3.14.1, with 577 and 578 tests respectively. On Dart 3.12.0 and 3.13.5,
+`83fface` passed 372 focused tests on each SDK and matched 93 differential
+observations on both runtime backends.
+
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level

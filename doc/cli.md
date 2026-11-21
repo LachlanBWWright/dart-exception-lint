@@ -54,7 +54,10 @@ otherwise unverified helpers retain uncertainty. The plugin's stored-value owner
 identity proofs for named arguments and aliases. For tracked local inputs, the
 plugin preserves error types through stored async adoption with a separate
 obligation per output; handling the input cannot discharge these outputs. The
-CLI's context-free summaries still retain uncertainty for stored Future inputs.
+CLI follows a modeled initializer through an immediate await of the same final
+local. It checks the Future failure at the await and the initializer's
+synchronous failures where they occur. Other stored Future inputs retain
+uncertainty in context-free summaries.
 General heap/closure ownership and complete CLI/plugin diagnostic parity remain unfinished.
 
 `tool/dart_exception_lint/exception_analysis.yaml` and `throwing_apis.yaml` are

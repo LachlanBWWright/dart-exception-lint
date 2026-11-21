@@ -39,9 +39,11 @@ Null-aware selectors can skip the rest of a chain up to its expression
 boundary. Loop initialization, conditions, and updates respect evaluation
 order, including labeled `continue`. Assignment summaries distinguish getter,
 operator, and setter effects, including indexed writes. Proven switch case
-selection honors guards and grouped labels. Structural proofs retain possible
-normal completion for opaque expressions and conservative selection for
-switches with labeled case targets.
+selection honors guards and grouped labels. Generative constructors evaluate
+field initializers and explicit constructor inputs before the body. Optional
+assertions preserve condition and message order when enabled. Structural
+proofs retain possible normal completion for opaque expressions and conservative
+selection for switches with labeled case targets.
 
 Resolved constant booleans use the same branch facts in completion, inference
 and async ownership. Ordinary final/mutable initializers do not establish these
@@ -74,6 +76,17 @@ arbitrary captures, runtime mutation and scheduling remain conservative.
 
 Discarding a known failing Future preserves a scheduled effect in the caller's
 summary. A synchronous catch around its creation cannot discharge that effect.
+Direct native inputs to a literal `Future.wait` or `Future.any` preserve their
+known types. A blocked join can leave an earlier Future unobserved. `Future.wait`
+cleanup throws are scheduled independently of the join's result. Failures
+thrown by async error handlers or their filters propagate through the result
+they produce. An immediate await of a final local preserves the initializer's
+known types and checks containment where the await executes.
+
+`Stream.error`, `Future.asStream`, and `Stream.fromFuture` preserve Stream
+delivery, with typed effects for direct native sources. SDK terminal operations
+such as `Stream.toList` move error events to their returned Future. Awaiting a
+Future whose result value is a Stream leaves that Stream's error buffered.
 
 Sync generator effects remain deferred when code obtains the SDK iterator.
 Direct calls to `Iterator.moveNext()` execute those effects synchronously, so a
