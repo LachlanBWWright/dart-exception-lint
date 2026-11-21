@@ -155,6 +155,15 @@ on Dart 3.11.0 and 3.14.1. The installed LSP checks on both SDKs picked up
 unsaved dependency edits. Diagnostics appeared in 6–33 ms and cleared in
 5–18 ms after startup.
 
+The `8cb0b75` release snapshot passed all 21 gates on each of the four Linux
+SDKs. Dart 3.11.0, 3.12.0 and 3.13.5 passed 621 tests each, and Dart 3.14.1
+passed 622. Every SDK matched 249 labeled runtime observations on the VM,
+JavaScript and Wasm. The 37 semantic corpus cases had zero unexpected or
+missing effect labels on each SDK, with 24 exact exception type checks.
+Publish dry runs reported zero warnings. Installed LSP diagnostics appeared
+in 6–42 ms and cleared in 5–29 ms after startup. The same commit passed the
+installed Flutter analysis and Chromium consumer checks.
+
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level
