@@ -700,6 +700,7 @@ _SwitchSelection _selectSwitchMembers(SwitchStatement node) {
   }
   final evaluated = <SwitchMember>{};
   final bodies = <SwitchMember>{};
+  final booleanCases = <bool>{};
   var fallsThrough = true;
   for (final member in members) {
     if (!fallsThrough) break;
@@ -716,16 +717,38 @@ _SwitchSelection _selectSwitchMembers(SwitchStatement node) {
     };
     evaluated.add(member);
     if (selection.selects) bodies.add(memberBodies[member]!);
+    if (_unconditionalBooleanCase(member) case final value?) {
+      booleanCases.add(value);
+    }
     fallsThrough = selection.fallsThrough;
   }
-  if (fallsThrough && defaultMember != null) {
+  final exhaustiveBoolean =
+      booleanCases.length == 2 &&
+      node.expression.staticType?.isDartCoreBool == true &&
+      isDefinitelyNonNull(node.expression);
+  if (fallsThrough && !exhaustiveBoolean && defaultMember != null) {
     bodies.add(memberBodies[defaultMember]!);
   }
   return (
     evaluated: evaluated,
     bodies: bodies,
-    noMatch: fallsThrough && defaultMember == null,
+    noMatch: fallsThrough && !exhaustiveBoolean && defaultMember == null,
   );
+}
+
+bool? _unconditionalBooleanCase(SwitchMember member) {
+  if (member is SwitchCase) return constantBooleanValue(member.expression);
+  if (member is! SwitchPatternCase) return null;
+  final clause = member.guardedPattern;
+  final guard = clause.whenClause?.expression;
+  if (guard != null && constantBooleanValue(guard) != true) return null;
+  var pattern = clause.pattern;
+  while (pattern is ParenthesizedPattern) {
+    pattern = pattern.pattern;
+  }
+  return pattern is ConstantPattern
+      ? constantBooleanValue(pattern.expression)
+      : null;
 }
 
 bool _switchExpressionCanComplete(SwitchExpression node) {

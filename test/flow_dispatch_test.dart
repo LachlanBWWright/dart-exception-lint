@@ -453,6 +453,22 @@ void unmatchedCase() {
   switch (unmatched) { case true: guard(); }
   stop();
 }
+void exhaustive(bool value) {
+  switch (value) { case true: return; case false: return; }
+  throw 'unreachable tail';
+}
+void openSubject(Object value) {
+  switch (value) { case true: return; case false: return; }
+  throw 'reachable tail';
+}
+void guardedSubject(bool value, bool allow) {
+  switch (value) {
+    case true when allow: return;
+    case false: return;
+    default: break;
+  }
+  throw 'reachable tail';
+}
 ''',
       (summaries, _) {
         for (final name in [
@@ -465,6 +481,10 @@ void unmatchedCase() {
           expect(summaries[name]!.exceptionTypes.toSet(), {
             'int',
           }, reason: name);
+        }
+        expect(summaries['exhaustive']!.hasAnyThrowSource, isFalse);
+        for (final name in ['openSubject', 'guardedSubject']) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {'String'});
         }
       },
     );
