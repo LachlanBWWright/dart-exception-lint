@@ -219,6 +219,7 @@ final class InferredThrowAnalyzer {
     required bool requireObservedAsyncError,
     bool includeManifestOverrides = true,
   }) {
+    if (node is BinaryExpression && isNullComparison(node)) return null;
     if ((node is PropertyAccess || node is PrefixedIdentifier) &&
         element is ExecutableElement &&
         element is! PropertyAccessorElement) {
@@ -731,7 +732,8 @@ final class InferredThrowAnalyzer {
       switch (node) {
         BinaryExpression()
             when element?.baseElement == node.element?.baseElement =>
-          ThrowSourceCatalog.isNativeStringEquality(node) ||
+          isNullComparison(node) ||
+              ThrowSourceCatalog.isNativeStringEquality(node) ||
               NumericChecks.modelsBinary(node) &&
                   NumericChecks.binary(node) == null,
         AssignmentExpression()
@@ -999,10 +1001,9 @@ final class InferredThrowAnalyzer {
       return manifestOverride;
     }
 
-    // Reading a synthetic SDK const field does not execute an initializer.
-    // Explicit getters and non-const fields retain their ordinary summaries.
+    // Reading a constant does not execute its initializer at runtime, even
+    // when the resolved declaration comes from an unavailable dependency.
     if (executable is GetterElement &&
-        executable.library.isInSdk &&
         ((executable.isOriginVariable && executable.variable.isConst) ||
             NumericChecks.isKnownBigIntValueGetter(executable))) {
       return ThrowSummary.noObviousThrow(elementKey);

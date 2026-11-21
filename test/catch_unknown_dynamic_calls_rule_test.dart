@@ -376,6 +376,8 @@ void f(dynamic value) {
   value && true;
   value || true;
   value ?? false;
+  value == null;
+  null != value;
   !value;
   value!;
   switch (value) { case true: break; }

@@ -1026,6 +1026,11 @@ bool isDefinitelyNonNull(Expression expression) =>
     expression is ParenthesizedExpression &&
         isDefinitelyNonNull(expression.expression);
 
+/// One null operand makes equality a built-in comparison.
+bool isNullComparison(BinaryExpression node) =>
+    (node.operator.lexeme == '==' || node.operator.lexeme == '!=') &&
+    (_isNull(node.leftOperand) || _isNull(node.rightOperand));
+
 bool? constantBooleanValue(Expression expression) => switch (expression) {
   BooleanLiteral(:final value) => value,
   ParenthesizedExpression(:final expression) => constantBooleanValue(

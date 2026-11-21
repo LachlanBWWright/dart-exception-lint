@@ -13,6 +13,57 @@ import 'package:test/test.dart';
 
 void main() {
   test(
+    'resolved constants stay safe when dependency bodies are unavailable',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'exception-constants-',
+      );
+      AnalysisContextCollection? collection;
+      try {
+        final main = File('${directory.path}/application/lib/main.dart');
+        await main.parent.create(recursive: true);
+        await main.writeAsString('''
+import '../../dependency.dart' as flags;
+bool constantRead() => flags.enabled;
+bool getterRead() => flags.computed;
+''');
+        await File('${directory.path}/dependency.dart').writeAsString('''
+const bool enabled = true;
+bool get computed => throw 'runtime getter';
+''');
+        collection = AnalysisContextCollection(includedPaths: [directory.path]);
+        final resolved =
+            await collection
+                    .contextFor(main.path)
+                    .currentSession
+                    .getResolvedUnit(main.path)
+                as ResolvedUnitResult;
+        final analyzer = InferredThrowAnalyzer(
+          manifest: ThrowingApiManifest.empty(),
+          options: const ExceptionAnalysisOptions(
+            analyzeThirdPartySource: false,
+          ),
+          featureSet: resolved.libraryElement.featureSet,
+          packageRootPath: main.parent.parent.path,
+          knownUnits: {main.path: resolved.unit},
+        );
+        final summaries = {
+          for (final function
+              in resolved.unit.declarations.whereType<FunctionDeclaration>())
+            function.name.lexeme: analyzer.summarizeExecutable(
+              function.declaredFragment!.element,
+            ),
+        };
+        expect(summaries['constantRead']!.hasAnyThrowSource, isFalse);
+        expect(summaries['getterRead']!.hasUnknownEffects, isTrue);
+      } finally {
+        await collection?.dispose();
+        await directory.delete(recursive: true);
+      }
+    },
+  );
+
+  test(
     'callback bindings cross resolved dependencies without mixing caches',
     () async {
       final directory = await Directory.systemTemp.createTemp(

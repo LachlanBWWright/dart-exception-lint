@@ -46,6 +46,7 @@ Future<void> main() async {
             'directNativeFutureIgnore',
             'handledTypedFutureError',
             'createJsonDecoder',
+            'nullComparison',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -174,6 +175,7 @@ const _effects = {
   'resolvedSuperCall': ('synchronous', 'String'),
   'resolvedConstructorRedirect': ('synchronous', 'String'),
   'reboundStringIndex': ('synchronous', 'RangeError'),
+  'ordinaryEquality': ('synchronous', 'String'),
   'secondStringIndex': ('synchronous', 'RangeError'),
   'negativeSubstringStart': ('synchronous', 'RangeError'),
   'decodePrefixedJson': ('synchronous', 'FormatException'),
@@ -350,6 +352,8 @@ const _observations = {
   'convert_json_decoder': 'FormatException',
   'contained_json_decode': 'none',
   'native_string_equality': 'none',
+  'null_comparison': 'none',
+  'ordinary_equality': 'String',
   'negative_substring_start': 'RangeError',
   'reversed_substring_range': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
@@ -560,6 +564,8 @@ final class EqualityTrap {
   int get hashCode => 0;
 }
 bool nativeStringEquality(String left, Object? right) => left == right || left != right;
+bool nullComparison(dynamic input) => input == null || null != input;
+bool ordinaryEquality(EqualityTrap input, Object other) => input == other;
 void negativeSubstringStart(String text, int start) {
   if (start < text.length) text.substring(start);
 }
@@ -953,6 +959,8 @@ Future<void> main() async {
     'convert_json_decoder': capture(() => convertJsonDecoder('{')),
     'contained_json_decode': capture(() => containedJsonDecode('{')),
     'native_string_equality': capture(() => nativeStringEquality('value', EqualityTrap())),
+    'null_comparison': capture(() => nullComparison(EqualityTrap())),
+    'ordinary_equality': capture(() => ordinaryEquality(EqualityTrap(), Object())),
     'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
     'reversed_substring_range': capture(() => reversedSubstringRange('word')),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),
