@@ -250,8 +250,10 @@ final class _Visitor extends SimpleAstVisitor<void> {
       analyzer.options,
     );
     // JSON parsing has a runtime report. The user-supplied reviver has a
-    // separate inferred report when its own failures escape.
+    // separate inferred report. Iterable overrides can also contribute effects
+    // independently of the SDK operation.
     if (directSource != null &&
+        !ThrowSourceCatalog.isSdkIterableTraversal(element) &&
         ThrowSourceCatalog.jsonDecodingInvocation(node, element)?.reviver ==
             null) {
       return;

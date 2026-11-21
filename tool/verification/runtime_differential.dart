@@ -52,6 +52,8 @@ Future<void> main() async {
             'safeLiteralListGetters',
             'growableListClear',
             'caughtEmptyListLast',
+            'safeListTraversal',
+            'caughtListTraversalRange',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -205,6 +207,8 @@ const _effects = {
   'resizedLiteralListIndex': ('synchronous', 'RangeError'),
   'multipleListSingle': ('synchronous', 'StateError'),
   'resizedListFirst': ('synchronous', 'StateError'),
+  'negativeListTraversal': ('synchronous', 'RangeError'),
+  'deferredListPredicate': ('deferred', 'String'),
   'ordinaryEquality': ('synchronous', 'String'),
   'secondStringIndex': ('synchronous', 'RangeError'),
   'negativeSubstringStart': ('synchronous', 'RangeError'),
@@ -398,6 +402,11 @@ const _observations = {
   'caught_empty_list_last': 'none',
   'multiple_list_single': 'StateError',
   'resized_list_first': 'StateError',
+  'safe_list_traversal': 'none',
+  'caught_list_traversal_range': 'none',
+  'negative_list_traversal': 'RangeError',
+  'deferred_list_predicate_creation': 'none',
+  'deferred_list_predicate_consumption': 'String',
   'negative_substring_start': 'RangeError',
   'reversed_substring_range': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
@@ -628,6 +637,10 @@ void growableListClear() { final list = [1]; list.clear(); }
 void caughtEmptyListLast() { try { (<int>[]).last; } on StateError {} }
 int multipleListSingle() => [1, 2].single;
 int resizedListFirst() { final list = [1]; list.clear(); return list.first; }
+void safeListTraversal() { final list = [1]; list.skip(1); list.take((2)); }
+void caughtListTraversalRange() { try { [1].take(-1); } on RangeError {} }
+void negativeListTraversal() { [1].skip(-1); }
+Iterable<int> deferredListPredicate() => [1].skipWhile((_) => throw 'predicate');
 void negativeSubstringStart(String text, int start) {
   if (start < text.length) text.substring(start);
 }
@@ -1044,6 +1057,11 @@ Future<void> main() async {
     'caught_empty_list_last': capture(caughtEmptyListLast),
     'multiple_list_single': capture(multipleListSingle),
     'resized_list_first': capture(resizedListFirst),
+    'safe_list_traversal': capture(safeListTraversal),
+    'caught_list_traversal_range': capture(caughtListTraversalRange),
+    'negative_list_traversal': capture(negativeListTraversal),
+    'deferred_list_predicate_creation': capture(deferredListPredicate),
+    'deferred_list_predicate_consumption': capture(() => deferredListPredicate().toList()),
     'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
     'reversed_substring_range': capture(() => reversedSubstringRange('word')),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),

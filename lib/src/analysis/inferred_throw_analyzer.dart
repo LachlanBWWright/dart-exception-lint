@@ -1424,12 +1424,24 @@ final class InferredThrowAnalyzer {
           ? ThrowSourceCatalog.matchFutureFactoryNullCheck(node)
           : null;
       if (shouldKeep || nullCheck != null) {
-        return ThrowSummary.merge(
+        final summary = ThrowSummary.merge(
           directSource.displayName,
           [if (shouldKeep) directSource, ?nullCheck, ...callbackSources],
           dependencyElementKeys: const [],
           complete: true,
         );
+        if (resolvedElement is MethodElement &&
+            ThrowSourceCatalog.isSdkIterableTraversal(resolvedElement)) {
+          return _summaryForDispatch(
+            resolvedElement,
+            summary,
+            node,
+            depth: depth + 1,
+            activeKeys: activeKeys,
+            callerKey: _executableKey(currentExecutable),
+          );
+        }
+        return summary;
       }
     }
 
@@ -1721,7 +1733,9 @@ final class InferredThrowAnalyzer {
       return baseSummary;
     }
     if (callSite is MethodInvocation &&
-        literalListMutationReceiver(callSite) != null) {
+        (literalListMutationReceiver(callSite) != null ||
+            ThrowSourceCatalog.isSdkIterableTraversal(declared) &&
+                isLiteralListAllocation(callSite.realTarget))) {
       return baseSummary;
     }
     if (declared is GetterElement &&

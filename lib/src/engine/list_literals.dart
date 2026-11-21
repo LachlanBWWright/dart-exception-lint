@@ -7,6 +7,9 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/src/dart/ast/utilities.dart';
 
 /// Finds the SDK list allocated by a literal or held in a final local.
+bool isLiteralListAllocation(Expression? expression) =>
+    _literalReceiver(expression) != null;
+
 ListLiteral? literalListMutationReceiver(MethodInvocation node) {
   final target = node.methodName.element;
   if (target is! MethodElement ||

@@ -7,6 +7,7 @@ import 'package:dart_exception_lint/src/analysis/inferred_throw_analyzer.dart';
 import 'package:dart_exception_lint/src/analysis/throw_summary.dart';
 import 'package:dart_exception_lint/src/config/exception_analysis_options.dart';
 import 'package:dart_exception_lint/src/config/throwing_api_manifest.dart';
+import 'package:dart_exception_lint/src/engine/exception_effect.dart';
 import 'package:dart_exception_lint/src/engine/resolved_dependencies.dart';
 import 'package:dart_exception_lint/src/engine/future_forwarding.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
@@ -920,6 +921,37 @@ int custom() => Custom().first;
       },
     );
   });
+
+  test(
+    'Iterable traversal keeps count, predicate and dispatch effects',
+    () async {
+      await _verify(
+        '''
+void safe() { final items = [1]; items.skip(1); items.take((2)); }
+void invalid() { [1].take(-1); }
+void contained() { try { [1].skip(-1); } on RangeError {} }
+Iterable<int> deferred() => [1].skipWhile((_) => throw 'predicate');
+class ThrowingIterable extends Iterable<int> {
+  Iterator<int> get iterator => [1].iterator;
+  Iterable<int> skip(int count) => throw 'override';
+}
+void open(Iterable<int> items) { items.skip(1); }
+''',
+        (summaries, _) {
+          for (final name in ['safe', 'contained']) {
+            expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
+          }
+          expect(summaries['invalid']!.exceptionTypes.toSet(), {'RangeError'});
+          final deferred = summaries['deferred']!;
+          expect(deferred.exceptionTypes.toSet(), {'String'});
+          expect(deferred.effects.single.channel, ExceptionChannel.deferred);
+          final open = summaries['open']!;
+          expect(open.exceptionTypes.toSet(), {'String'});
+          expect(open.hasUnknownEffects, isTrue);
+        },
+      );
+    },
+  );
 
   test(
     'List mutations use the allocation type of a proven literal receiver',

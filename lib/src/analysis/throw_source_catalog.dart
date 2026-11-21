@@ -61,6 +61,9 @@ final class ThrowSourceCatalog {
           ? NumericChecks.invocation(node, element)
           : null;
     }
+    if (node is MethodInvocation && isSdkIterableTraversal(element)) {
+      return _matchIterableTraversal(node, element.name!, options);
+    }
     final jsonDecoding = jsonDecodingInvocation(node, element);
     if (jsonDecoding != null) {
       return ThrowSource(
@@ -131,6 +134,48 @@ final class ThrowSourceCatalog {
       confidence: confidence,
       displayName: 'List.$name',
       exceptionTypes: confidence.isThrowing ? const ['StateError'] : const [],
+      evidence: const {EffectEvidence.sdkModel},
+    );
+  }
+
+  static bool isSdkIterableTraversal(Element? element) {
+    final declaration = element?.baseElement;
+    return declaration is MethodElement &&
+        const {
+          'skip',
+          'take',
+          'skipWhile',
+          'takeWhile',
+        }.contains(declaration.name) &&
+        declaration.library.isInSdk &&
+        declaration.library.uri.toString() == 'dart:core' &&
+        const {
+          'Iterable',
+          'List',
+          'Set',
+        }.contains(declaration.enclosingElement?.name);
+  }
+
+  static ThrowSource _matchIterableTraversal(
+    MethodInvocation node,
+    String name,
+    ExceptionAnalysisOptions options,
+  ) {
+    var count = node.argumentList.arguments.firstOrNull?.argumentExpression;
+    while (count is ParenthesizedExpression) {
+      count = count.expression;
+    }
+    final mayRejectCount =
+        options.treatCollectionStateAsThrowing &&
+        (name == 'skip' || name == 'take') &&
+        !(count is IntegerLiteral && (count.value ?? -1) >= 0);
+    return ThrowSource(
+      kind: ThrowSourceKind.collectionStateCall,
+      confidence: mayRejectCount
+          ? ThrowConfidence.possibleThrow
+          : ThrowConfidence.noObviousThrow,
+      displayName: 'Iterable.$name',
+      exceptionTypes: mayRejectCount ? const ['RangeError'] : const [],
       evidence: const {EffectEvidence.sdkModel},
     );
   }
@@ -933,14 +978,7 @@ final class ThrowSourceCatalog {
 
     if (options.treatCollectionStateAsThrowing &&
         _isExpectedLibrary(libraryUri, 'dart:core') &&
-        const {
-          'getRange',
-          'insertAll',
-          'skip',
-          'take',
-          'skipWhile',
-          'takeWhile',
-        }.contains(name)) {
+        const {'getRange', 'insertAll'}.contains(name)) {
       return ThrowSource(
         kind: ThrowSourceKind.collectionStateCall,
         confidence: ThrowConfidence.possibleThrow,
