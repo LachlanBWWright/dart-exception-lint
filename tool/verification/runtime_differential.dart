@@ -168,6 +168,8 @@ const _effects = {
   'stoppedSuperArgument': ('synchronous', 'int'),
   'resolvedSuperCall': ('synchronous', 'String'),
   'resolvedConstructorRedirect': ('synchronous', 'String'),
+  'reboundStringIndex': ('synchronous', 'RangeError'),
+  'secondStringIndex': ('synchronous', 'RangeError'),
   'stoppedStatementGuard': ('synchronous', 'int'),
   'groupedStatementCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
@@ -241,6 +243,7 @@ const _suppressedEffects = {
   'failedAssertionMessage': 'AssertionError',
   'stoppedConstructorField': 'String',
   'stoppedSuperArgument': 'String',
+  'guardedStringIndex': 'RangeError',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
@@ -295,6 +298,9 @@ const _observations = {
   'stopped_super_argument': '42',
   'resolved_super_call': 'String',
   'resolved_constructor_redirect': 'String',
+  'guarded_string_index': 'none',
+  'rebound_string_index': 'RangeError',
+  'second_string_index': 'RangeError',
   'stopped_statement_guard': '42',
   'grouped_statement_case': '42',
   'skipped_guard': 'none',
@@ -443,6 +449,15 @@ void stoppedConstructorField() { FieldBlocksConstruction(); }
 void stoppedSuperArgument() { SuperArgumentBlocksBody(); }
 void resolvedSuperCall() { CallsSuper(); }
 void resolvedConstructorRedirect() { ConstructorRedirect(); }
+void guardedStringIndex(String value) {
+  if (value.isNotEmpty && value.codeUnitAt(0) == 65) value[0];
+}
+void reboundStringIndex(String value) {
+  if (value.isNotEmpty) { value = ''; value[0]; }
+}
+void secondStringIndex(String value) {
+  if (value.isNotEmpty) value[1];
+}
 void stoppedStatementGuard() {
   switch (false) {
     case _ when stopEvaluation(): throwString();
@@ -749,6 +764,9 @@ Future<void> main() async {
     'stopped_super_argument': capture(stoppedSuperArgument),
     'resolved_super_call': capture(resolvedSuperCall),
     'resolved_constructor_redirect': capture(resolvedConstructorRedirect),
+    'guarded_string_index': capture(() { guardedStringIndex(''); guardedStringIndex('A'); }),
+    'rebound_string_index': capture(() => reboundStringIndex('A')),
+    'second_string_index': capture(() => secondStringIndex('A')),
     'stopped_statement_guard': capture(stoppedStatementGuard),
     'grouped_statement_case': capture(groupedStatementCase),
     'skipped_guard': capture(skippedGuard),

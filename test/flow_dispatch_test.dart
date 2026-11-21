@@ -468,6 +468,57 @@ void lateWrite() { late int value; value = 3; }
     );
   });
 
+  test('String bounds follow nonempty guards for stable values', () async {
+    await _verify(
+      '''
+void guarded(String value) {
+  if (value.isNotEmpty && value.codeUnitAt(0) == 65) value[0];
+}
+void guardedAfterWrite(String value) {
+  value = value.trim();
+  if (!value.isEmpty) value[0];
+}
+void guardedElse(String value) {
+  if (value.isEmpty) {} else { value[0]; }
+}
+void overwritten(String value) {
+  if (value.isNotEmpty) { value = ''; value[0]; }
+}
+void captured(String value) {
+  void clear() { value = ''; }
+  if (value.isNotEmpty) { clear(); value[0]; }
+}
+void differentIndex(String value) {
+  if (value.isNotEmpty) value[1];
+}
+void falsePattern(String value) {
+  if (value.isNotEmpty case false) value[0];
+}
+''',
+      (summaries, _) {
+        for (final name in ['guarded', 'guardedAfterWrite', 'guardedElse']) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            isNot(contains('RangeError')),
+            reason: name,
+          );
+        }
+        for (final name in [
+          'overwritten',
+          'captured',
+          'differentIndex',
+          'falsePattern',
+        ]) {
+          expect(
+            summaries[name]!.exceptionTypes,
+            contains('RangeError'),
+            reason: name,
+          );
+        }
+      },
+    );
+  });
+
   test('index assignment models the read and write that can execute', () async {
     await _verify(
       '''

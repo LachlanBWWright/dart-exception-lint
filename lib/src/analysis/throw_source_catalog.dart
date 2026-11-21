@@ -8,6 +8,7 @@ import '../engine/exception_effect.dart';
 import '../engine/numeric_checks.dart';
 import '../engine/numeric_parse_checks.dart';
 import '../engine/statement_completion.dart';
+import '../engine/string_bounds.dart';
 
 final class ThrowSourceCatalog {
   const ThrowSourceCatalog._();
@@ -21,6 +22,17 @@ final class ThrowSourceCatalog {
     // inference as unknown, including calls that resemble familiar SDK APIs.
     element = element?.baseElement;
     if (element is! ExecutableElement || !element.library.isInSdk) return null;
+    if (element is GetterElement &&
+        element.library.uri.toString() == 'dart:core' &&
+        element.enclosingElement.name == 'String' &&
+        const {'isEmpty', 'isNotEmpty', 'length'}.contains(element.name)) {
+      return ThrowSource(
+        kind: ThrowSourceKind.collectionStateCall,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: 'String.${element.name}',
+        evidence: const {EffectEvidence.sdkModel},
+      );
+    }
     if (NumericParseChecks.modelsInvocation(node, element)) {
       return options.treatParseMethodsAsThrowing
           ? NumericParseChecks.invocation(node, element)
@@ -115,6 +127,13 @@ final class ThrowSourceCatalog {
             type.allSupertypes.any((type) => type.isDartCoreList));
     final sdkString = type is InterfaceType && type.isDartCoreString;
     if (!sdkList && !sdkString) return null;
+    if (sdkString && sdkRead && isProvenStringZeroIndex(node, target, index)) {
+      return const ThrowSource(
+        kind: ThrowSourceKind.indexAccess,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: 'proven in-bounds String index',
+      );
+    }
     final literalLength = switch (target) {
       ListLiteral(:final elements)
           when elements.every((element) => element is Expression) =>
@@ -349,6 +368,15 @@ final class ThrowSourceCatalog {
         constructorName == 'fromFuture') {
       return _knownFutureStreamSource(
         node.argumentList.arguments.firstOrNull?.argumentExpression,
+      );
+    }
+    if (libraryUri == 'dart:async' &&
+        className == 'Stream' &&
+        const {'empty', 'value'}.contains(constructorName)) {
+      return ThrowSource(
+        kind: ThrowSourceKind.asyncOperation,
+        confidence: ThrowConfidence.noObviousThrow,
+        displayName: 'Stream.$constructorName',
       );
     }
 
@@ -675,6 +703,22 @@ final class ThrowSourceCatalog {
         displayName: 'RangeError.$name',
         exceptionTypes: const ['RangeError'],
       );
+    }
+
+    if (libraryUri == 'dart:core' &&
+        enclosingClassName == 'String' &&
+        name == 'codeUnitAt') {
+      final receiver = node.realTarget;
+      final index = node.argumentList.arguments.firstOrNull?.argumentExpression;
+      if (receiver != null &&
+          index != null &&
+          isProvenStringZeroIndex(node, receiver, index)) {
+        return const ThrowSource(
+          kind: ThrowSourceKind.collectionStateCall,
+          confidence: ThrowConfidence.noObviousThrow,
+          displayName: 'proven in-bounds String code unit',
+        );
+      }
     }
 
     if (options.treatCollectionStateAsThrowing &&

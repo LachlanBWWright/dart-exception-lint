@@ -128,5 +128,45 @@
     "effects": [
       "scheduled:known"
     ]
+  },
+  {
+    "name": "nativeFutureJoin",
+    "source": "Future<void> nativeFutureJoin() async { await Future.wait<void>([Future<void>.error('joined')]); }",
+    "effects": [
+      "future:known"
+    ]
+  },
+  {
+    "name": "blockedFutureJoin",
+    "source": "Future<void> blockedFutureJoin() async { try { await Future.wait<void>([Future<void>.error('abandoned'), throw 1]); } on int {} }",
+    "effects": [
+      "scheduled:known"
+    ]
+  },
+  {
+    "name": "caughtImmediateFuture",
+    "source": "Future<void> caughtImmediateFuture() async { final pending = Future<void>.error('stored'); try { await pending; } on String {} }",
+    "effects": []
+  },
+  {
+    "name": "errorFromHandler",
+    "source": "Future<void> errorFromHandler() => Future<void>.error(1).catchError((Object _) => throw 'handler');",
+    "effects": [
+      "future:known"
+    ]
+  },
+  {
+    "name": "bufferedStream",
+    "source": "Future<Stream<int>> bufferedStream() async { try { return await Future<Stream<int>>.value(Stream<int>.error('buffered')); } on String { return const Stream<int>.empty(); } }",
+    "effects": [
+      "stream:known"
+    ]
+  },
+  {
+    "name": "optionalAssertion",
+    "source": "void optionalAssertion() { assert(false); }",
+    "effects": [
+      "synchronous:known"
+    ]
   }
 ]
