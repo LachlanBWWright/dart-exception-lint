@@ -147,13 +147,14 @@ Set<CompletionTransfer> _statement(
           labels: loopLabels,
         ),
       };
-    case SwitchStatement(:final expression, :final members):
+    case SwitchStatement(:final expression):
       if (!expressionCanCompleteNormally(expression)) return {_thrown};
+      final selection = _switchSelection(statement);
       final result = <CompletionTransfer>{
         _thrown,
-        if (!members.any((member) => member is SwitchDefault)) _normal,
+        if (selection.noMatch) _normal,
       };
-      for (final member in members) {
+      for (final member in selection.bodies) {
         final transfers = _sequence(member.statements);
         for (final transfer in transfers) {
           result.add(
@@ -498,13 +499,7 @@ BranchSelection guardedPatternSelection(
 ) {
   final matches = simplePatternMatch(subject, clause.pattern);
   final guard = clause.whenClause?.expression;
-  if (guard == null) {
-    return (
-      selects: matches != false,
-      fallsThrough: matches != true,
-      canStop: false,
-    );
-  }
+  if (guard == null) return _unguardedSelection(matches);
   final completes = expressionCanCompleteNormally(guard);
   final guardValue = constantBooleanValue(guard);
   return (
@@ -514,6 +509,15 @@ BranchSelection guardedPatternSelection(
   );
 }
 
+BranchSelection _unguardedSelection(bool? matches) =>
+    (selects: matches != false, fallsThrough: matches != true, canStop: false);
+
+bool? _matchBooleanValue(Expression subject, Expression pattern) {
+  final input = constantBooleanValue(subject);
+  final expected = constantBooleanValue(pattern);
+  return input == null || expected == null ? null : input == expected;
+}
+
 bool? simplePatternMatch(Expression subject, DartPattern pattern) {
   switch (pattern) {
     case WildcardPattern(type: null) || DeclaredVariablePattern(type: null):
@@ -521,12 +525,72 @@ bool? simplePatternMatch(Expression subject, DartPattern pattern) {
     case ParenthesizedPattern(:final pattern):
       return simplePatternMatch(subject, pattern);
     case ConstantPattern(:final expression):
-      final input = constantBooleanValue(subject);
-      final expected = constantBooleanValue(expression);
-      return input == null || expected == null ? null : input == expected;
+      return _matchBooleanValue(subject, expression);
     default:
       return null;
   }
+}
+
+typedef _SwitchSelection = ({
+  Set<SwitchMember> evaluated,
+  Set<SwitchMember> bodies,
+  bool noMatch,
+});
+
+final _switchSelections = Expando<_SwitchSelection>();
+
+_SwitchSelection _switchSelection(SwitchStatement node) =>
+    _switchSelections[node] ??= _selectSwitchMembers(node);
+
+_SwitchSelection _selectSwitchMembers(SwitchStatement node) {
+  final members = node.members;
+  if (members.any((member) => member.labels.isNotEmpty)) {
+    // A labeled continue may enter a case directly from another case body.
+    final all = members.toSet();
+    return (
+      evaluated: all,
+      bodies: all,
+      noMatch: !members.any((member) => member is SwitchDefault),
+    );
+  }
+
+  // Consecutive labels with empty bodies share the following case body.
+  final memberBodies = <SwitchMember, SwitchMember>{};
+  SwitchMember? body;
+  SwitchDefault? defaultMember;
+  for (final member in members.reversed) {
+    if (body == null || member.statements.isNotEmpty) body = member;
+    memberBodies[member] = body;
+    if (member is SwitchDefault) defaultMember = member;
+  }
+  final evaluated = <SwitchMember>{};
+  final bodies = <SwitchMember>{};
+  var fallsThrough = true;
+  for (final member in members) {
+    if (!fallsThrough) break;
+    if (member is SwitchDefault) continue;
+    final selection = switch (member) {
+      SwitchPatternCase(:final guardedPattern) => guardedPatternSelection(
+        node.expression,
+        guardedPattern,
+      ),
+      SwitchCase(:final expression) => _unguardedSelection(
+        _matchBooleanValue(node.expression, expression),
+      ),
+      SwitchDefault() => _unguardedSelection(true),
+    };
+    evaluated.add(member);
+    if (selection.selects) bodies.add(memberBodies[member]!);
+    fallsThrough = selection.fallsThrough;
+  }
+  if (fallsThrough && defaultMember != null) {
+    bodies.add(memberBodies[defaultMember]!);
+  }
+  return (
+    evaluated: evaluated,
+    bodies: bodies,
+    noMatch: fallsThrough && defaultMember == null,
+  );
 }
 
 bool _switchExpressionCanComplete(SwitchExpression node) {
@@ -685,7 +749,18 @@ bool _childCanExecute(AstNode parent, AstNode child) {
     }
   }
   if (parent is SwitchStatement && child is SwitchMember) {
-    return expressionCanCompleteNormally(parent.expression);
+    if (!expressionCanCompleteNormally(parent.expression)) return false;
+    final selection = _switchSelection(parent);
+    return selection.evaluated.contains(child) ||
+        selection.bodies.contains(child);
+  }
+  if (parent is SwitchMember) {
+    final owner = parent.parent;
+    if (owner is SwitchStatement) {
+      final selection = _switchSelection(owner);
+      if (child is Statement) return selection.bodies.contains(parent);
+      return selection.evaluated.contains(parent);
+    }
   }
   if (parent is SwitchExpression && child is SwitchExpressionCase) {
     final subject = parent.expression;
@@ -710,7 +785,9 @@ bool _childCanExecute(AstNode parent, AstNode child) {
   if (parent is GuardedPattern && child is WhenClause) {
     final subject = switch (parent.parent?.parent) {
       IfStatement(:final expression) ||
-      IfElement(:final expression) => expression,
+      IfElement(:final expression) ||
+      SwitchExpression(:final expression) ||
+      SwitchStatement(:final expression) => expression,
       _ => null,
     };
     if (subject != null) {

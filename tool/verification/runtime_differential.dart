@@ -156,6 +156,8 @@ const _effects = {
   'storedLazyIterator': ('synchronous', 'String'),
   'blockedLazyConsumer': ('synchronous', 'int'),
   'stoppedGuardCase': ('synchronous', 'int'),
+  'stoppedStatementGuard': ('synchronous', 'int'),
+  'groupedStatementCase': ('synchronous', 'int'),
   'parenthesizedNullAssertion': ('synchronous', 'TypeError'),
   'postfixAssertion': ('synchronous', 'TypeError'),
   'stoppedCascade': ('synchronous', 'int'),
@@ -205,6 +207,8 @@ const _suppressedEffects = {
   'unusedLazyIterator': 'String',
   'blockedLazyConsumer': 'String',
   'stoppedGuardCase': 'String',
+  'stoppedStatementGuard': 'String',
+  'groupedStatementCase': 'String',
   'skippedGuard': 'String',
   'caughtPostfixAssertion': 'TypeError',
   'skippedSelector': 'String',
@@ -242,6 +246,8 @@ const _observations = {
   'unused_lazy_iterator': 'none',
   'blocked_lazy_consumer': '42',
   'stopped_guard_case': '42',
+  'stopped_statement_guard': '42',
+  'grouped_statement_case': '42',
   'skipped_guard': 'none',
   'postfix_assertion': 'TypeError',
   'caught_postfix_assertion': 'none',
@@ -337,6 +343,20 @@ void stoppedGuardCase() {
     _ when stopEvaluation() => throwString(),
     _ => throwString(),
   };
+}
+void stoppedStatementGuard() {
+  switch (false) {
+    case _ when stopEvaluation(): throwString();
+    default: throwString();
+  }
+  throwString();
+}
+void groupedStatementCase() {
+  switch (true) {
+    case true:
+    case false: stopEvaluation();
+  }
+  throwString();
 }
 void skippedGuard() {
   final result = switch (false) {
@@ -542,6 +562,8 @@ Future<void> main() async {
     'unused_lazy_iterator': capture(unusedLazyIterator),
     'blocked_lazy_consumer': capture(blockedLazyConsumer),
     'stopped_guard_case': capture(stoppedGuardCase),
+    'stopped_statement_guard': capture(stoppedStatementGuard),
+    'grouped_statement_case': capture(groupedStatementCase),
     'skipped_guard': capture(skippedGuard),
     'postfix_assertion': capture(() => postfixAssertion(null)),
     'caught_postfix_assertion': capture(() => caughtPostfixAssertion(null)),

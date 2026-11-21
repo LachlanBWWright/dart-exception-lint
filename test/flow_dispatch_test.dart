@@ -297,6 +297,61 @@ void maybeStoppedIf(Object input) {
     );
   });
 
+  test('switch statements sequence guards, case groups, and exits', () async {
+    await _verify(
+      '''
+Never stop() => throw 3;
+bool guard() => throw 'guard';
+void skippedGuard() {
+  switch (false) {
+    case true when guard(): throw 'unreachable case';
+    default: stop();
+  }
+  throw 'unreachable tail';
+}
+void stoppedGuard(bool value) {
+  switch (value) {
+    case _ when stop(): throw 'unreachable case';
+    default: throw 'unreachable default';
+  }
+  throw 'unreachable tail';
+}
+void groupedCase() {
+  switch (true) {
+    case true:
+    case false: stop();
+  }
+  throw 'unreachable tail';
+}
+void continuedCase() {
+  switch (true) {
+    case true: continue otherCase;
+    otherCase:
+    case false: stop();
+  }
+}
+const Object unmatched = false;
+void unmatchedCase() {
+  switch (unmatched) { case true: guard(); }
+  stop();
+}
+''',
+      (summaries, _) {
+        for (final name in [
+          'skippedGuard',
+          'stoppedGuard',
+          'groupedCase',
+          'continuedCase',
+          'unmatchedCase',
+        ]) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'int',
+          }, reason: name);
+        }
+      },
+    );
+  });
+
   test('assignment effects follow evaluation and short circuits', () async {
     await _verify(
       '''
