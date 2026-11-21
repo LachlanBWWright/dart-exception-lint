@@ -177,7 +177,8 @@ final class ThrowSourceCatalog {
     AsExpression node,
     ExceptionAnalysisOptions options,
   ) {
-    if (!options.treatAsCastsAsThrowing) {
+    if (!options.treatAsCastsAsThrowing ||
+        !expressionCanCompleteNormally(node.expression)) {
       return null;
     }
 

@@ -169,6 +169,10 @@ void doLoop(dynamic value) { do {} while (value); }
 bool negation(dynamic value) => !value;
 bool logical(dynamic value) => value && true;
 bool skipped(dynamic value) => false && value;
+void stoppedConversion() { final String value = (throw 3) as dynamic; }
+void stoppedCast() { ((throw 3) as dynamic) as String; }
+class CheckedParameter<T> { void accept(T value, int other) {} }
+void stoppedCovariance(CheckedParameter<num> target) { target.accept(1.5, throw 3); }
 void pattern(dynamic value) { if (value case _) {} }
 int guard(dynamic value) => switch (true) { _ when value => 1, _ => 0 };
 void caught(dynamic value) { try { if (value) {} } on TypeError {} }
@@ -188,6 +192,15 @@ void caught(dynamic value) { try { if (value) {} } on TypeError {} }
         }
         for (final name in ['skipped', 'pattern', 'caught']) {
           expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
+        }
+        for (final name in [
+          'stoppedConversion',
+          'stoppedCast',
+          'stoppedCovariance',
+        ]) {
+          expect(summaries[name]!.exceptionTypes.toSet(), {
+            'int',
+          }, reason: name);
         }
       },
     );

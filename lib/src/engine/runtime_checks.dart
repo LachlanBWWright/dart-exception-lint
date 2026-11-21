@@ -4,6 +4,7 @@ import 'package:analyzer/dart/element/type.dart';
 
 import '../analysis/throw_summary.dart';
 import 'list_literals.dart';
+import 'statement_completion.dart';
 
 /// Implicit downcasts inserted by the language at typed value boundaries.
 /// Promotion is reflected in the resolved source type supplied by analyzer.
@@ -25,8 +26,10 @@ final class RuntimeChecks {
         parameter.library?.typeSystem.isSubtypeOf(source, parameter.type) !=
             true;
     if (!genericClassParameter && !narrowed) return null;
-    final arguments = value.parent;
+    final parent = value.parent;
+    final arguments = parent is NamedArgument ? parent.parent : parent;
     final invocation = arguments is ArgumentList ? arguments.parent : null;
+    if (invocation != null && !isReachable(invocation)) return null;
     if (invocation is MethodInvocation && !narrowed) {
       final literal = literalListAddReceiver(invocation);
       if (literal != null && literalListAccepts(literal, value)) return null;
@@ -176,6 +179,7 @@ final class RuntimeChecks {
 
   static ThrowSource? implicitCast(Expression expression, DartType? target) {
     if (expression.staticType is! DynamicType ||
+        !expressionCanCompleteNormally(expression) ||
         target == null ||
         target is DynamicType ||
         target is VoidType ||

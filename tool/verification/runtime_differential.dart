@@ -172,6 +172,8 @@ const _effects = {
   'reboundStringIndex': ('synchronous', 'RangeError'),
   'secondStringIndex': ('synchronous', 'RangeError'),
   'dynamicBooleanFailure': ('synchronous', 'TypeError'),
+  'blockedCastFailure': ('synchronous', 'int'),
+  'blockedCovarianceFailure': ('synchronous', 'int'),
   'constantListAdd': ('synchronous', 'UnsupportedError'),
   'narrowListAdd': ('synchronous', 'TypeError'),
   'stoppedStatementGuard': ('synchronous', 'int'),
@@ -251,6 +253,8 @@ const _suppressedEffects = {
   'stoppedSuperArgument': 'String',
   'guardedStringIndex': 'RangeError',
   'caughtDynamicBoolean': 'TypeError',
+  'blockedCastFailure': 'TypeError',
+  'blockedCovarianceFailure': 'TypeError',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
   'futureHandlerCaught': 'String',
@@ -312,6 +316,8 @@ const _observations = {
   'second_string_index': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
   'caught_dynamic_boolean': 'none',
+  'blocked_cast': '42',
+  'blocked_covariance': '42',
   'growable_list_add': 'none',
   'constant_list_add': 'UnsupportedError',
   'narrow_list_add': 'TypeError',
@@ -481,6 +487,11 @@ void secondStringIndex(String value) {
 bool dynamicBooleanFailure(dynamic value) => !value;
 void caughtDynamicBoolean(dynamic value) {
   try { if (value) {} } on TypeError {}
+}
+void blockedCastFailure() { (stopEvaluation() as dynamic) as String; }
+class CheckedParameter<T> { void accept(T value, int other) {} }
+void blockedCovarianceFailure(CheckedParameter<num> target) {
+  target.accept(1.5, stopEvaluation());
 }
 void growableListAdd() { final items = <String>[]; items.add('value'); }
 void constantListAdd() { const items = <String>[]; items.add('value'); }
@@ -798,6 +809,8 @@ Future<void> main() async {
     'second_string_index': capture(() => secondStringIndex('A')),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),
     'caught_dynamic_boolean': capture(() => caughtDynamicBoolean('not a bool')),
+    'blocked_cast': capture(blockedCastFailure),
+    'blocked_covariance': capture(() => blockedCovarianceFailure(CheckedParameter<int>())),
     'growable_list_add': capture(growableListAdd),
     'constant_list_add': capture(constantListAdd),
     'narrow_list_add': capture(narrowListAdd),
