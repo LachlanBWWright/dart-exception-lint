@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
@@ -19,7 +20,13 @@ Future<void> main() async {
       '${directory.path}/pubspec.yaml',
     ).writeAsString('name: runtime_fixture\nenvironment:\n  sdk: ^3.11.0\n');
     final file = File('${directory.path}/main.dart');
-    await file.writeAsString(_fixture);
+    final generatedProbes = _generateEvaluationProbes();
+    await file.writeAsString(_fixtureWithGeneratedProbes(generatedProbes));
+    final expectedObservations = {
+      ..._observations,
+      for (final entry in generatedProbes.entries)
+        entry.key: entry.value.thrownType ?? 'none',
+    };
     collection = AnalysisContextCollection(includedPaths: [directory.path]);
     final unit =
         await collection
@@ -36,6 +43,33 @@ Future<void> main() async {
     );
     for (final declaration
         in unit.unit.declarations.whereType<FunctionDeclaration>()) {
+      if (generatedProbes[declaration.name.lexeme] case final probe?) {
+        final summary = analyzer.summarizeExecutable(
+          declaration.declaredFragment!.element,
+        );
+        final thrownType = probe.thrownType;
+        final matches = thrownType == null
+            ? !summary.hasAnyThrowSource
+            : summary.canThrowSynchronously &&
+                  summary.effects.every(
+                    (effect) =>
+                        effect.channel.name == 'synchronous' &&
+                        effect.certainty.name != 'unknown' &&
+                        effect.source.exceptionTypes.length == 1 &&
+                        effect.source.exceptionTypes.single == thrownType,
+                  );
+        if (!matches) {
+          final effects = summary.effects.map(
+            (effect) =>
+                '${effect.channel.name}/${effect.source.exceptionTypes}',
+          );
+          throw StateError(
+            '${declaration.name.lexeme} expected ${thrownType ?? 'no effects'} '
+            'from ${probe.body}, found ${effects.toList()}',
+          );
+        }
+        continue;
+      }
       if (const {
             'constantUnreachable',
             'exactDispatch',
@@ -134,15 +168,15 @@ Future<void> main() async {
       final observed =
           jsonDecode((result.stdout as String).trim()) as Map<String, dynamic>;
       final differences = [
-        for (final key in {..._observations.keys, ...observed.keys})
-          if (observed[key] != _observations[key])
-            '$key observed ${observed[key]}, expected ${_observations[key]}',
+        for (final key in {...expectedObservations.keys, ...observed.keys})
+          if (observed[key] != expectedObservations[key])
+            '$key observed ${observed[key]}, expected ${expectedObservations[key]}',
       ];
       if (differences.isNotEmpty) {
         throw StateError('$platform: ${differences.join(', ')}');
       }
       stdout.writeln(
-        '$platform: ${_observations.length} labeled runtime observations match.',
+        '$platform: ${expectedObservations.length} labeled runtime observations match.',
       );
     }
 
@@ -191,6 +225,79 @@ instance.invokeMain();
     await collection?.dispose();
     await directory.delete(recursive: true);
   }
+}
+
+typedef _ProbeExpression = ({String text, bool? value, String? thrownType});
+typedef _GeneratedProbe = ({String body, String? thrownType});
+
+Map<String, _GeneratedProbe> _generateEvaluationProbes() {
+  final random = Random(0xda47);
+  final probes = <String, _GeneratedProbe>{};
+  for (var index = 0; index < 64; index++) {
+    final left = _generateBooleanExpression(random, 3);
+    final right = _generateBooleanExpression(random, 2);
+    final eager = index.isEven;
+    final expression = eager
+        ? '_evaluateBoth(${left.text}, ${right.text})'
+        : left.text;
+    final thrownType = left.thrownType ?? (eager ? right.thrownType : null);
+    final catchesString = index % 3 == 0;
+    probes['generatedEvaluation$index'] = (
+      body: catchesString
+          ? '{ try { return $expression; } on String { return false; } }'
+          : '=> $expression;',
+      thrownType: catchesString && thrownType == 'String' ? null : thrownType,
+    );
+  }
+  return probes;
+}
+
+_ProbeExpression _generateBooleanExpression(Random random, int depth) {
+  if (depth == 0) {
+    return const [
+      (text: 'false', value: false, thrownType: null),
+      (text: 'true', value: true, thrownType: null),
+      (text: "(throw 'generated')", value: null, thrownType: 'String'),
+      (
+        text: "(throw StateError('generated'))",
+        value: null,
+        thrownType: 'StateError',
+      ),
+    ][random.nextInt(4)];
+  }
+  final left = _generateBooleanExpression(random, depth - 1);
+  final right = _generateBooleanExpression(random, depth - 1);
+  final form = random.nextInt(3);
+  final (text, result) = switch (form) {
+    0 => ('(${left.text} && ${right.text})', left.value == true ? right : left),
+    1 => (
+      '(${left.text} || ${right.text})',
+      left.value == false ? right : left,
+    ),
+    _ => (
+      '(${left.text} ? ${right.text} : false)',
+      left.value == true
+          ? right
+          : left.thrownType == null
+          ? (text: 'false', value: false, thrownType: null)
+          : left,
+    ),
+  };
+  return (text: text, value: result.value, thrownType: result.thrownType);
+}
+
+String _fixtureWithGeneratedProbes(Map<String, _GeneratedProbe> probes) {
+  final source = StringBuffer(_fixture)
+    ..writeln('bool _evaluateBoth(bool first, bool second) => second;');
+  for (final entry in probes.entries) {
+    source.writeln('bool ${entry.key}() ${entry.value.body}');
+  }
+  source.writeln('Map<String, String> generatedObservations() => {');
+  for (final name in probes.keys) {
+    source.writeln("'$name': capture($name),");
+  }
+  source.writeln('};');
+  return source.toString();
 }
 
 const _effects = {
@@ -1281,6 +1388,7 @@ Future<void> main() async {
     'consume_lazy_iterator_caught': capture(consumeLazyIteratorCaught),
     'create_lazy_iterator': capture(() { createLazyIterator(); }),
   };
+  observations.addAll(generatedObservations());
   print(jsonEncode(observations));
 }
 ''';

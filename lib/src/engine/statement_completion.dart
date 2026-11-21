@@ -1097,13 +1097,20 @@ bool? constantBooleanValue(Expression expression) => switch (expression) {
     },
   BinaryExpression(:final leftOperand, :final operator, :final rightOperand)
       when operator.lexeme == '&&' || operator.lexeme == '||' =>
-    switch ((
-      constantBooleanValue(leftOperand),
-      operator.lexeme,
-      constantBooleanValue(rightOperand),
-    )) {
-      (false, '&&', _) || (true, '||', _) => operator.lexeme == '||',
-      (true, '&&', final value) || (false, '||', final value) => value,
+    switch ((constantBooleanValue(leftOperand), operator.lexeme)) {
+      (false, '&&') => false,
+      (true, '||') => true,
+      (true, '&&') || (false, '||') => constantBooleanValue(rightOperand),
+      _ => null,
+    },
+  ConditionalExpression(
+    :final condition,
+    :final thenExpression,
+    :final elseExpression,
+  ) =>
+    switch (constantBooleanValue(condition)) {
+      true => constantBooleanValue(thenExpression),
+      false => constantBooleanValue(elseExpression),
       _ => null,
     },
   _ => _constantVariable(expression)?.computeConstantValue()?.toBoolValue(),

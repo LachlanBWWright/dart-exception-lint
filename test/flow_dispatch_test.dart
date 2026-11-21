@@ -24,13 +24,20 @@ class Flags { static const disabled = true; }
 void branch() { if (enabled) throw 'bad'; }
 void loop() { while (enabled) { throw 'bad'; } }
 void shortCircuit() { enabled && (throw 'bad'); }
+void conditionalBranch() { (true ? false : true) && (throw 'bad'); }
 void negated() { if (!Flags.disabled) throw 'bad'; }
 void positive() { if (!enabled) throw 'real'; }
 void casePattern() { if (enabled case false) throw 'pattern'; }
 void uncertain(bool enabled) { if (enabled) throw 'possible'; }
 ''',
         (summaries, _) {
-          for (final name in ['branch', 'loop', 'shortCircuit', 'negated']) {
+          for (final name in [
+            'branch',
+            'loop',
+            'shortCircuit',
+            'conditionalBranch',
+            'negated',
+          ]) {
             expect(summaries[name]!.hasAnyThrowSource, isFalse, reason: name);
           }
           expect(summaries['positive']!.exceptionTypes, contains('String'));
