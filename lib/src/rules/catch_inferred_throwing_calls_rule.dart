@@ -227,9 +227,13 @@ final class _Visitor extends SimpleAstVisitor<void> {
     required Element? element,
     required AstNode diagnosticTarget,
   }) {
-    // Direct numeric diagnostics belong to the runtime-source adapter. Only
-    // the operator target is excluded; compound getters/setters still infer.
-    final directNumeric = switch (node) {
+    // The runtime-source adapter owns these direct reports. The target check
+    // still lets compound getters and setters contribute their own effects.
+    final runtimeSource = switch (node) {
+      IndexExpression() => ThrowSourceCatalog.matchIndexAccess(
+        node,
+        analyzer.options,
+      ),
       BinaryExpression() => ThrowSourceCatalog.matchBinaryExpression(
         node,
         analyzer.options,
@@ -239,7 +243,7 @@ final class _Visitor extends SimpleAstVisitor<void> {
         ThrowSourceCatalog.matchAssignmentExpression(node, analyzer.options),
       _ => null,
     };
-    if (directNumeric != null) return;
+    if (runtimeSource != null) return;
     if (ThrowSourceCatalog.matchResolvedInvocation(
           node,
           element,
