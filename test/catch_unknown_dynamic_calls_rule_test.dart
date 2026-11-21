@@ -415,6 +415,7 @@ class Concrete extends Base implements Interface {
   Concrete.redirected() : this();
 }
 List<int> items() => [for (var i = 0; i < 3; i++) i];
+int storedIndex() { const list = [1, 2]; return list[1]; }
 ''');
   }
 

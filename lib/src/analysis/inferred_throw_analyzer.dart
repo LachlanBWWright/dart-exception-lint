@@ -295,6 +295,10 @@ final class InferredThrowAnalyzer {
         ThrowSourceCatalog.matchAssignmentExpression(node, options),
       _ => ThrowSourceCatalog.matchResolvedInvocation(node, element, options),
     };
+    if (node is IndexExpression &&
+        directSource?.confidence == ThrowConfidence.noObviousThrow) {
+      return null;
+    }
     // The native proof covers the actual operator or SDK method at
     // this call site, including implicit arguments to increment and decrement.
     // Its internal SDK implementations cannot add an unrelated source effect.

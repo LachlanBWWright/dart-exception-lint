@@ -15,7 +15,22 @@ ListLiteral? literalListAddReceiver(MethodInvocation node) {
       target.name != 'add') {
     return null;
   }
-  var receiver = _unparenthesized(node.realTarget);
+  return _literalReceiver(node.realTarget);
+}
+
+bool isKnownLiteralListIndex(Expression receiver, int index) {
+  final literal = _literalReceiver(receiver, immutableLocal: true);
+  return index >= 0 &&
+      literal != null &&
+      index < literal.elements.length &&
+      literal.elements.every((element) => element is Expression);
+}
+
+ListLiteral? _literalReceiver(
+  Expression? expression, {
+  bool immutableLocal = false,
+}) {
+  var receiver = _unparenthesized(expression);
   if (receiver is SimpleIdentifier) {
     final local = receiver.element;
     if (local is! LocalVariableElement ||
@@ -29,6 +44,11 @@ ListLiteral? literalListAddReceiver(MethodInvocation node) {
     ).searchWithin(receiver.root)?.thisOrAncestorOfType<VariableDeclaration>();
     if (declaration?.declaredFragment?.element != local) return null;
     receiver = _unparenthesized(declaration?.initializer);
+    if (immutableLocal &&
+        !local.isConst &&
+        (receiver is! ListLiteral || receiver.constKeyword == null)) {
+      return null;
+    }
   }
   return receiver is ListLiteral ? receiver : null;
 }

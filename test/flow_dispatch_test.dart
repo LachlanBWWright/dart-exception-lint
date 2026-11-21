@@ -870,6 +870,23 @@ void repeated(String text) {
     );
   });
 
+  test('immutable literal indices retain their bounds after storage', () async {
+    await _verify(
+      '''
+int constant() { const items = [1, 2]; return items[1]; }
+int finalConstant() { final items = const [1, 2]; return items[1]; }
+int outside() { const items = [1, 2]; return items[2]; }
+int resized() { final items = [1, 2]; items.clear(); return items[1]; }
+''',
+      (summaries, _) {
+        expect(summaries['constant']!.hasAnyThrowSource, isFalse);
+        expect(summaries['finalConstant']!.hasAnyThrowSource, isFalse);
+        expect(summaries['outside']!.exceptionTypes.toSet(), {'RangeError'});
+        expect(summaries['resized']!.exceptionTypes, contains('RangeError'));
+      },
+    );
+  });
+
   test(
     'List.add uses the allocation type of a proven literal receiver',
     () async {

@@ -146,24 +146,16 @@ final class ThrowSourceCatalog {
         displayName: 'proven in-bounds String index',
       );
     }
-    final literalLength = switch (target) {
-      ListLiteral(:final elements)
-          when elements.every((element) => element is Expression) =>
-        elements.length,
-      SimpleStringLiteral() => target.value.length,
-      _ => null,
-    };
-    if (sdkRead &&
+    final literalIndex = index is IntegerLiteral ? index.value : null;
+    if (sdkList &&
+        sdkRead &&
         !sdkWrite &&
-        index is IntegerLiteral &&
-        literalLength != null &&
-        index.value != null &&
-        index.value! >= 0 &&
-        index.value! < literalLength) {
+        literalIndex != null &&
+        isKnownLiteralListIndex(target, literalIndex)) {
       return const ThrowSource(
         kind: ThrowSourceKind.indexAccess,
         confidence: ThrowConfidence.noObviousThrow,
-        displayName: 'proven in-bounds literal index',
+        displayName: 'proven in-bounds List literal index',
       );
     }
     // The runtime list can have a narrower element type than its static view.

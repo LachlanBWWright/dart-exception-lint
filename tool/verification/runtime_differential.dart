@@ -47,6 +47,7 @@ Future<void> main() async {
             'handledTypedFutureError',
             'createJsonDecoder',
             'nullComparison',
+            'storedConstantListIndex',
           }.contains(declaration.name.lexeme) &&
           analyzer
               .summarizeExecutable(declaration.declaredFragment!.element)
@@ -175,6 +176,7 @@ const _effects = {
   'resolvedSuperCall': ('synchronous', 'String'),
   'resolvedConstructorRedirect': ('synchronous', 'String'),
   'reboundStringIndex': ('synchronous', 'RangeError'),
+  'resizedLiteralListIndex': ('synchronous', 'RangeError'),
   'ordinaryEquality': ('synchronous', 'String'),
   'secondStringIndex': ('synchronous', 'RangeError'),
   'negativeSubstringStart': ('synchronous', 'RangeError'),
@@ -354,6 +356,8 @@ const _observations = {
   'native_string_equality': 'none',
   'null_comparison': 'none',
   'ordinary_equality': 'String',
+  'stored_constant_list_index': 'none',
+  'resized_literal_list_index': 'RangeError',
   'negative_substring_start': 'RangeError',
   'reversed_substring_range': 'RangeError',
   'dynamic_boolean_failure': 'TypeError',
@@ -566,6 +570,8 @@ final class EqualityTrap {
 bool nativeStringEquality(String left, Object? right) => left == right || left != right;
 bool nullComparison(dynamic input) => input == null || null != input;
 bool ordinaryEquality(EqualityTrap input, Object other) => input == other;
+int storedConstantListIndex() { const list = [1, 2]; return list[1]; }
+int resizedLiteralListIndex() { final list = [1, 2]; list.clear(); return list[1]; }
 void negativeSubstringStart(String text, int start) {
   if (start < text.length) text.substring(start);
 }
@@ -961,6 +967,8 @@ Future<void> main() async {
     'native_string_equality': capture(() => nativeStringEquality('value', EqualityTrap())),
     'null_comparison': capture(() => nullComparison(EqualityTrap())),
     'ordinary_equality': capture(() => ordinaryEquality(EqualityTrap(), Object())),
+    'stored_constant_list_index': capture(storedConstantListIndex),
+    'resized_literal_list_index': capture(resizedLiteralListIndex),
     'negative_substring_start': capture(() => negativeSubstringStart('word', -1)),
     'reversed_substring_range': capture(() => reversedSubstringRange('word')),
     'dynamic_boolean_failure': capture(() { dynamicBooleanFailure('not a bool'); }),
