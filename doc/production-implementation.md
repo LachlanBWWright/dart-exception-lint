@@ -118,6 +118,10 @@ The later `d90af0d` snapshot passed 194 focused tests and the release and IDE
 smoke checks on Dart 3.11.0 and 3.14.1. Both matched 142 core and 132 numeric
 observations on the VM and Node.
 
+The `5374071` snapshot passed 236 focused tests on each of the four SDKs.
+All four matched 151 observations on the VM and Node, and the 37 semantic
+cases reported zero unexpected or missing effect labels.
+
 The Flutter package runs exposed a recursive virtual dispatch overflow and an
 analyzer AST view mismatch. Regression tests cover mutually recursive
 overrides, propagation of their known effects, and resolution of top-level

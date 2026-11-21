@@ -105,6 +105,18 @@ its activation removed the plugin error. Running the scopes separately and
 activating the evaluated plugin in Riverpod's test options resolved the
 partial-output issue that had left only 337 observed diagnostics.
 
+At `5374071`, rerunning the same Riverpod library scope produced 4,707
+diagnostics, compared with 5,134 in the earlier run. The findings on interface
+clauses, reads of the imported `kDebugMode` constant and the reviewed null
+comparisons cleared. The ordinary listener equality was still reported as
+an unresolved dispatch.
+
+The pinned Freezed tests initially had compiler errors in generated APIs.
+The upstream build workflow generated 155 outputs in a disposable worktree.
+Both Flutter scopes then exited successfully and their plugin processes
+reported idle. The run emitted 3,601 plugin diagnostics in `lib` and 6,021
+in `test`.
+
 ## Reviewed source sites
 
 - In `dart_path`, the nonempty check guards `path.codeUnitAt(0)` and `path[0]`
