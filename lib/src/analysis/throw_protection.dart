@@ -46,7 +46,7 @@ bool isProtectedByCatch(
     if (!isReachable(consumer)) return true;
     node = consumer;
   }
-  if (requireAsyncProtection && _hasAsyncErrorHandler(node)) {
+  if (requireAsyncProtection && _hasAsyncErrorHandler(node, channel)) {
     return true;
   }
 
@@ -102,14 +102,18 @@ bool isProtectedByCatch(
 
 bool _isAwaited(AstNode node, {ExceptionChannel? channel}) {
   if (node is ForStatement && node.awaitKeyword != null) return true;
+  if (channel == ExceptionChannel.stream) {
+    final route = asyncValueRoute(node, ExceptionChannel.stream);
+    final consumer = route.consumer;
+    final loop = consumer is ForEachParts ? consumer.parent : null;
+    return route.channel == ExceptionChannel.future &&
+            consumer is AwaitExpression ||
+        loop is ForStatement && loop.awaitKeyword != null;
+  }
   AstNode? current = node;
   while (current != null) {
     if (current is AwaitExpression || current.parent is AwaitExpression) {
-      // Awaiting a Stream yields the Stream object; it does not subscribe.
-      if (channel != ExceptionChannel.stream) return true;
-      final awaited = current is AwaitExpression ? current.expression : current;
-      final type = awaited is Expression ? awaited.staticType : null;
-      return type is InterfaceType && type.isDartAsyncFuture;
+      return true;
     }
     if (current.parent is ForEachParts) {
       final loop = current.parent?.parent;
@@ -258,6 +262,7 @@ AstNode? asyncValueConsumer(AstNode node) =>
     if (forwarding == null) return (consumer: current.parent, channel: channel);
     if (channel == ExceptionChannel.stream &&
         _streamTerminalFuture(forwarding)) {
+      if (!isReachable(forwarding)) return (consumer: null, channel: channel);
       channel = ExceptionChannel.future;
     }
     current = forwarding;
@@ -469,14 +474,23 @@ PropertyAccess? _iterableIteratorAccess(AstNode target) {
 bool _containsNode(AstNode ancestor, AstNode node) =>
     node.offset >= ancestor.offset && node.end <= ancestor.end;
 
-bool _hasAsyncErrorHandler(AstNode node) {
+bool _hasAsyncErrorHandler(AstNode node, ExceptionChannel? channel) {
   AstNode? current = node;
   while (current != null) {
     if (current is MethodInvocation &&
+        (channel != ExceptionChannel.stream ||
+            current.methodName.element?.enclosingElement?.name == 'Stream') &&
         hasUnconditionalAsyncErrorHandler(current)) {
       return true;
     }
-    current = _forwardingFutureParent(current);
+    final forwarding = _forwardingFutureParent(current);
+    if (channel == ExceptionChannel.stream &&
+        forwarding != null &&
+        _streamTerminalFuture(forwarding)) {
+      if (!isReachable(forwarding)) return false;
+      channel = ExceptionChannel.future;
+    }
+    current = forwarding;
   }
   return false;
 }

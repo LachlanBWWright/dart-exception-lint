@@ -188,6 +188,8 @@ const _effects = {
   'constructedStream': ('stream', 'String'),
   'streamToList': ('future', 'String'),
   'streamToListDiscarded': ('scheduled', 'String'),
+  'nestedStream': ('stream', 'String'),
+  'blockedStreamTerminal': ('synchronous', 'int'),
   'lazyFailure': ('deferred', 'String'),
   'scheduledFailure': ('scheduled', 'String'),
   'finallyReplaceCast': ('synchronous', 'String'),
@@ -213,6 +215,7 @@ const _suppressedEffects = {
   'stoppedGuardCase': 'String',
   'stoppedStatementGuard': 'String',
   'streamToListCaught': 'String',
+  'blockedStreamTerminal': 'String',
   'groupedStatementCase': 'String',
   'skippedGuard': 'String',
   'caughtPostfixAssertion': 'TypeError',
@@ -299,6 +302,8 @@ const _observations = {
   'stream_to_list': 'String',
   'stream_to_list_caught': 'none',
   'stream_to_list_discarded': 'none/String',
+  'nested_stream': 'String',
+  'blocked_stream_terminal': '42',
   'lazy': 'String',
   'scheduled': 'String',
   'contained': 'none',
@@ -521,6 +526,14 @@ Future<void> streamToListCaught() async {
 Future<void> streamToListDiscarded() async {
   Stream<int>.error('discarded terminal error').toList();
 }
+Future<Stream<int>> nestedStream() async {
+  try {
+    return await Future<Stream<int>>.value(Stream<int>.error('buffered error'));
+  } on String { return const Stream<int>.empty(); }
+}
+void blockedStreamTerminal() {
+  Stream<int>.error('buffered error').fold<int>(stopEvaluation(), (a, b) => a + b);
+}
 void abandonFuture(Future<void> Function() source) {
   try { source(); } catch (_) {}
 }
@@ -639,6 +652,8 @@ Future<void> main() async {
     'stream_to_list': await captureAsync(streamToList),
     'stream_to_list_caught': await captureAsync(streamToListCaught),
     'stream_to_list_discarded': await captureUnobserved(streamToListDiscarded),
+    'nested_stream': await captureAsync(() async { await (await nestedStream()).toList(); }),
+    'blocked_stream_terminal': capture(blockedStreamTerminal),
     'lazy': capture(() { lazyFailure().toList(); }),
     'scheduled': await scheduled.future.timeout(const Duration(seconds: 5)),
     'contained': capture(() => containedCast(1)),
