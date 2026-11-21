@@ -323,6 +323,33 @@ Future<void> f() async {
 ''');
   }
 
+  Future<void> test_earlyReturnPreservesUnobservedFuture() async {
+    const code = r'''
+Future<void> f(bool skip) async {
+  final pending = Future<void>.error('failure');
+  if (skip) return;
+  try { await pending; } on String {}
+}
+''';
+    await assertDiagnostics(code, [
+      lint(
+        code.indexOf('Future<void>.error'),
+        "Future<void>.error('failure')".length,
+      ),
+    ]);
+  }
+
+  Future<void> test_finallyCanObserveFutureBeforeReturn() async {
+    await assertNoDiagnostics(r'''
+Future<void> f(bool skip) async {
+  final pending = Future<void>.error('failure');
+  try { if (skip) return; } finally {
+    try { await pending; } on String {}
+  }
+}
+''');
+  }
+
   Future<void> test_existingFutures_nestedAggregateAliasesAreHandled() async {
     await assertNoDiagnostics(r'''
 Future<void> f() async {

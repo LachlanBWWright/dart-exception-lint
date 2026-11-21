@@ -75,6 +75,7 @@ final class _Visitor extends RecursiveAstVisitor<void> {
   Map<Object, List<_DeferredAsyncEffect>> _deferredEffects = {};
   Map<Object, List<_DeferredAsyncEffect>> _escapedEffects = {};
   Set<_DeferredAsyncEffect> _orphanedEffects = {};
+  Set<_DeferredAsyncEffect> _returnedEffects = {};
   final Map<Element, int> _receiverVersions = {};
   final Set<Element> _safeFutureVariables = {};
 
@@ -205,7 +206,9 @@ final class _Visitor extends RecursiveAstVisitor<void> {
     final previousEffects = _deferredEffects;
     final previousEscapes = _escapedEffects;
     final previousOrphans = _orphanedEffects;
+    final previousReturns = _returnedEffects;
     _orphanedEffects = {};
+    _returnedEffects = {};
     _deferredEffects = {};
     _escapedEffects = {};
     node.visitChildren(this);
@@ -213,14 +216,51 @@ final class _Visitor extends RecursiveAstVisitor<void> {
       for (final effects in _deferredEffects.values) ...effects,
       for (final effects in _escapedEffects.values) ...effects,
       ..._orphanedEffects,
+      ..._returnedEffects,
     };
     _deferredEffects = previousEffects;
     _escapedEffects = previousEscapes;
     _orphanedEffects = previousOrphans;
+    _returnedEffects = previousReturns;
 
     for (final effect in abandonedEffects) {
       _reportAbandonedEffect(effect);
     }
+  }
+
+  @override
+  void visitReturnStatement(ReturnStatement node) {
+    super.visitReturnStatement(node);
+    final value = node.expression;
+    if (!isReachable(node) ||
+        value != null && !expressionCanCompleteNormally(value) ||
+        _hasPendingFinally(node)) {
+      return;
+    }
+    // A handler reached after this return can consume an effect only on a
+    // different path. Keep the obligations still live on the returning path.
+    for (final effects in [
+      ..._deferredEffects.values,
+      ..._escapedEffects.values,
+    ]) {
+      _returnedEffects.addAll(
+        effects.where((effect) => effect.requiresObservation),
+      );
+    }
+  }
+
+  bool _hasPendingFinally(ReturnStatement node) {
+    AstNode child = node;
+    for (var parent = child.parent; parent != null; parent = parent.parent) {
+      if (parent is FunctionBody) return false;
+      if (parent is TryStatement &&
+          parent.finallyBlock != null &&
+          !identical(child, parent.finallyBlock)) {
+        return true;
+      }
+      child = parent;
+    }
+    return false;
   }
 
   Map<Object, List<_DeferredAsyncEffect>> _copyEffects(
