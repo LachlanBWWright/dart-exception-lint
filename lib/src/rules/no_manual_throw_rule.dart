@@ -70,6 +70,16 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
+    final element = node.methodName.element;
+    // A statically resolved method can name a producer or forward through
+    // Function.apply. Other native callback values require alias resolution.
+    if (element is ExecutableElement &&
+        node.methodName.name != 'call' &&
+        node.methodName.name != 'apply' &&
+        node.realTarget?.staticType is! RecordType &&
+        explicitErrorProducer(element) == null) {
+      return;
+    }
     _reportProducer(
       explicitProducerInvocationTargets(
         analyzer.resolveInvokedCallback(node),
@@ -82,8 +92,10 @@ final class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    final element = node.constructorName.element;
+    if (explicitErrorProducer(element) == null) return;
     _reportProducer(
-      analyzer.callbackValueForElement(node.constructorName.element),
+      analyzer.callbackValueForElement(element),
       node.constructorName,
     );
   }

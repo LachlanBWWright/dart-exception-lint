@@ -1,6 +1,7 @@
 // ignore_for_file: implementation_imports
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
@@ -195,10 +196,20 @@ final class InferredThrowAnalyzer {
 
   static int? _sourceFingerprint(String path) {
     try {
-      return Object.hashAll(File(path).readAsBytesSync());
+      return _bytesFingerprint(File(path).readAsBytesSync());
     } on FileSystemException {
       return null;
     }
+  }
+
+  static int _bytesFingerprint(Uint8List bytes) {
+    final alignedLength =
+        bytes.length - bytes.length % Uint32List.bytesPerElement;
+    return Object.hash(
+      bytes.length,
+      Object.hashAll(Uint32List.sublistView(bytes, 0, alignedLength)),
+      Object.hashAll(Uint8List.sublistView(bytes, alignedLength)),
+    );
   }
 
   InferredCallAnalysis? analyzeResolvedCall(
@@ -2065,7 +2076,7 @@ final class InferredThrowAnalyzer {
 
     final stat = FileStat.statSync(path);
     final modified = stat.modified;
-    final fingerprint = Object.hashAll(File(path).readAsBytesSync());
+    final fingerprint = _bytesFingerprint(File(path).readAsBytesSync());
     final shared = _sharedParsedUnits[path];
     final parsedUnit =
         shared != null &&
