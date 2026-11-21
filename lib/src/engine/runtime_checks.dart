@@ -31,7 +31,7 @@ final class RuntimeChecks {
     final invocation = arguments is ArgumentList ? arguments.parent : null;
     if (invocation != null && !isReachable(invocation)) return null;
     if (invocation is MethodInvocation && !narrowed) {
-      final literal = literalListAddReceiver(invocation);
+      final literal = literalListMutationReceiver(invocation);
       if (literal != null && literalListAccepts(literal, value)) return null;
     }
     return const ThrowSource(

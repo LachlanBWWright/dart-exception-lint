@@ -50,6 +50,7 @@ Future<void> main() async {
             'nullComparison',
             'storedConstantListIndex',
             'safeLiteralListGetters',
+            'growableListClear',
             'caughtEmptyListLast',
           }.contains(declaration.name.lexeme) &&
           analyzer
@@ -220,6 +221,7 @@ const _effects = {
   'narrowedOverrideSetterFailure': ('synchronous', 'TypeError'),
   'blockedCovariantSetter': ('synchronous', 'int'),
   'constantListAdd': ('synchronous', 'UnsupportedError'),
+  'constantListClear': ('synchronous', 'UnsupportedError'),
   'narrowListAdd': ('synchronous', 'TypeError'),
   'stoppedStatementGuard': ('synchronous', 'int'),
   'groupedStatementCase': ('synchronous', 'int'),
@@ -408,6 +410,8 @@ const _observations = {
   'exact_generic_setter': 'none',
   'growable_list_add': 'none',
   'constant_list_add': 'UnsupportedError',
+  'constant_list_clear': 'UnsupportedError',
+  'growable_list_clear': 'none',
   'narrow_list_add': 'TypeError',
   'stopped_statement_guard': '42',
   'grouped_statement_case': '42',
@@ -615,10 +619,12 @@ void safeLiteralListGetters() {
   list.first;
   list.single;
   final growable = [1, 2];
-  growable.add(3);
+  growable.clear();
   growable.length;
   growable.isEmpty;
 }
+void constantListClear() { const list = <int>[]; list.clear(); }
+void growableListClear() { final list = [1]; list.clear(); }
 void caughtEmptyListLast() { try { (<int>[]).last; } on StateError {} }
 int multipleListSingle() => [1, 2].single;
 int resizedListFirst() { final list = [1]; list.clear(); return list.first; }
@@ -1050,6 +1056,8 @@ Future<void> main() async {
     'exact_generic_setter': capture(exactGenericSetter),
     'growable_list_add': capture(growableListAdd),
     'constant_list_add': capture(constantListAdd),
+    'constant_list_clear': capture(constantListClear),
+    'growable_list_clear': capture(growableListClear),
     'narrow_list_add': capture(narrowListAdd),
     'stopped_statement_guard': capture(stoppedStatementGuard),
     'grouped_statement_case': capture(groupedStatementCase),

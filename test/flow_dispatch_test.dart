@@ -899,7 +899,7 @@ int safeSingle() { const Iterable<int> items = [1]; return items.single; }
 int emptyLast() => (<int>[]).last;
 int resizedFirst() {
   final items = [1];
-  try { items.clear(); } catch (_) {}
+  items.clear();
   return items.first;
 }
 void contained() { try { (<int>[]).first; } on StateError {} }
@@ -922,7 +922,7 @@ int custom() => Custom().first;
   });
 
   test(
-    'List.add uses the allocation type of a proven literal receiver',
+    'List mutations use the allocation type of a proven literal receiver',
     () async {
       await _verify(
         '''
@@ -931,6 +931,8 @@ void growable(String value) {
   if (value.isNotEmpty) items.add(value[0]);
 }
 void constant() { const items = <String>[]; items.add('value'); }
+void clearConstant() { const items = <String>[]; items.clear(); }
+void clearGrowable() { final items = <String>[]; items.clear(); }
 void narrower() { final List<num> items = <int>[]; items.add(1.5); }
 void unknown(List<String> other) {
   var items = <String>[];
@@ -940,9 +942,12 @@ void unknown(List<String> other) {
 ''',
         (summaries, _) {
           expect(summaries['growable']!.hasAnyThrowSource, isFalse);
-          expect(summaries['constant']!.exceptionTypes.toSet(), {
-            'UnsupportedError',
-          });
+          expect(summaries['clearGrowable']!.hasAnyThrowSource, isFalse);
+          for (final name in ['constant', 'clearConstant']) {
+            expect(summaries[name]!.exceptionTypes.toSet(), {
+              'UnsupportedError',
+            });
+          }
           expect(summaries['narrower']!.exceptionTypes.toSet(), {'TypeError'});
           expect(summaries['unknown']!.hasUnknownEffects, isTrue);
         },

@@ -571,16 +571,18 @@ final class ThrowSourceCatalog {
     required ExceptionAnalysisOptions options,
   }) {
     final name = callableName ?? node.methodName.name;
-    if (name == 'add' &&
+    if (const {'add', 'clear'}.contains(name) &&
         libraryUri == 'dart:core' &&
         enclosingClassName == 'List') {
-      final literal = literalListAddReceiver(node);
+      final literal = literalListMutationReceiver(node);
       final value = node.argumentList.arguments.firstOrNull?.argumentExpression;
-      if (literal != null && value != null) {
+      if (literal != null && (name == 'clear' || value != null)) {
         final exceptions = [
           if (literal.isConst && options.treatCollectionStateAsThrowing)
             'UnsupportedError',
-          if (!literalListAccepts(literal, value) &&
+          if (name == 'add' &&
+              value != null &&
+              !literalListAccepts(literal, value) &&
               options.treatAsCastsAsThrowing)
             'TypeError',
         ];
@@ -589,7 +591,7 @@ final class ThrowSourceCatalog {
           confidence: exceptions.isEmpty
               ? ThrowConfidence.noObviousThrow
               : ThrowConfidence.possibleThrow,
-          displayName: 'List.add',
+          displayName: 'List.$name',
           exceptionTypes: exceptions,
         );
       }

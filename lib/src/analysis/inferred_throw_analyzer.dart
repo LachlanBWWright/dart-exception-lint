@@ -1721,7 +1721,7 @@ final class InferredThrowAnalyzer {
       return baseSummary;
     }
     if (callSite is MethodInvocation &&
-        literalListAddReceiver(callSite) != null) {
+        literalListMutationReceiver(callSite) != null) {
       return baseSummary;
     }
     if (declared is GetterElement &&
